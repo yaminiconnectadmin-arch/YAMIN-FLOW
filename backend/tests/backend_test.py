@@ -502,6 +502,218 @@ class TestSettings:
                                         "tally_endpoint": "http://localhost:9000"})
 
 
+# ---------------- Tally Webhook (push) ----------------
+class TestTallyWebhook:
+    """Iteration-3: Tally Webhook Receiver — RBAC, XML/JSON parsing, dedup, rotate."""
+
+    def test_webhook_config_admin(self, admin):
+        s, _ = admin
+        r = s.get(f"{API}/tally/webhook-config")
+        assert r.status_code == 200, r.text
+        d = r.json()
+        for k in ("webhook_url", "secret_masked", "secret_full", "header_name", "query_param"):
+            assert k in d, f"missing key {k}"
+        assert d["header_name"] == "X-Tally-Token"
+        assert d["query_param"] == "token"
+        assert d["secret_full"], "secret_full must be present"
+        assert d["secret_masked"] != d["secret_full"], "masked must differ from full"
+        assert "/api/tally/webhook" in d["webhook_url"]
+
+    def test_webhook_config_forbidden_for_others(self, dealer, mnp, supplier):
+        for role_fixture, name in [(dealer, "dealer"), (mnp, "mnp"), (supplier, "supplier")]:
+            s, _ = role_fixture
+            r = s.get(f"{API}/tally/webhook-config")
+            assert r.status_code == 403, f"{name} should be forbidden but got {r.status_code}"
+
+    def test_webhook_post_no_token(self):
+        r = requests.post(f"{API}/tally/webhook", data="<x/>", timeout=15)
+        assert r.status_code == 401, r.text
+
+    def test_webhook_post_wrong_token(self):
+        r = requests.post(f"{API}/tally/webhook", params={"token": "not-a-real-token"},
+                          data="<x/>", timeout=15)
+        assert r.status_code == 401, r.text
+
+    def test_webhook_post_xml_success(self, admin):
+        s, _ = admin
+        cfg = s.get(f"{API}/tally/webhook-config").json()
+        secret = cfg["secret_full"]
+        vch_no = f"TEST-VCH-{int(time.time())}"
+        guid = f"TEST-GUID-{int(time.time())}"
+        xml = f"""<ENVELOPE><BODY><IMPORTDATA><REQUESTDATA><TALLYMESSAGE>
+<VOUCHER VCHTYPE="Sales" ACTION="Create">
+  <VOUCHERNUMBER>{vch_no}</VOUCHERNUMBER>
+  <DATE>20260115</DATE>
+  <PARTYNAME>TEST Party ABC</PARTYNAME>
+  <AMOUNT>12345.50</AMOUNT>
+  <GUID>{guid}</GUID>
+</VOUCHER>
+</TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>"""
+        r = requests.post(f"{API}/tally/webhook", params={"token": secret},
+                          data=xml, headers={"Content-Type": "application/xml"}, timeout=20)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["ok"] is True
+        assert d["received"] == 1
+        assert d["saved"] == 1
+        # Verify persisted via events endpoint
+        ev = s.get(f"{API}/tally/webhook-events", params={"limit": 200}).json()
+        found = [e for e in ev if e.get("voucher_no") == vch_no and e.get("guid") == guid]
+        assert found, "event not persisted"
+        assert found[0]["voucher_type"] == "Sales"
+        assert found[0]["party"] == "TEST Party ABC"
+        assert abs(found[0]["amount"] - 12345.50) < 0.01
+        assert found[0]["date"] == "2026-01-15"
+
+    def test_webhook_post_json_success(self, admin):
+        s, _ = admin
+        cfg = s.get(f"{API}/tally/webhook-config").json()
+        secret = cfg["secret_full"]
+        vch_no = f"TEST-JSON-{int(time.time())}"
+        guid = f"TEST-JGUID-{int(time.time())}"
+        payload = {
+            "voucher_type": "Purchase", "voucher_no": vch_no,
+            "date": "2026-01-20", "party": "TEST JSON Party",
+            "amount": 999.99, "guid": guid, "action": "create",
+        }
+        r = requests.post(f"{API}/tally/webhook",
+                          headers={"X-Tally-Token": secret, "Content-Type": "application/json"},
+                          json=payload, timeout=20)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["saved"] == 1
+
+    def test_webhook_idempotency(self, admin):
+        s, _ = admin
+        cfg = s.get(f"{API}/tally/webhook-config").json()
+        secret = cfg["secret_full"]
+        vch_no = f"TEST-DEDUP-{int(time.time())}"
+        guid = f"TEST-DEDUP-GUID-{int(time.time())}"
+        payload = {
+            "voucher_type": "Sales", "voucher_no": vch_no,
+            "date": "2026-01-20", "party": "Dup Party",
+            "amount": 100.0, "guid": guid, "action": "create",
+        }
+        for _ in range(2):
+            r = requests.post(f"{API}/tally/webhook",
+                              headers={"X-Tally-Token": secret, "Content-Type": "application/json"},
+                              json=payload, timeout=20)
+            assert r.status_code == 200
+        # Verify only ONE row exists for this voucher, revisions >= 2
+        ev = s.get(f"{API}/tally/webhook-events", params={"limit": 500}).json()
+        rows = [e for e in ev if e.get("voucher_no") == vch_no and e.get("guid") == guid]
+        assert len(rows) == 1, f"expected 1 row (idempotent), got {len(rows)}"
+        assert rows[0].get("revisions", 0) >= 2, f"revisions not incremented: {rows[0]}"
+
+    def test_webhook_malformed_xml(self, admin):
+        s, _ = admin
+        cfg = s.get(f"{API}/tally/webhook-config").json()
+        secret = cfg["secret_full"]
+        r = requests.post(f"{API}/tally/webhook", params={"token": secret},
+                          data="<not-well-formed", headers={"Content-Type": "application/xml"}, timeout=15)
+        assert r.status_code == 400, r.text
+
+    def test_webhook_empty_body(self, admin):
+        s, _ = admin
+        cfg = s.get(f"{API}/tally/webhook-config").json()
+        secret = cfg["secret_full"]
+        r = requests.post(f"{API}/tally/webhook", params={"token": secret},
+                          data=b"", headers={"Content-Type": "application/xml"}, timeout=15)
+        assert r.status_code == 400, r.text
+
+    def test_webhook_events_rbac(self, admin, mnp, dealer, supplier):
+        s_admin, _ = admin
+        r = s_admin.get(f"{API}/tally/webhook-events")
+        assert r.status_code == 200
+        assert isinstance(r.json(), list)
+        s_mnp, _ = mnp
+        assert s_mnp.get(f"{API}/tally/webhook-events").status_code == 200
+        s_dealer, _ = dealer
+        assert s_dealer.get(f"{API}/tally/webhook-events").status_code == 403
+        s_supplier, _ = supplier
+        assert s_supplier.get(f"{API}/tally/webhook-events").status_code == 403
+
+    def test_webhook_success_writes_sync_log(self, admin):
+        s, _ = admin
+        cfg = s.get(f"{API}/tally/webhook-config").json()
+        secret = cfg["secret_full"]
+        pre_logs = s.get(f"{API}/tally/logs", params={"limit": 500}).json()
+        pre_webhook_logs = [l for l in pre_logs if l.get("module") == "webhook"]
+        payload = {
+            "voucher_type": "Sales", "voucher_no": f"TEST-LOG-{int(time.time())}",
+            "date": "2026-01-20", "party": "Log Party",
+            "amount": 500.0, "guid": f"TEST-LOG-G-{int(time.time())}", "action": "create",
+        }
+        r = requests.post(f"{API}/tally/webhook",
+                          headers={"X-Tally-Token": secret, "Content-Type": "application/json"},
+                          json=payload, timeout=20)
+        assert r.status_code == 200
+        post_logs = s.get(f"{API}/tally/logs", params={"limit": 500}).json()
+        post_webhook_logs = [l for l in post_logs if l.get("module") == "webhook"]
+        assert len(post_webhook_logs) == len(pre_webhook_logs) + 1
+        latest = post_webhook_logs[0]
+        assert latest["direction"] == "webhook"
+        assert latest["status"] == "success"
+
+    def test_webhook_creates_admin_notification(self, admin):
+        s, _ = admin
+        cfg = s.get(f"{API}/tally/webhook-config").json()
+        secret = cfg["secret_full"]
+        vch_no = f"TEST-NOTIF-{int(time.time())}"
+        payload = {
+            "voucher_type": "Sales", "voucher_no": vch_no,
+            "date": "2026-01-20", "party": "Notif Party",
+            "amount": 700.0, "guid": f"TEST-NOTIF-G-{int(time.time())}", "action": "create",
+        }
+        r = requests.post(f"{API}/tally/webhook",
+                          headers={"X-Tally-Token": secret, "Content-Type": "application/json"},
+                          json=payload, timeout=20)
+        assert r.status_code == 200
+        notifs = s.get(f"{API}/notifications").json()
+        # Find any notification with the voucher_no in body
+        matched = [n for n in notifs if vch_no in (n.get("body") or "")]
+        assert matched, "admin notification not created for webhook push"
+
+    def test_webhook_rotate_invalidates_old(self, admin):
+        s, _ = admin
+        cfg = s.get(f"{API}/tally/webhook-config").json()
+        old_secret = cfg["secret_full"]
+        # Confirm old works
+        payload = {
+            "voucher_type": "Sales", "voucher_no": f"TEST-ROT-PRE-{int(time.time())}",
+            "date": "2026-01-20", "party": "Pre",
+            "amount": 1.0, "guid": f"TEST-ROT-PRE-G-{int(time.time())}", "action": "create",
+        }
+        r0 = requests.post(f"{API}/tally/webhook",
+                          headers={"X-Tally-Token": old_secret, "Content-Type": "application/json"},
+                          json=payload, timeout=15)
+        assert r0.status_code == 200
+
+        # Rotate
+        r_rot = s.post(f"{API}/tally/webhook-config/rotate", json={})
+        assert r_rot.status_code == 200, r_rot.text
+        new_secret = r_rot.json()["secret_full"]
+        assert new_secret and new_secret != old_secret
+
+        # Old token now fails
+        payload2 = {**payload, "voucher_no": f"TEST-ROT-POST-{int(time.time())}"}
+        r_old = requests.post(f"{API}/tally/webhook",
+                              headers={"X-Tally-Token": old_secret, "Content-Type": "application/json"},
+                              json=payload2, timeout=15)
+        assert r_old.status_code == 401
+
+        # New token works
+        r_new = requests.post(f"{API}/tally/webhook",
+                              headers={"X-Tally-Token": new_secret, "Content-Type": "application/json"},
+                              json=payload2, timeout=15)
+        assert r_new.status_code == 200
+
+        # Audit log entry written
+        audits = s.get(f"{API}/audit-logs", params={"limit": 500}).json()
+        rotate_entries = [a for a in audits if a.get("action") == "tally.webhook.rotate"]
+        assert rotate_entries, "audit log entry 'tally.webhook.rotate' not found"
+
+
 # ---------------- Logout ----------------
 class TestLogout:
     def test_logout(self):

@@ -1,0 +1,50 @@
+{
+  "summary": "YAMINI FLOW V2 iteration-3 full-stack test. Backend: 63/63 pytest tests PASS (50 regression + 13 new Tally Webhook tests). Frontend: /tally page Real-time Webhook section fully verified — webhook URL correct (https://…/api/tally/webhook), secret masked by default, toggle reveals full 32-char secret, Copy URL & Copy Secret buttons fire toasts, Rotate confirms then updates the secret in place, 'How to configure Tally' details expands and shows TDL sample code (YF Endpoint, HTTP POST, TALLYMESSAGE snippet), Live Webhook Events table renders 9 persisted vouchers with all 7 columns (Received/Type/Voucher No/Voucher Date/Party/Amount/Action). Regression sanity: Sync-history table shows the new webhook rows with module=webhook direction=WEBHOOK status=SUCCESS, Test Connection button and per-module Sync now buttons still present. All auth/RBAC, catalog, orders, procurement, AI Insight (real Claude Sonnet), analytics + state drilldown, notifications, audit, settings, logout regression tests remained green.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/tally/webhook-config", "issue": "Returns secret_full to the admin on every read — this is intentional (UI needs it once) but note: if an admin session token leaks, so does the webhook secret. Consider returning secret_full only on a one-shot POST /reveal endpoint or after rotate, then only masked thereafter."},
+      {"endpoint": "POST /api/tally/webhook", "issue": "Token compared with plain equality (supplied != expected). For defense-in-depth against timing attacks use secrets.compare_digest — low risk given the token is 32 chars random urlsafe."},
+      {"endpoint": "POST /api/tally/webhook", "issue": "No rate limiting on the public webhook endpoint. An attacker with a leaked token could flood the DB with events. Consider a per-IP rate limit or a max_body_size guard."},
+      {"endpoint": "POST /api/tally/webhook", "issue": "Content-Type sniffing uses 'json' substring — application/xml, text/xml, application/vnd.tally.xml all fall through to XML parser. That's fine, but a Content-Type: application/x-www-form-urlencoded would also route to XML parser and produce a 400 malformed — acceptable but a whitelist would be cleaner."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "TallySync.js Rotate button", "issue": "Uses native window.confirm() which is jarring vs the rest of the shadcn UI. Consider a Dialog/AlertDialog to match design. Functional — not blocking.", "selector": "[data-testid='rotate-secret']", "priority": "LOW"},
+      {"component": "TallySync.js Copy buttons", "issue": "navigator.clipboard.writeText requires HTTPS + user activation. Works in the deployed URL (HTTPS) but silently fails in some contexts (older Safari, non-secure origins). No fallback via document.execCommand.", "selector": "[data-testid='copy-webhook-url'], [data-testid='copy-secret']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "None blocking. Optional: replace window.confirm on rotate with an AlertDialog for UX consistency.",
+    "Optional: use secrets.compare_digest for the webhook token compare.",
+    "Optional: return secret_full only once (post-rotate) and keep GET /webhook-config to masked-only, to reduce blast radius on session token leak."
+  ],
+  "critical_code_review_comments": [
+    "tally_webhook.py:parse_tally_xml — correctly handles nested TALLYMESSAGE via root.iter('VOUCHER'). Good idempotency key (voucher_no+guid). ",
+    "tally_webhook.py:persist_events — silently skips events with neither voucher_no nor guid; counts saved for all others including skips-not-taken. Consider logging skipped payloads for observability.",
+    "ops.py webhook endpoint sets duration_ms=int((time.time()-start)*1000) — good, appears in sync log and response.",
+    "ops.py:tally_webhook_events — uses find({}) with no filter and limit=50 default. Once event volume grows, add pagination (skip/before_id) and index on received_at (already added per PRD).",
+    "TallySync.js:rotateSecret — after rotate sets setShowSecret(true) to auto-reveal — good UX so admin can copy before dismissing.",
+    "TallySync.js — hook state can be null while loading; the {hook && (...)} guard is correct.",
+    "Admin notification body is a comma-joined list of first 3 vouchers — good but body is not truncated; a payload with very long PARTYNAME could bloat the notification.",
+    "get_webhook_secret auto-creates on first call — good, but there's no seed step, so the FIRST admin call to /webhook-config is the trigger. Fine but note in docs.",
+    "Content-Type detection is case-insensitive lowercase — correct."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (63/63)", "frontend": "100% of tested webhook flows"},
+  "test_credentials": "Admin admin@yaminiflow.com/Admin@123; Dealer dealer@yaminiflow.com/Dealer@123; MNP mnp@yaminiflow.com/Mnp@123; Supplier supplier@yaminiflow.com/Supplier@123",
+  "seed_data_creation": "7 TEST_ webhook events inserted during pytest (TEST-VCH, TEST-JSON, TEST-DEDUP, TEST-LOG, TEST-NOTIF, TEST-ROT-PRE, TEST-ROT-POST). 7 corresponding tally_sync_logs rows (module=webhook) + 1 audit_log row for tally.webhook.rotate + 1 notification. All safe to keep for demo/regression verification.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "63 pytest tests cover: auth (4 roles), RBAC, catalog CRUD, partners, orders lifecycle, procurement/PO, real Tally sync graceful failure + test-connection, AI insight (real Claude Sonnet), analytics overview + state drilldown, notifications, audit, settings, logout, PLUS 13 new webhook tests: config admin+RBAC(3 roles→403), no-token 401, wrong-token 401, XML happy path, JSON happy path, idempotency (2 posts→1 row, revisions>=2), malformed XML 400, empty body 400, events endpoint RBAC (admin/mnp 200, dealer/supplier 403), sync-log row written, admin notification created, rotate invalidates old + audit entry. Webhook secret is auto-created on first GET /webhook-config (no seed).",
+  "rca_of_the_issue": "N/A — no bugs found in iteration 3."
+}

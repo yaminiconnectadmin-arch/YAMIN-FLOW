@@ -255,3 +255,5 @@ async def create_indexes():
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.audit_logs.create_index("created_at")
     await db.tally_sync_logs.create_index("created_at")
+    await db.tally_webhook_events.create_index([("voucher_no", 1), ("guid", 1)])
+    await db.tally_webhook_events.create_index("received_at")

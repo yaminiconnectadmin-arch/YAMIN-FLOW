@@ -4,7 +4,7 @@ import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, KPICard, EmptyState } from "@/components/common/Common";
 import { ExportButton } from "@/lib/csv";
 import { toast } from "@/components/ui/sonner";
-import { ArrowsClockwise, CheckCircle, XCircle, Clock, Plugs } from "@phosphor-icons/react";
+import { ArrowsClockwise, CheckCircle, XCircle, Clock, Plugs, Copy, Eye, EyeSlash, ArrowClockwise, Broadcast } from "@phosphor-icons/react";
 
 const MODULES = [
   { key: "products", label: "Products" },
@@ -22,11 +22,19 @@ export default function TallySyncPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState({});
   const [testing, setTesting] = useState(false);
+  const [hook, setHook] = useState(null);
+  const [hookEvents, setHookEvents] = useState([]);
+  const [showSecret, setShowSecret] = useState(false);
 
   const load = async () => {
     try {
-      const [s, l] = await Promise.all([api.get("/tally/status"), api.get("/tally/logs", { params: { limit: 30 } })]);
-      setStatus(s.data); setLogs(l.data);
+      const [s, l, h, e] = await Promise.all([
+        api.get("/tally/status"),
+        api.get("/tally/logs", { params: { limit: 30 } }),
+        api.get("/tally/webhook-config"),
+        api.get("/tally/webhook-events", { params: { limit: 30 } }),
+      ]);
+      setStatus(s.data); setLogs(l.data); setHook(h.data); setHookEvents(e.data);
     } catch { toast.error("Failed to load Tally status"); }
     finally { setLoading(false); }
   };
@@ -51,6 +59,23 @@ export default function TallySyncPage() {
       else toast.error(data.message || "Connection failed");
     } catch (e) { toast.error(e.response?.data?.detail || "Connection failed"); }
     finally { setTesting(false); }
+  };
+
+  const rotateSecret = async () => {
+    if (!window.confirm("Rotate the webhook secret? Any Tally configuration using the old secret will stop working until updated.")) return;
+    try {
+      const { data } = await api.post("/tally/webhook-config/rotate", {});
+      toast.success("Webhook secret rotated");
+      setHook((h) => ({ ...h, secret_full: data.secret_full }));
+      setShowSecret(true);
+    } catch { toast.error("Failed"); }
+  };
+
+  const copy = async (text, label) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied`);
+    } catch { toast.error("Copy failed"); }
   };
 
   return (
@@ -124,6 +149,134 @@ export default function TallySyncPage() {
               })}
             </div>
           </PageSection>
+
+          {/* Webhook Config */}
+          {hook && (
+            <PageSection
+              title="Real-time Webhook"
+              description="Point Tally's TDL to push voucher events here — no polling delay"
+              actions={
+                <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
+                  <Broadcast size={14} weight="fill" /> Listening
+                </span>
+              }
+            >
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#5C6670] mb-1.5">Webhook URL</label>
+                  <div className="flex items-center gap-2">
+                    <input readOnly value={hook.webhook_url}
+                      className="flex-1 h-10 px-3 rounded-md border border-[#E5E7EB] text-sm font-mono bg-[#F4F5F7] text-[#06182F]"
+                      data-testid="webhook-url" />
+                    <button onClick={() => copy(hook.webhook_url, "URL")}
+                      className="h-10 w-10 flex items-center justify-center rounded-md border border-[#E5E7EB] hover:border-[#F28C18] text-[#5C6670] hover:text-[#D96B0B] transition-colors"
+                      data-testid="copy-webhook-url">
+                      <Copy size={14} />
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#5C6670] mb-1.5">Secret Token</label>
+                  <div className="flex items-center gap-2">
+                    <input readOnly type={showSecret ? "text" : "password"}
+                      value={showSecret ? hook.secret_full : hook.secret_masked}
+                      className="flex-1 h-10 px-3 rounded-md border border-[#E5E7EB] text-sm font-mono bg-[#F4F5F7] text-[#06182F] tracking-widest"
+                      data-testid="webhook-secret" />
+                    <button onClick={() => setShowSecret((s) => !s)}
+                      className="h-10 w-10 flex items-center justify-center rounded-md border border-[#E5E7EB] hover:border-[#F28C18] text-[#5C6670] hover:text-[#D96B0B]"
+                      data-testid="toggle-secret">
+                      {showSecret ? <EyeSlash size={14} /> : <Eye size={14} />}
+                    </button>
+                    <button onClick={() => copy(hook.secret_full, "Secret")}
+                      className="h-10 w-10 flex items-center justify-center rounded-md border border-[#E5E7EB] hover:border-[#F28C18] text-[#5C6670] hover:text-[#D96B0B]"
+                      data-testid="copy-secret">
+                      <Copy size={14} />
+                    </button>
+                    <button onClick={rotateSecret}
+                      className="inline-flex items-center gap-1.5 h-10 px-3 rounded-md border border-[#E5E7EB] hover:border-[#F28C18] text-sm font-medium text-[#0A2342] hover:text-[#D96B0B]"
+                      data-testid="rotate-secret">
+                      <ArrowClockwise size={14} /> Rotate
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-[#5C6670] mt-1.5">
+                    Include as <span className="font-mono">?token=…</span> query or <span className="font-mono">X-Tally-Token</span> header. Rotating invalidates the previous secret immediately.
+                  </p>
+                </div>
+
+                <details className="border border-[#E5E7EB] rounded-md">
+                  <summary className="px-4 py-2.5 text-sm font-medium cursor-pointer hover:bg-[#F4F5F7]">
+                    How to configure Tally
+                  </summary>
+                  <div className="px-4 pb-4 pt-2 text-xs text-[#5C6670] space-y-2">
+                    <p>Add a TDL like the following to your Tally company (F12 → TDL & Add-Ons):</p>
+                    <pre className="bg-[#06182F] text-[#F28C18] p-3 rounded font-mono text-[11px] leading-relaxed overflow-x-auto">
+{`[System: Formula]
+    YF Endpoint : "${hook.webhook_url}?token=<SECRET>"
+
+[Function: SendToYamini]
+    Parameter   : pVoucherGUID : String
+    Variable    : Payload      : String
+    01 : SET    : Payload : "<TALLYMESSAGE>...voucher xml...</TALLYMESSAGE>"
+    02 : HTTP POST : @@YFEndpoint : Payload : "text/xml"`}
+                    </pre>
+                    <p>Tally will POST voucher XML on every Create/Modify/Delete. YAMINI FLOW deduplicates by voucher number + GUID.</p>
+                  </div>
+                </details>
+              </div>
+            </PageSection>
+          )}
+
+          {/* Webhook Events */}
+          <PageSection
+            title="Live Webhook Events"
+            description={`${hookEvents.length} vouchers received from Tally`}
+            actions={
+              <ExportButton
+                filename="yamini-flow-webhook-events-{date}.csv"
+                rows={hookEvents}
+                columns={[
+                  { key: "received_at", label: "Received" },
+                  { key: "voucher_type", label: "Type" },
+                  { key: "voucher_no", label: "Voucher No" },
+                  { key: "date", label: "Voucher Date" },
+                  { key: "party", label: "Party" },
+                  { key: "amount", label: "Amount" },
+                  { key: "action", label: "Action" },
+                  { key: "guid", label: "GUID" },
+                ]}
+              />
+            }
+          >
+            {hookEvents.length === 0 ? (
+              <EmptyState
+                title="Waiting for Tally to push"
+                description="Configure the webhook URL + token in Tally and events will appear here in real time."
+              />
+            ) : (
+              <table className="yf-table w-full">
+                <thead>
+                  <tr>
+                    <th>Received</th><th>Type</th><th>Voucher No</th><th>Voucher Date</th>
+                    <th>Party</th><th className="text-right">Amount</th><th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hookEvents.map((e) => (
+                    <tr key={e.id} data-testid={`webhook-event-${e.voucher_no || e.guid}`}>
+                      <td className="text-xs text-[#5C6670]">{fmt.datetime(e.received_at)}</td>
+                      <td className="font-medium">{e.voucher_type}</td>
+                      <td className="font-mono text-xs">{e.voucher_no || "—"}</td>
+                      <td className="text-xs">{e.date || "—"}</td>
+                      <td>{e.party || "—"}</td>
+                      <td className="text-right tabular font-semibold">{e.amount ? fmt.inr(e.amount) : "—"}</td>
+                      <td><StatusBadge status={e.action || "create"} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </PageSection>
+
 
           <PageSection
             title="Sync History"

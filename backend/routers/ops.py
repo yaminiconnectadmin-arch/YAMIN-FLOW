@@ -1,13 +1,18 @@
 """Tally Sync (real HTTP-XML) + AI Insights + Analytics + Notifications + Audit + Settings."""
 import os
 import time
+import json as _json
 from datetime import datetime, timezone, timedelta
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from db import db, serialize_doc, serialize_docs, now_iso
 from auth import get_current_user, require_admin, require_roles
 from models import TallySyncIn, AiInsightIn, NotificationIn
 from tally_client import perform_tally_sync
+from tally_webhook import (
+    parse_tally_xml, normalize_json, persist_events,
+    get_webhook_secret, rotate_webhook_secret,
+)
 
 router = APIRouter(tags=["ops"])
 
@@ -63,6 +68,94 @@ async def tally_test_connection(admin: dict = Depends(require_admin)):
     """Ping the configured Tally endpoint and report reachability without persisting a log."""
     result = await perform_tally_sync("warehouses", "pull")
     return {"ok": result["status"] == "success", **result}
+
+
+# ---- Tally Webhook (push from Tally) ----
+@router.post("/tally/webhook")
+async def tally_webhook(request: Request, token: str = ""):
+    """Receive push notifications from Tally (native XML or JSON).
+
+    Authentication: shared secret provided as `?token=…` query or `X-Tally-Token` header.
+    Body may be XML (Tally native) or JSON. Idempotent by (voucher_no, guid).
+    """
+    start = time.time()
+    supplied = token or request.headers.get("X-Tally-Token", "")
+    expected = await get_webhook_secret()
+    if not supplied or supplied != expected:
+        raise HTTPException(status_code=401, detail="Invalid webhook token")
+
+    raw = await request.body()
+    content_type = (request.headers.get("Content-Type") or "").lower()
+    try:
+        if "json" in content_type:
+            events = normalize_json(_json.loads(raw or b"{}"))
+        else:
+            events = parse_tally_xml(raw)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not events:
+        raise HTTPException(status_code=400, detail="No voucher found in payload")
+
+    source_ip = request.client.host if request.client else "unknown"
+    saved = await persist_events(events, source_ip)
+    duration_ms = int((time.time() - start) * 1000)
+
+    # Write to sync logs so it appears in the same feed
+    await db.tally_sync_logs.insert_one({
+        "module": "webhook",
+        "direction": "webhook",
+        "status": "success",
+        "records": saved,
+        "message": f"Received {saved} voucher event(s) from Tally",
+        "duration_ms": duration_ms,
+        "source_ip": source_ip,
+        "created_at": now_iso(),
+    })
+
+    # Notify admins
+    if saved:
+        await db.notifications.insert_one({
+            "role": "admin",
+            "title": f"Tally push: {saved} voucher(s)",
+            "body": ", ".join(f"{e['voucher_type']} {e['voucher_no']}".strip() for e in events[:3]),
+            "kind": "info", "read": False, "created_at": now_iso(),
+        })
+
+    return {"ok": True, "received": len(events), "saved": saved, "duration_ms": duration_ms}
+
+
+@router.get("/tally/webhook-config")
+async def tally_webhook_config(request: Request, admin: dict = Depends(require_admin)):
+    secret = await get_webhook_secret()
+    # Never expose the full secret in list views — show first 6 + last 4
+    masked = f"{secret[:6]}…{secret[-4:]}" if len(secret) > 12 else "•••"
+    base_url = os.environ.get("FRONTEND_URL", "").replace("http://", "https://").rstrip("/")
+    # Public webhook URL uses the backend origin (kubernetes ingress /api/*)
+    return {
+        "webhook_url": f"{base_url}/api/tally/webhook",
+        "secret_masked": masked,
+        "secret_full": secret,  # returned once so admin can copy — UI shows toggle
+        "header_name": "X-Tally-Token",
+        "query_param": "token",
+    }
+
+
+@router.post("/tally/webhook-config/rotate")
+async def tally_webhook_rotate(admin: dict = Depends(require_admin)):
+    new_secret = await rotate_webhook_secret()
+    await db.audit_logs.insert_one({
+        "actor_id": admin["id"], "actor_email": admin["email"],
+        "action": "tally.webhook.rotate", "target": "global",
+        "meta": {}, "created_at": now_iso(),
+    })
+    return {"secret_full": new_secret}
+
+
+@router.get("/tally/webhook-events")
+async def tally_webhook_events(limit: int = 50, admin: dict = Depends(require_roles("admin", "mnp"))):
+    docs = await db.tally_webhook_events.find({}).sort("received_at", -1).to_list(limit)
+    return serialize_docs(docs)
 
 
 # ------------------ AI INSIGHTS ------------------
