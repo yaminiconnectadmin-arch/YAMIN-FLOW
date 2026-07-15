@@ -81,7 +81,8 @@ async def tally_webhook(request: Request, token: str = ""):
     start = time.time()
     supplied = token or request.headers.get("X-Tally-Token", "")
     expected = await get_webhook_secret()
-    if not supplied or supplied != expected:
+    import secrets as _secrets
+    if not supplied or not _secrets.compare_digest(supplied, expected):
         raise HTTPException(status_code=401, detail="Invalid webhook token")
 
     raw = await request.body()
