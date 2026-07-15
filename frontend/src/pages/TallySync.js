@@ -25,6 +25,9 @@ export default function TallySyncPage() {
   const [hook, setHook] = useState(null);
   const [hookEvents, setHookEvents] = useState([]);
   const [showSecret, setShowSecret] = useState(false);
+  const [matchEvent, setMatchEvent] = useState(null);
+  const [matchCandidates, setMatchCandidates] = useState([]);
+  const [matchLoading, setMatchLoading] = useState(false);
 
   const load = async () => {
     try {
@@ -76,6 +79,35 @@ export default function TallySyncPage() {
       await navigator.clipboard.writeText(text);
       toast.success(`${label} copied`);
     } catch { toast.error("Copy failed"); }
+  };
+
+  const openMatch = async (event) => {
+    setMatchEvent(event);
+    setMatchCandidates([]);
+    setMatchLoading(true);
+    try {
+      const { data } = await api.get(`/tally/webhook-events/${event.id}/candidates`);
+      setMatchCandidates(data);
+    } catch { toast.error("Failed to load candidate orders"); }
+    finally { setMatchLoading(false); }
+  };
+
+  const linkTo = async (orderId) => {
+    try {
+      await api.post(`/tally/webhook-events/${matchEvent.id}/link`, { order_id: orderId });
+      toast.success("Voucher linked to order");
+      setMatchEvent(null);
+      load();
+    } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
+  };
+
+  const unlinkEvent = async (event) => {
+    if (!window.confirm(`Unlink voucher ${event.voucher_no} from order ${event.matched_order_no}?`)) return;
+    try {
+      await api.post(`/tally/webhook-events/${event.id}/unlink`, {});
+      toast.success("Unlinked");
+      load();
+    } catch (e) { toast.error(e.response?.data?.detail || "Failed"); }
   };
 
   return (
@@ -256,22 +288,61 @@ export default function TallySyncPage() {
               <table className="yf-table w-full">
                 <thead>
                   <tr>
-                    <th>Received</th><th>Type</th><th>Voucher No</th><th>Voucher Date</th>
-                    <th>Party</th><th className="text-right">Amount</th><th>Action</th>
+                    <th>Received</th><th>Type</th><th>Voucher No</th>
+                    <th>Party</th><th className="text-right">Amount</th>
+                    <th>Link Status</th><th>Yamini Order</th><th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {hookEvents.map((e) => (
-                    <tr key={e.id} data-testid={`webhook-event-${e.voucher_no || e.guid}`}>
-                      <td className="text-xs text-[#5C6670]">{fmt.datetime(e.received_at)}</td>
-                      <td className="font-medium">{e.voucher_type}</td>
-                      <td className="font-mono text-xs">{e.voucher_no || "—"}</td>
-                      <td className="text-xs">{e.date || "—"}</td>
-                      <td>{e.party || "—"}</td>
-                      <td className="text-right tabular font-semibold">{e.amount ? fmt.inr(e.amount) : "—"}</td>
-                      <td><StatusBadge status={e.action || "create"} /></td>
-                    </tr>
-                  ))}
+                  {hookEvents.map((e) => {
+                    const s = e.link_status;
+                    const badge =
+                      s === "linked" ? { cls: "badge-success", label: "linked" } :
+                      s === "ambiguous" ? { cls: "badge-warning", label: "ambiguous" } :
+                      s === "unmatched" ? { cls: "badge-error", label: "unmatched" } :
+                      s === "no_party" ? { cls: "badge-neutral", label: "no party" } :
+                      s === "non_sales" ? { cls: "badge-info", label: "non-sales" } :
+                      { cls: "badge-neutral", label: s || "—" };
+                    const canMatch = e.voucher_type?.toLowerCase() === "sales" &&
+                                     (s === "unmatched" || s === "ambiguous") && !e.matched_order_no;
+                    return (
+                      <tr key={e.id} data-testid={`webhook-event-${e.voucher_no || e.guid}`}>
+                        <td className="text-xs text-[#5C6670]">{fmt.datetime(e.received_at)}</td>
+                        <td className="font-medium">{e.voucher_type}</td>
+                        <td className="font-mono text-xs">{e.voucher_no || "—"}</td>
+                        <td>{e.party || "—"}</td>
+                        <td className="text-right tabular font-semibold">{e.amount ? fmt.inr(e.amount) : "—"}</td>
+                        <td>
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${badge.cls}`}
+                                data-testid={`link-status-${e.id}`}>
+                            {badge.label}
+                          </span>
+                        </td>
+                        <td>
+                          {e.matched_order_no ? (
+                            <span className="font-mono text-xs font-semibold text-[#D96B0B]" data-testid={`matched-order-${e.id}`}>
+                              {e.matched_order_no}
+                            </span>
+                          ) : <span className="text-xs text-[#BFC5CB]">—</span>}
+                        </td>
+                        <td className="text-right">
+                          {canMatch ? (
+                            <button onClick={() => openMatch(e)}
+                              className="h-8 px-3 rounded-md border border-[#F28C18] text-xs font-semibold text-[#D96B0B] hover:bg-[#F28C18]/10 transition-colors"
+                              data-testid={`match-btn-${e.id}`}>
+                              Match
+                            </button>
+                          ) : e.matched_order_no ? (
+                            <button onClick={() => unlinkEvent(e)}
+                              className="h-8 px-3 rounded-md border border-[#E5E7EB] text-xs font-medium text-[#5C6670] hover:border-red-400 hover:text-red-600 transition-colors"
+                              data-testid={`unlink-btn-${e.id}`}>
+                              Unlink
+                            </button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -318,6 +389,66 @@ export default function TallySyncPage() {
               </table>
             )}
           </PageSection>
+        </div>
+      )}
+
+      {/* Manual Match Modal */}
+      {matchEvent && (
+        <div className="fixed inset-0 z-40 bg-[#06182F]/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setMatchEvent(null)}>
+          <div className="bg-white rounded-lg border border-[#E5E7EB] shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col fade-in-up"
+               onClick={(e) => e.stopPropagation()} data-testid="match-modal">
+            <div className="px-6 py-4 border-b border-[#E5E7EB] flex items-start justify-between">
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-[#F28C18] font-semibold mb-0.5">Manual Match</div>
+                <h2 className="font-display text-xl font-semibold text-[#06182F]">
+                  {matchEvent.voucher_type} · {matchEvent.voucher_no}
+                </h2>
+                <div className="text-xs text-[#5C6670] mt-0.5">
+                  Party: <span className="font-medium text-[#06182F]">{matchEvent.party || "—"}</span>
+                  {" · "}Amount: <span className="font-mono text-[#06182F]">{fmt.inr(matchEvent.amount)}</span>
+                </div>
+              </div>
+              <button onClick={() => setMatchEvent(null)}
+                className="p-1.5 rounded hover:bg-[#F4F5F7] text-[#5C6670]" data-testid="close-match-modal">
+                <XCircle size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6">
+              {matchLoading ? (
+                <div className="text-sm text-[#5C6670]">Searching candidate orders…</div>
+              ) : matchCandidates.length === 0 ? (
+                <EmptyState
+                  title="No candidate orders"
+                  description="No open orders match this party + amount. Widen your criteria or check the party name spelling in Tally."
+                />
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-xs text-[#5C6670] mb-2">Pick the Yamini order this voucher belongs to:</div>
+                  {matchCandidates.map((o) => (
+                    <div key={o.id} className="border border-[#E5E7EB] rounded-md p-3 flex items-center justify-between hover:border-[#F28C18] transition-colors" data-testid={`candidate-${o.order_no}`}>
+                      <div>
+                        <div className="font-mono text-sm font-semibold text-[#06182F]">{o.order_no}</div>
+                        <div className="text-xs text-[#5C6670] mt-0.5">
+                          {o.dealer_name} · {o.dealer_state} · {o.items?.length || 0} items · {fmt.date(o.created_at)}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <div className="tabular font-semibold text-[#0A2342]">{fmt.inr(o.total)}</div>
+                          <div className="text-[10px] uppercase tracking-widest text-[#5C6670]">{o.status}</div>
+                        </div>
+                        <button onClick={() => linkTo(o.id)}
+                          className="h-9 px-4 rounded-md gradient-brand-accent text-white text-sm font-semibold"
+                          data-testid={`link-to-${o.order_no}`}>
+                          Link
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </AppShell>

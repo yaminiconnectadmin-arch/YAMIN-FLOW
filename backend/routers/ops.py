@@ -13,6 +13,9 @@ from tally_webhook import (
     parse_tally_xml, normalize_json, persist_events,
     get_webhook_secret, rotate_webhook_secret,
 )
+from voucher_linker import (
+    auto_link_voucher, find_candidate_orders, manual_link, unlink_event,
+)
 
 router = APIRouter(tags=["ops"])
 
@@ -100,6 +103,24 @@ async def tally_webhook(request: Request, token: str = ""):
 
     source_ip = request.client.host if request.client else "unknown"
     saved = await persist_events(events, source_ip)
+
+    # Auto-link Sales vouchers to Yamini orders
+    linked = 0
+    ambiguous = 0
+    unmatched = 0
+    for ev in events:
+        result = await auto_link_voucher(ev)
+        # persist the link_status back onto the stored event
+        await db.tally_webhook_events.update_one(
+            {"voucher_no": ev.get("voucher_no"), "guid": ev.get("guid", "")},
+            {"$set": {k: v for k, v in result.items()
+                       if k in ("link_status", "matched_order_id", "matched_order_no", "candidate_order_ids")}},
+        )
+        s = result.get("link_status")
+        if s == "linked": linked += 1
+        elif s == "ambiguous": ambiguous += 1
+        elif s == "unmatched": unmatched += 1
+
     duration_ms = int((time.time() - start) * 1000)
 
     # Write to sync logs so it appears in the same feed
@@ -108,7 +129,7 @@ async def tally_webhook(request: Request, token: str = ""):
         "direction": "webhook",
         "status": "success",
         "records": saved,
-        "message": f"Received {saved} voucher event(s) from Tally",
+        "message": f"Received {saved} voucher(s) — linked {linked}, ambiguous {ambiguous}, unmatched {unmatched}",
         "duration_ms": duration_ms,
         "source_ip": source_ip,
         "created_at": now_iso(),
@@ -118,12 +139,15 @@ async def tally_webhook(request: Request, token: str = ""):
     if saved:
         await db.notifications.insert_one({
             "role": "admin",
-            "title": f"Tally push: {saved} voucher(s)",
+            "title": f"Tally push: {saved} voucher(s) — {linked} auto-linked",
             "body": ", ".join(f"{e['voucher_type']} {e['voucher_no']}".strip() for e in events[:3]),
-            "kind": "info", "read": False, "created_at": now_iso(),
+            "kind": "success" if linked and not (ambiguous or unmatched) else "info",
+            "read": False, "created_at": now_iso(),
         })
 
-    return {"ok": True, "received": len(events), "saved": saved, "duration_ms": duration_ms}
+    return {"ok": True, "received": len(events), "saved": saved,
+             "linked": linked, "ambiguous": ambiguous, "unmatched": unmatched,
+             "duration_ms": duration_ms}
 
 
 @router.get("/tally/webhook-config")
@@ -157,6 +181,45 @@ async def tally_webhook_rotate(admin: dict = Depends(require_admin)):
 async def tally_webhook_events(limit: int = 50, admin: dict = Depends(require_roles("admin", "mnp"))):
     docs = await db.tally_webhook_events.find({}).sort("received_at", -1).to_list(limit)
     return serialize_docs(docs)
+
+
+@router.get("/tally/webhook-events/{event_id}/candidates")
+async def event_candidates(event_id: str, admin: dict = Depends(require_admin)):
+    """Return possible orders that could match this event (used for manual match UI)."""
+    event = await db.tally_webhook_events.find_one({"_id": ObjectId(event_id)})
+    if not event:
+        raise HTTPException(404, "Event not found")
+    cands = await find_candidate_orders(event.get("party", ""), event.get("amount", 0), limit=10)
+    return serialize_docs(cands)
+
+
+@router.post("/tally/webhook-events/{event_id}/link")
+async def event_link(event_id: str, payload: dict, admin: dict = Depends(require_admin)):
+    order_id = payload.get("order_id")
+    if not order_id:
+        raise HTTPException(400, "order_id required")
+    result = await manual_link(event_id, order_id)
+    if not result.get("ok"):
+        raise HTTPException(400, result.get("error", "Failed"))
+    await db.audit_logs.insert_one({
+        "actor_id": admin["id"], "actor_email": admin["email"],
+        "action": "tally.webhook.manual_link", "target": event_id,
+        "meta": {"order_id": order_id}, "created_at": now_iso(),
+    })
+    return result
+
+
+@router.post("/tally/webhook-events/{event_id}/unlink")
+async def event_unlink(event_id: str, admin: dict = Depends(require_admin)):
+    result = await unlink_event(event_id)
+    if not result.get("ok"):
+        raise HTTPException(400, result.get("error", "Failed"))
+    await db.audit_logs.insert_one({
+        "actor_id": admin["id"], "actor_email": admin["email"],
+        "action": "tally.webhook.unlink", "target": event_id,
+        "meta": {}, "created_at": now_iso(),
+    })
+    return result
 
 
 # ------------------ AI INSIGHTS ------------------

@@ -714,6 +714,288 @@ class TestTallyWebhook:
         assert rotate_entries, "audit log entry 'tally.webhook.rotate' not found"
 
 
+# ---------------- Tally Voucher Auto-Linking (Iteration 4) ----------------
+class TestVoucherAutoLink:
+    """Iteration 4 — Sales voucher ↔ Yamini order auto-linker (fuzzy party + 1% amount)."""
+
+    @pytest.fixture(scope="class")
+    def secret(self, admin):
+        s, _ = admin
+        return s.get(f"{API}/tally/webhook-config").json()["secret_full"]
+
+    def _post_webhook(self, secret, payload):
+        return requests.post(
+            f"{API}/tally/webhook",
+            headers={"X-Tally-Token": secret, "Content-Type": "application/json"},
+            json=payload, timeout=20,
+        )
+
+    def _find_event(self, session, voucher_no):
+        ev = session.get(f"{API}/tally/webhook-events", params={"limit": 500}).json()
+        m = [e for e in ev if e.get("voucher_no") == voucher_no]
+        return m[0] if m else None
+
+    # 1) Non-sales voucher → link_status='non_sales'
+    def test_non_sales_voucher_skipped(self, admin, secret):
+        s, _ = admin
+        vch = f"TEST-NS-{int(time.time())}"
+        r = self._post_webhook(secret, {
+            "voucher_type": "Purchase", "voucher_no": vch, "date": "2026-01-15",
+            "party": "Anything", "amount": 100.0, "guid": vch, "action": "create",
+        })
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["linked"] == 0 and d["ambiguous"] == 0 and d["unmatched"] == 0
+        ev = self._find_event(s, vch)
+        assert ev and ev.get("link_status") == "non_sales"
+
+    # 2) Empty party → link_status='no_party'
+    def test_no_party_voucher(self, admin, secret):
+        s, _ = admin
+        vch = f"TEST-NP-{int(time.time())}"
+        r = self._post_webhook(secret, {
+            "voucher_type": "Sales", "voucher_no": vch, "date": "2026-01-15",
+            "party": "", "amount": 100.0, "guid": vch, "action": "create",
+        })
+        assert r.status_code == 200, r.text
+        ev = self._find_event(s, vch)
+        assert ev and ev.get("link_status") == "no_party"
+
+    # 3) Unknown party → link_status='unmatched'
+    def test_unknown_party_unmatched(self, admin, secret):
+        s, _ = admin
+        vch = f"TEST-UM-{int(time.time())}"
+        r = self._post_webhook(secret, {
+            "voucher_type": "Sales", "voucher_no": vch, "date": "2026-01-15",
+            "party": "Zzz Unknown Nowhere Ltd", "amount": 999999.99,
+            "guid": vch, "action": "create",
+        })
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["unmatched"] >= 1
+        ev = self._find_event(s, vch)
+        assert ev and ev.get("link_status") == "unmatched"
+
+    # 4) Ambiguous — multiple candidate Suresh Traders orders @₹2596 exist
+    def test_ambiguous_multiple_candidates(self, admin, secret):
+        s, _ = admin
+        vch = f"TEST-AMB-{int(time.time())}"
+        r = self._post_webhook(secret, {
+            "voucher_type": "Sales", "voucher_no": vch, "date": "2026-01-15",
+            "party": "Suresh Traders", "amount": 2596.0,
+            "guid": vch, "action": "create",
+        })
+        assert r.status_code == 200, r.text
+        d = r.json()
+        # Depending on seed data state may be ambiguous OR linked (if only 1 open)
+        ev = self._find_event(s, vch)
+        assert ev, "event not stored"
+        assert ev.get("link_status") in ("ambiguous", "linked"), f"got {ev.get('link_status')}"
+        if ev["link_status"] == "ambiguous":
+            assert isinstance(ev.get("candidate_order_ids"), list) and len(ev["candidate_order_ids"]) >= 2
+            assert d["ambiguous"] >= 1
+
+    # 5) Auto-link happy path: single-match via unique amount
+    def test_auto_link_single_match(self, admin, dealer, secret):
+        s_admin, _ = admin
+        s_dealer, _ = dealer
+        # Create a fresh product with unique price to guarantee a unique total
+        unique_price = 3141.59 + (int(time.time()) % 100)
+        sku = f"TEST_AL_{int(time.time())}"
+        pr = s_admin.post(f"{API}/products", json={
+            "sku": sku, "name": "TEST AutoLink Product",
+            "category": "Electronics", "price": unique_price, "cost": 100, "moq": 1,
+        })
+        assert pr.status_code == 200, pr.text
+        pid = pr.json()["id"]
+        try:
+            # Dealer places order → this dealer is Suresh Traders Pvt Ltd
+            r_o = s_dealer.post(f"{API}/orders", json={"items": [{"product_id": pid, "quantity": 1}]})
+            assert r_o.status_code == 200, r_o.text
+            order = r_o.json()
+            order_no = order["order_no"]
+            order_id = order["id"]
+            order_total = order["total"]
+            initial_status = order["status"]
+            dealer_company = order["dealer_name"]  # 'Suresh Traders Pvt Ltd'
+
+            # Post Sales voucher with fuzzy party ("Suresh Traders") + same amount
+            vch = f"TEST-AL-{int(time.time())}"
+            r = self._post_webhook(secret, {
+                "voucher_type": "Sales", "voucher_no": vch, "date": "2026-01-15",
+                "party": "Suresh Traders", "amount": order_total,
+                "guid": vch, "action": "create",
+            })
+            assert r.status_code == 200, r.text
+            d = r.json()
+            assert d["linked"] == 1, f"expected linked=1 got {d}"
+
+            # Event has link_status=linked and matched_order_no
+            ev = self._find_event(s_admin, vch)
+            assert ev["link_status"] == "linked"
+            assert ev.get("matched_order_no") == order_no
+
+            # Order was mutated
+            r_ord = s_admin.get(f"{API}/orders/{order_id}")
+            assert r_ord.status_code == 200
+            o2 = r_ord.json()
+            assert o2["tally_voucher_no"] == vch
+            assert o2.get("tally_voucher", {}).get("linked_by") == "auto"
+            if initial_status in ("pending", "approved"):
+                assert o2["status"] == "shipped", f"expected shipped got {o2['status']}"
+
+            # Audit log has order.voucher_linked
+            audits = s_admin.get(f"{API}/audit-logs", params={"limit": 500}).json()
+            linked_audits = [a for a in audits
+                             if a.get("action") == "order.voucher_linked"
+                             and a.get("target") == order_no]
+            assert linked_audits, "audit log 'order.voucher_linked' missing"
+
+            # 6) IDEMPOTENCY: Posting SAME voucher again — order now filtered out → unmatched
+            vch2 = vch  # same voucher — will hit idempotency in persist_events
+            r2 = self._post_webhook(secret, {
+                "voucher_type": "Sales", "voucher_no": vch2, "date": "2026-01-15",
+                "party": "Suresh Traders", "amount": order_total,
+                "guid": vch2, "action": "create",
+            })
+            assert r2.status_code == 200
+            # The re-post should not create another linked pairing
+            r_ord2 = s_admin.get(f"{API}/orders/{order_id}").json()
+            assert r_ord2["tally_voucher_no"] == vch, "voucher_no must not change on re-post"
+        finally:
+            # cleanup product (order cleanup not needed, leaves data for retest inspection)
+            s_admin.delete(f"{API}/products/{pid}")
+
+    # 7) Candidates endpoint — admin gets list, dealer 403
+    def test_candidates_endpoint_rbac(self, admin, dealer, secret):
+        s_admin, _ = admin
+        # Trigger an ambiguous event to get an event_id with candidates
+        vch = f"TEST-CAND-{int(time.time())}"
+        self._post_webhook(secret, {
+            "voucher_type": "Sales", "voucher_no": vch, "date": "2026-01-15",
+            "party": "Suresh Traders", "amount": 2596.0,
+            "guid": vch, "action": "create",
+        })
+        ev = self._find_event(s_admin, vch)
+        assert ev, "event not found"
+        eid = ev["id"]
+
+        r = s_admin.get(f"{API}/tally/webhook-events/{eid}/candidates")
+        assert r.status_code == 200, r.text
+        assert isinstance(r.json(), list)
+
+        s_dealer, _ = dealer
+        r2 = s_dealer.get(f"{API}/tally/webhook-events/{eid}/candidates")
+        assert r2.status_code == 403
+
+    # 8) Manual link + missing order_id 400 + dealer 403 + unlink
+    def test_manual_link_and_unlink(self, admin, dealer, secret):
+        s_admin, _ = admin
+        s_dealer, _ = dealer
+
+        # Set up: ambiguous event
+        vch = f"TEST-ML-{int(time.time())}"
+        r0 = self._post_webhook(secret, {
+            "voucher_type": "Sales", "voucher_no": vch, "date": "2026-01-15",
+            "party": "Suresh Traders", "amount": 2596.0,
+            "guid": vch, "action": "create",
+        })
+        assert r0.status_code == 200
+        ev = self._find_event(s_admin, vch)
+        assert ev and ev["link_status"] in ("ambiguous", "linked", "unmatched")
+        eid = ev["id"]
+
+        # Fetch candidates and pick one open order
+        cands = s_admin.get(f"{API}/tally/webhook-events/{eid}/candidates").json()
+        if not cands:
+            # No open Suresh orders left; skip
+            pytest.skip("no candidate orders available for manual link test")
+        order_id = cands[0]["id"]
+        order_no = cands[0]["order_no"]
+        initial_status = cands[0]["status"]
+
+        # Missing order_id → 400
+        r_bad = s_admin.post(f"{API}/tally/webhook-events/{eid}/link", json={})
+        assert r_bad.status_code == 400
+
+        # Dealer forbidden
+        r_forbid = s_dealer.post(f"{API}/tally/webhook-events/{eid}/link", json={"order_id": order_id})
+        assert r_forbid.status_code == 403
+
+        # Admin valid link
+        r_link = s_admin.post(f"{API}/tally/webhook-events/{eid}/link", json={"order_id": order_id})
+        assert r_link.status_code == 200, r_link.text
+        assert r_link.json().get("ok") is True
+
+        # Event now linked
+        ev2 = self._find_event(s_admin, vch)
+        assert ev2["link_status"] == "linked"
+        assert ev2["matched_order_no"] == order_no
+
+        # Order bumped + linked_by='manual'
+        r_ord = s_admin.get(f"{API}/orders/{order_id}").json()
+        assert r_ord["tally_voucher_no"] == vch
+        assert r_ord.get("tally_voucher", {}).get("linked_by") == "manual"
+        if initial_status in ("pending", "approved"):
+            assert r_ord["status"] == "shipped"
+
+        # Audit trail
+        audits = s_admin.get(f"{API}/audit-logs", params={"limit": 500}).json()
+        assert any(a.get("action") == "tally.webhook.manual_link" and a.get("target") == eid
+                   for a in audits), "manual_link audit missing"
+
+        # 9) Unlink — dealer 403
+        r_unlink_dealer = s_dealer.post(f"{API}/tally/webhook-events/{eid}/unlink", json={})
+        assert r_unlink_dealer.status_code == 403
+
+        # Unlink — admin
+        r_unlink = s_admin.post(f"{API}/tally/webhook-events/{eid}/unlink", json={})
+        assert r_unlink.status_code == 200, r_unlink.text
+
+        # Event now unmatched, order has no voucher
+        ev3 = self._find_event(s_admin, vch)
+        assert ev3["link_status"] == "unmatched"
+        assert not ev3.get("matched_order_no")
+        r_ord2 = s_admin.get(f"{API}/orders/{order_id}").json()
+        assert not r_ord2.get("tally_voucher_no")
+
+        # Unlink audit
+        audits2 = s_admin.get(f"{API}/audit-logs", params={"limit": 500}).json()
+        assert any(a.get("action") == "tally.webhook.unlink" and a.get("target") == eid
+                   for a in audits2), "unlink audit missing"
+
+    # 10) Fuzzy party matcher — unit test via direct import
+    def test_fuzzy_party_matcher(self):
+        import sys, os
+        # Load backend/.env so voucher_linker → db module can import cleanly
+        env_path = Path("/app/backend/.env")
+        for line in env_path.read_text().splitlines():
+            if "=" in line and not line.strip().startswith("#"):
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+        sys.path.insert(0, "/app/backend")
+        from voucher_linker import _party_matches, _amount_matches
+
+        # Should match
+        assert _party_matches("Suresh Traders", "Suresh Traders Pvt Ltd")
+        assert _party_matches("Krishna Enterprises", "krishna enterprises")
+        assert _party_matches("Metro Supplies", "Metro Supplies Ltd")
+        assert _party_matches("Suresh Traders Pvt Ltd", "Suresh Traders")  # bidirectional
+
+        # Should NOT match
+        assert not _party_matches("Suresh Traders", "Krishna Enterprises")
+        assert not _party_matches("Suresh", "Traders")
+        assert not _party_matches("", "Suresh")
+        assert not _party_matches("Suresh", "")
+
+        # Amount tolerance 1%
+        assert _amount_matches(100.0, 100.5)   # 0.5%
+        assert _amount_matches(1000.0, 1009.0)  # 0.9%
+        assert not _amount_matches(1000.0, 1020.0)  # 2%
+        assert not _amount_matches(0, 100)
+        assert not _amount_matches(100, 0)
+
+
 # ---------------- Logout ----------------
 class TestLogout:
     def test_logout(self):
