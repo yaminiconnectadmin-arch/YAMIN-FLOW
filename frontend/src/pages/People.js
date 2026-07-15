@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
+import { ExportButton } from "@/lib/csv";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Plus, PencilSimple, Trash } from "@phosphor-icons/react";
@@ -65,9 +66,18 @@ export function PeoplePage({ role, title, fields, endpoint }) {
       <PageSection
         title={`${role} directory`}
         actions={
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…"
-            className="h-9 px-3 rounded-md border border-[#E5E7EB] text-sm w-[280px] focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
-            data-testid={`${role}-search`} />
+          <div className="flex items-center gap-2">
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…"
+              className="h-9 px-3 rounded-md border border-[#E5E7EB] text-sm w-[280px] focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
+              data-testid={`${role}-search`} />
+            <ExportButton
+              filename={`yamini-flow-${role}-{date}.csv`}
+              rows={filtered}
+              columns={fields.filter(f => !f.hideInTable && f.key !== "password").map(f => ({
+                key: f.key, label: f.label, format: f.format,
+              }))}
+            />
+          </div>
         }
       >
         {loading ? <div className="p-8 text-center text-sm text-[#5C6670]">Loading…</div>

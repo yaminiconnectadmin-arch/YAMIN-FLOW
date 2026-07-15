@@ -1,6 +1,5 @@
-"""Tally Sync (mock) + AI Insights + Analytics + Notifications + Audit + Settings."""
+"""Tally Sync (real HTTP-XML) + AI Insights + Analytics + Notifications + Audit + Settings."""
 import os
-import random
 import time
 from datetime import datetime, timezone, timedelta
 from bson import ObjectId
@@ -8,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from db import db, serialize_doc, serialize_docs, now_iso
 from auth import get_current_user, require_admin, require_roles
 from models import TallySyncIn, AiInsightIn, NotificationIn
+from tally_client import perform_tally_sync
 
 router = APIRouter(tags=["ops"])
 
@@ -39,25 +39,14 @@ async def tally_logs(limit: int = 100, user: dict = Depends(require_roles("admin
 
 @router.post("/tally/sync")
 async def tally_sync(payload: TallySyncIn, admin: dict = Depends(require_admin)):
-    """Mock a Tally sync. In production this posts XML to Tally ODBC/HTTP endpoint."""
-    start = time.time()
-    # simulate records processed
-    ranges = {"products": (5, 60), "stock": (10, 200), "sales": (10, 150),
-              "purchases": (5, 80), "vouchers": (5, 300), "warehouses": (1, 5),
-              "ledgers": (5, 40)}
-    lo, hi = ranges.get(payload.module, (5, 50))
-    records = random.randint(lo, hi)
-    success = random.random() > 0.1
-    duration_ms = int((time.time() - start) * 1000) + random.randint(300, 2500)
-    log = {
-        "module": payload.module,
-        "direction": payload.direction,
-        "status": "success" if success else "failed",
-        "records": records if success else 0,
-        "message": "Sync completed successfully" if success else "Timeout communicating with Tally ODBC on port 9000",
-        "duration_ms": duration_ms,
-        "created_at": now_iso(),
-    }
+    """Perform a real HTTP-XML sync against the configured Tally endpoint.
+
+    Configure the endpoint from Settings → Tally Integration. Uses the standard
+    Tally EXPORT DATA envelope structure. If the endpoint is unreachable we
+    persist a `failed` log with the reason (does not raise 5xx).
+    """
+    result = await perform_tally_sync(payload.module, payload.direction)
+    log = {**result, "created_at": now_iso()}
     res = await db.tally_sync_logs.insert_one(log)
     log["_id"] = res.inserted_id
     await db.audit_logs.insert_one({
@@ -67,6 +56,13 @@ async def tally_sync(payload: TallySyncIn, admin: dict = Depends(require_admin))
         "created_at": now_iso(),
     })
     return serialize_doc(log)
+
+
+@router.post("/tally/test-connection")
+async def tally_test_connection(admin: dict = Depends(require_admin)):
+    """Ping the configured Tally endpoint and report reachability without persisting a log."""
+    result = await perform_tally_sync("warehouses", "pull")
+    return {"ok": result["status"] == "success", **result}
 
 
 # ------------------ AI INSIGHTS ------------------
@@ -326,6 +322,45 @@ async def mnp_dealer_analytics(user: dict = Depends(require_roles("admin", "mnp"
         })
     rows.sort(key=lambda x: -x["revenue"])
     return rows
+
+
+@router.get("/analytics/state/{state}")
+async def state_drilldown(state: str, user: dict = Depends(require_roles("admin", "mnp"))):
+    """Dealer + product breakdown for a specific state."""
+    q = {"dealer_state": state, "status": {"$in": ["delivered", "shipped", "approved"]}}
+    if user["role"] == "mnp":
+        dealers = await db.users.find({"role": "dealer", "mnp_id": user["id"]}).to_list(500)
+        q["dealer_id"] = {"$in": [str(d["_id"]) for d in dealers]}
+
+    dealer_rows = await db.orders.aggregate([
+        {"$match": q},
+        {"$group": {"_id": "$dealer_id", "name": {"$first": "$dealer_name"},
+                     "revenue": {"$sum": "$total"}, "orders": {"$sum": 1}}},
+        {"$sort": {"revenue": -1}}, {"$limit": 20},
+    ]).to_list(20)
+
+    product_rows = await db.orders.aggregate([
+        {"$match": q}, {"$unwind": "$items"},
+        {"$group": {"_id": "$items.product_id", "name": {"$first": "$items.product_name"},
+                     "sku": {"$first": "$items.sku"}, "units": {"$sum": "$items.quantity"},
+                     "revenue": {"$sum": "$items.subtotal"}}},
+        {"$sort": {"revenue": -1}}, {"$limit": 10},
+    ]).to_list(10)
+
+    total = await db.orders.aggregate([
+        {"$match": q},
+        {"$group": {"_id": None, "revenue": {"$sum": "$total"}, "orders": {"$sum": 1}}}
+    ]).to_list(1)
+
+    return {
+        "state": state,
+        "revenue": round(total[0]["revenue"], 2) if total else 0,
+        "orders": total[0]["orders"] if total else 0,
+        "dealers": [{"id": str(d["_id"]), "name": d["name"],
+                      "revenue": round(d["revenue"], 2), "orders": d["orders"]} for d in dealer_rows],
+        "top_products": [{"id": str(p["_id"]), "name": p["name"], "sku": p.get("sku", ""),
+                           "units": p["units"], "revenue": round(p["revenue"], 2)} for p in product_rows],
+    }
 
 
 # ------------------ NOTIFICATIONS ------------------

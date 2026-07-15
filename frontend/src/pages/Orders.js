@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
+import { ExportButton } from "@/lib/csv";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/sonner";
 import {
@@ -42,12 +43,29 @@ export default function OrdersPage() {
       <PageSection
         title={`${orders.length} orders`}
         actions={
-          <select value={status} onChange={(e) => setStatus(e.target.value)}
-            className="h-9 px-3 rounded-md border border-[#E5E7EB] text-sm bg-white focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
-            data-testid="orders-status-filter">
-            <option value="">All Statuses</option>
-            {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
+          <div className="flex items-center gap-2">
+            <select value={status} onChange={(e) => setStatus(e.target.value)}
+              className="h-9 px-3 rounded-md border border-[#E5E7EB] text-sm bg-white focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
+              data-testid="orders-status-filter">
+              <option value="">All Statuses</option>
+              {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <ExportButton
+              filename="yamini-flow-orders-{date}.csv"
+              rows={orders}
+              columns={[
+                { key: "order_no", label: "Order No" },
+                { key: "dealer_name", label: "Dealer" },
+                { key: "dealer_state", label: "State" },
+                { key: "items", label: "Items", format: (v) => v?.length ?? 0 },
+                { key: "subtotal", label: "Subtotal" },
+                { key: "gst", label: "GST" },
+                { key: "total", label: "Total" },
+                { key: "status", label: "Status" },
+                { key: "created_at", label: "Created" },
+              ]}
+            />
+          </div>
         }
       >
         {loading ? <div className="p-8 text-center text-sm text-[#5C6670]">Loading…</div>

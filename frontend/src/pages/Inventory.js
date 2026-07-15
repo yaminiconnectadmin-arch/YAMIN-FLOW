@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
+import { ExportButton } from "@/lib/csv";
 import { toast } from "@/components/ui/sonner";
 
 export default function InventoryPage() {
@@ -76,6 +77,22 @@ export default function InventoryPage() {
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…"
               className="h-9 px-3 rounded-md border border-[#E5E7EB] text-sm w-[220px] focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
               data-testid="inventory-search" />
+            <ExportButton
+              filename="yamini-flow-inventory-{date}.csv"
+              rows={filtered}
+              columns={[
+                { key: "warehouse_code", label: "Warehouse" },
+                { key: "product_sku", label: "SKU" },
+                { key: "product_name", label: "Product" },
+                { key: "category", label: "Category" },
+                { key: "quantity", label: "On Hand" },
+                { key: "reserved", label: "Reserved" },
+                { key: "available", label: "Available" },
+                { key: "safety_stock", label: "Safety Stock" },
+                { key: "stock_status", label: "Status" },
+                { key: "price", label: "Unit Price" },
+              ]}
+            />
           </div>
         }
       >

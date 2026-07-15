@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, EmptyState } from "@/components/common/Common";
+import { ExportButton } from "@/lib/csv";
 import { toast } from "@/components/ui/sonner";
 
 export default function AuditLogsPage() {
@@ -20,7 +21,22 @@ export default function AuditLogsPage() {
 
   return (
     <AppShell title="Audit Logs" subtitle="Immutable activity trail across every module">
-      <PageSection title={`${logs.length} recent events`}>
+      <PageSection
+        title={`${logs.length} recent events`}
+        actions={
+          <ExportButton
+            filename="yamini-flow-audit-logs-{date}.csv"
+            rows={logs}
+            columns={[
+              { key: "created_at", label: "Timestamp" },
+              { key: "actor_email", label: "Actor" },
+              { key: "action", label: "Action" },
+              { key: "target", label: "Target" },
+              { key: "meta", label: "Metadata", format: (v) => JSON.stringify(v) },
+            ]}
+          />
+        }
+      >
         {loading ? <div className="p-8 text-center text-sm text-[#5C6670]">Loading…</div>
           : logs.length === 0 ? <EmptyState title="No events" />
           : (

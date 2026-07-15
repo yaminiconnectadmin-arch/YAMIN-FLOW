@@ -154,6 +154,23 @@ class TestAnalytics:
         assert r.status_code == 200
         assert isinstance(r.json(), list)
 
+    # New: Territory heatmap drill-down endpoint
+    def test_state_drilldown_admin(self, admin):
+        s, _ = admin
+        r = s.get(f"{API}/analytics/state/Maharashtra")
+        assert r.status_code == 200
+        d = r.json()
+        for k in ("state", "revenue", "orders", "dealers", "top_products"):
+            assert k in d, f"missing key {k}"
+        assert d["state"] == "Maharashtra"
+        assert isinstance(d["dealers"], list)
+        assert isinstance(d["top_products"], list)
+
+    def test_state_drilldown_dealer_forbidden(self, dealer):
+        s, _ = dealer
+        r = s.get(f"{API}/analytics/state/Maharashtra")
+        assert r.status_code == 403
+
 
 # ---------------- Products / Inventory / Warehouses ----------------
 class TestCatalog:
@@ -370,6 +387,47 @@ class TestTally:
     def test_dealer_cannot_sync(self, dealer):
         s, _ = dealer
         r = s.post(f"{API}/tally/sync", json={"module": "products"})
+        assert r.status_code == 403
+
+    # New: real HTTP-XML sync should attempt real call and fail gracefully in dev
+    def test_real_tally_sync_fails_gracefully(self, admin):
+        s, _ = admin
+        pre_logs = s.get(f"{API}/tally/logs").json()
+        pre_count = len(pre_logs)
+        r = s.post(f"{API}/tally/sync",
+                   json={"module": "products", "direction": "pull"},
+                   timeout=30)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        # No fabricated records; must be failed with a helpful message
+        assert d["status"] == "failed", f"expected failed but got {d}"
+        assert d["records"] == 0
+        assert d["module"] == "products"
+        msg = (d.get("message") or "").lower()
+        assert ("cannot reach tally" in msg
+                or "timeout" in msg
+                or "no tally endpoint" in msg
+                or "tally sync error" in msg), f"unexpected message: {d.get('message')}"
+        # persisted a log
+        post_logs = s.get(f"{API}/tally/logs").json()
+        assert len(post_logs) == pre_count + 1
+
+    def test_tally_test_connection(self, admin):
+        s, _ = admin
+        pre_logs = s.get(f"{API}/tally/logs").json()
+        pre_count = len(pre_logs)
+        r = s.post(f"{API}/tally/test-connection", timeout=30)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["ok"] is False
+        assert "status" in d
+        # test-connection MUST NOT persist a log
+        post_logs = s.get(f"{API}/tally/logs").json()
+        assert len(post_logs) == pre_count, "test-connection should not persist a log"
+
+    def test_dealer_cannot_test_connection(self, dealer):
+        s, _ = dealer
+        r = s.post(f"{API}/tally/test-connection")
         assert r.status_code == 403
 
 

@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, KPICard, EmptyState } from "@/components/common/Common";
+import { ExportButton } from "@/lib/csv";
 import { toast } from "@/components/ui/sonner";
-import { ArrowsClockwise, CheckCircle, XCircle, Clock } from "@phosphor-icons/react";
+import { ArrowsClockwise, CheckCircle, XCircle, Clock, Plugs } from "@phosphor-icons/react";
 
 const MODULES = [
   { key: "products", label: "Products" },
@@ -20,6 +21,7 @@ export default function TallySyncPage() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState({});
+  const [testing, setTesting] = useState(false);
 
   const load = async () => {
     try {
@@ -33,7 +35,7 @@ export default function TallySyncPage() {
   const runSync = async (module) => {
     setSyncing((s) => ({ ...s, [module]: true }));
     try {
-      const { data } = await api.post("/tally/sync", { module, direction: "push" });
+      const { data } = await api.post("/tally/sync", { module, direction: "pull" });
       if (data.status === "success") toast.success(`${module}: ${data.records} records synced`);
       else toast.error(`${module}: ${data.message}`);
       load();
@@ -41,8 +43,27 @@ export default function TallySyncPage() {
     finally { setSyncing((s) => ({ ...s, [module]: false })); }
   };
 
+  const testConnection = async () => {
+    setTesting(true);
+    try {
+      const { data } = await api.post("/tally/test-connection", {});
+      if (data.ok) toast.success(`Connected — Tally responded in ${data.duration_ms}ms`);
+      else toast.error(data.message || "Connection failed");
+    } catch (e) { toast.error(e.response?.data?.detail || "Connection failed"); }
+    finally { setTesting(false); }
+  };
+
   return (
-    <AppShell title="Tally Sync" subtitle="Bi-directional integration with Tally ERP">
+    <AppShell title="Tally Sync" subtitle="Bi-directional integration with Tally ERP"
+      actions={
+        <button onClick={testConnection} disabled={testing}
+          className="inline-flex items-center gap-2 h-9 px-3 rounded-md border border-[#E5E7EB] text-sm font-medium text-[#0A2342] hover:border-[#F28C18] hover:text-[#D96B0B] transition-colors disabled:opacity-60"
+          data-testid="test-tally-connection">
+          <Plugs size={14} className={testing ? "animate-spin" : ""} />
+          {testing ? "Testing…" : "Test Connection"}
+        </button>
+      }
+    >
       {loading || !status ? <div className="p-8 text-center text-sm text-[#5C6670]">Loading…</div> : (
         <div className="space-y-6">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 stagger">
@@ -61,6 +82,19 @@ export default function TallySyncPage() {
                 {status.last_sync ? fmt.datetime(status.last_sync.created_at) : "—"}
               </div>
               <div className="text-xs text-[#5C6670] mt-1">{status.last_sync?.module || ""}</div>
+            </div>
+          </div>
+
+          <div className="bg-[#0A2342]/[0.03] border border-[#0A2342]/10 rounded-md p-4 flex items-start gap-3">
+            <Plugs size={20} className="text-[#0A2342] flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-[#06182F]">
+              <div className="font-display font-semibold">Live Tally HTTP-XML Client</div>
+              <div className="text-xs text-[#5C6670] mt-1">
+                Sync now attempts a real HTTP-XML call to the endpoint set in Settings → Tally Integration
+                (default <span className="font-mono">http://localhost:9000</span>). Configure your Tally server
+                with <span className="font-mono">TDL Server → Yes</span> and the correct port. Failed connections
+                are logged with the reason below — no data is fabricated.
+              </div>
             </div>
           </div>
 
@@ -91,7 +125,25 @@ export default function TallySyncPage() {
             </div>
           </PageSection>
 
-          <PageSection title="Sync History" description="Latest sync events, most recent first">
+          <PageSection
+            title="Sync History"
+            description="Latest sync events, most recent first"
+            actions={
+              <ExportButton
+                filename="yamini-flow-tally-sync-logs-{date}.csv"
+                rows={logs}
+                columns={[
+                  { key: "created_at", label: "Timestamp" },
+                  { key: "module", label: "Module" },
+                  { key: "direction", label: "Direction" },
+                  { key: "status", label: "Status" },
+                  { key: "records", label: "Records" },
+                  { key: "duration_ms", label: "Duration (ms)" },
+                  { key: "message", label: "Message" },
+                ]}
+              />
+            }
+          >
             {logs.length === 0 ? <EmptyState title="No sync events" /> : (
               <table className="yf-table w-full">
                 <thead>

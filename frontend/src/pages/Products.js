@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
+import { ExportButton } from "@/lib/csv";
 import { Plus, Trash, PencilSimple } from "@phosphor-icons/react";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -78,11 +79,27 @@ export default function ProductsPage() {
       <PageSection
         title="Catalog"
         actions={
-          <input
-            value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or SKU…"
-            className="h-9 px-3 rounded-md border border-[#E5E7EB] text-sm w-[280px] focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
-            data-testid="products-search"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name or SKU…"
+              className="h-9 px-3 rounded-md border border-[#E5E7EB] text-sm w-[280px] focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
+              data-testid="products-search"
+            />
+            <ExportButton
+              filename="yamini-flow-products-{date}.csv"
+              rows={products}
+              columns={[
+                { key: "sku", label: "SKU" },
+                { key: "name", label: "Product" },
+                { key: "category", label: "Category" },
+                { key: "price", label: "Price (INR)" },
+                { key: "cost", label: "Cost (INR)" },
+                { key: "moq", label: "MOQ" },
+                { key: "safety_stock", label: "Safety Stock" },
+                { key: "status", label: "Status" },
+              ]}
+            />
+          </div>
         }
       >
         {loading ? (

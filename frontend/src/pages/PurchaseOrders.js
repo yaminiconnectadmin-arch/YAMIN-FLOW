@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
+import { ExportButton } from "@/lib/csv";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Eye } from "@phosphor-icons/react";
@@ -40,12 +41,28 @@ export default function PurchaseOrdersPage() {
   return (
     <AppShell title="Purchase Orders" subtitle="Manage supplier procurement"
       actions={
-        <select value={status} onChange={(e) => setStatus(e.target.value)}
-          className="h-9 px-3 rounded-md border border-[#E5E7EB] text-sm bg-white focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
-          data-testid="po-status-filter">
-          <option value="">All Statuses</option>
-          {PO_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <div className="flex items-center gap-2">
+          <select value={status} onChange={(e) => setStatus(e.target.value)}
+            className="h-9 px-3 rounded-md border border-[#E5E7EB] text-sm bg-white focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
+            data-testid="po-status-filter">
+            <option value="">All Statuses</option>
+            {PO_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <ExportButton
+            filename="yamini-flow-purchase-orders-{date}.csv"
+            rows={pos}
+            columns={[
+              { key: "po_no", label: "PO No" },
+              { key: "supplier_name", label: "Supplier" },
+              { key: "items", label: "Items", format: (v) => v?.length ?? 0 },
+              { key: "subtotal", label: "Subtotal" },
+              { key: "gst", label: "GST" },
+              { key: "total", label: "Total" },
+              { key: "status", label: "Status" },
+              { key: "created_at", label: "Created" },
+            ]}
+          />
+        </div>
       }
     >
       <PageSection title={`${pos.length} purchase orders`}>

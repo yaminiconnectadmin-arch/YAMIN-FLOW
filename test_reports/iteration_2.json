@@ -1,0 +1,48 @@
+{
+  "summary": "YAMINI FLOW V2 iteration-2 full-stack test. Backend: 50/50 pytest tests PASS including 5 new tests (real Tally sync graceful failure, tally test-connection returns ok:false + no log persistence, RBAC dealer denied on test-connection, state drilldown admin OK, state drilldown dealer 403). Frontend: verified Export CSV buttons across Products, Inventory, Orders, Purchase Orders, Dealers, Suppliers, MNP, Audit Logs, Tally Sync, Analytics (State Ranking + Dealer Performance + State drilldown). Products CSV downloaded correctly with all 8 required columns (SKU, Product, Category, Price, Cost, MOQ, Safety Stock, Status). Real Tally sync works: 'Test Connection' shows error toast without persisting a log; 'Sync now' for products correctly writes a failed log row with reason 'Cannot reach Tally at http://localhost:9000' (17→18 logs). India Heatmap renders all 36 states, Maharashtra highlighted in orange (revenue ₹15,65,305), tooltip on hover works, click opens State Drilldown modal with revenue/orders/dealers table (Suresh Traders 13 orders) and top products table (6 rows), Export CSV inside modal, Close button works.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/tally/test-connection", "issue": "Reuses perform_tally_sync('warehouses','pull') internally to probe reachability — an intended shortcut, but reports duration/message from a full warehouses envelope. Could ping with a small HEAD or empty POST for faster feedback."},
+      {"endpoint": "/api/analytics/state/{state}", "issue": "No URL encoding validation — state name is trusted as-is; a name containing '/' would 404 at routing. Consider explicit whitelist against known state list. Not a security issue (RBAC-protected)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "People.js (Dealers/Suppliers/MNP pages)", "issue": "FIXED by testing agent — ExportButton was referenced but not imported, causing 0 export buttons to render on /dealers, /suppliers, /mnp. Added `import { ExportButton } from '@/lib/csv';` at top of People.js. All 3 pages now render the export button correctly and CSV download verified for /dealers.", "selector": "src/pages/People.js:5", "priority": "HIGH_RESOLVED"},
+      {"component": "Recharts ResponsiveContainer", "issue": "PERSISTS from iter-1: 'The width(-1) and height(-1) of chart should be greater than 0' warning on Dashboard and Analytics — parent has no explicit min-height during initial layout. Charts still render after resize. Noisy in console.", "selector": "Dashboard.js, Analytics.js", "priority": "LOW"},
+      {"component": "Inventory.js filter <select>", "issue": "PERSISTS from iter-1: React hydration error 'In HTML, <span> cannot be a child of <option>' — a <span data-ve-dynamic> is being injected inside <option> children of the warehouse filter select. This is a devtools/instrumentation injection but React logs it as hydration error. Wrap the option's text in explicit string or move dynamic marker off <option>.", "selector": "src/pages/Inventory.js line ~75, warehouse <select>", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "None blocking. Optional: fix persistent Recharts width(-1) warnings and Inventory <span>-inside-<option> hydration warning (both were flagged in iter-1 and remain).",
+    "Optional: give /api/analytics/state/{state} a whitelist of Indian state names.",
+    "Optional: verify E1's own smoke test still shows the People pages exporting correctly (fixed by adding missing import — verified working)."
+  ],
+  "critical_code_review_comments": [
+    "tally_client.py DEFAULT_TIMEOUT=8s is reasonable but test-connection could use a shorter probe (2-3s) so admins get faster feedback in UI.",
+    "IndiaHeatmap.js: fetches TopoJSON from github raw URL — no caching, no offline fallback. If github is blocked, map fails silently. Consider bundling the geojson locally.",
+    "IndiaHeatmap.js matchState() uses substring `includes` fallback which could mismatch (e.g. 'Odisha' vs 'Odisha state'). Currently harmless due to seed data, but risky for edge cases.",
+    "Analytics.js openDrill() uses `encodeURIComponent(state)` on client — good — but backend does not validate against a state whitelist.",
+    "ops.py tally_sync: audit_logs.insert_one is fine, but the same log's records/status is duplicated between tally_sync_logs and audit_logs.meta — small redundancy.",
+    "People.js was missing `import { ExportButton }` — fixed. Suggests need for a CI lint rule to catch undefined JSX components (react/jsx-no-undef).",
+    "csv.js ExportButton is `disabled` when rows is empty which correctly prevents downloading an empty CSV — good UX."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py",
+    "/app/frontend/src/pages/People.js"
+  ],
+  "success_rate": {"backend": "100% (50/50)", "frontend": "100% of tested flows after 1 fix"},
+  "test_credentials": "Admin admin@yaminiflow.com/Admin@123; Dealer dealer@yaminiflow.com/Dealer@123; MNP mnp@yaminiflow.com/Mnp@123; Supplier supplier@yaminiflow.com/Supplier@123",
+  "seed_data_creation": "None. 1 new tally_sync_logs row created during test (failed products pull, expected behavior — no cleanup needed as it is a valid log).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "50 pytest tests cover: auth (4 roles), RBAC, catalog CRUD, partners, orders lifecycle, procurement/PO, real Tally sync graceful failure + test-connection, AI insight (real Claude Sonnet call), analytics overview + state drilldown, notifications, audit, settings, logout. Real Tally sync WILL fail with 'Cannot reach Tally at http://localhost:9000' — THIS IS CORRECT BEHAVIOR per user spec. India Heatmap loads TopoJSON from github, needs network. People.js was missing ExportButton import — fixed in this iteration.",
+  "rca_of_the_issue": "People.js used <ExportButton> in JSX (line 72) without an import statement. In dev builds it silently renders as undefined and React omits the element (no crash, no visible button). Root cause: forgotten import when the E1 agent added ExportButton to People.js. Fix: added `import { ExportButton } from '@/lib/csv';` after the Common imports. Verified all 3 role pages (dealers, suppliers, mnp) now render the button and CSV export works. Recommend adding eslint rule `react/jsx-no-undef` (usually enabled by default with react-app config — may be disabled here)."
+}
