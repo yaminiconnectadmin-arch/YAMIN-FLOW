@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast, Toaster } from "@/components/ui/sonner";
@@ -11,7 +11,9 @@ export default function LoginPage() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
 
-  if (user && user !== false) navigate("/dashboard", { replace: true });
+  useEffect(() => {
+    if (user && user !== false) navigate("/dashboard", { replace: true });
+  }, [user, navigate]);
 
   const submit = async (e) => {
     e.preventDefault();
