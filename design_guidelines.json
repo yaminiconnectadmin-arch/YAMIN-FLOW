@@ -1,0 +1,147 @@
+{
+  "theme": "light",
+  "typography": {
+    "heading_font": "Outfit",
+    "body_font": "IBM Plex Sans",
+    "rationale": "Outfit provides a modern, geometric structure suitable for dense numeric data without feeling generic. IBM Plex Sans is purpose-built for highly technical, data-dense enterprise applications.",
+    "scale": {
+      "h1": "text-2xl lg:text-3xl font-semibold tracking-tight text-[#06182F]",
+      "h2": "text-xl lg:text-2xl font-semibold tracking-tight text-[#06182F]",
+      "h3": "text-lg font-medium text-[#0A2342]",
+      "kpi_value": "text-3xl font-bold tracking-tight text-[#06182F]",
+      "body": "text-sm text-[#5C6670]",
+      "table_header": "text-xs font-semibold tracking-wider uppercase text-[#5C6670]",
+      "table_cell": "text-sm text-[#06182F]",
+      "label": "text-xs font-medium uppercase tracking-widest text-[#BFC5CB]"
+    }
+  },
+  "colors": {
+    "brand": {
+      "primary_navy": "#0A2342",
+      "deep_navy": "#06182F",
+      "yamini_orange": "#F28C18",
+      "dark_orange": "#D96B0B",
+      "white": "#FFFFFF",
+      "light_grey": "#E5E7EB",
+      "graphite_grey": "#5C6670",
+      "metallic_silver": "#BFC5CB"
+    },
+    "ui": {
+      "background": "#F4F5F7",
+      "surface": "#FFFFFF",
+      "border": "#E5E7EB",
+      "border_hover": "#BFC5CB",
+      "text_primary": "#06182F",
+      "text_secondary": "#5C6670",
+      "text_tertiary": "#BFC5CB"
+    },
+    "sidebar": {
+      "background": "#06182F",
+      "text": "#BFC5CB",
+      "text_active": "#FFFFFF",
+      "bg_active": "#0A2342",
+      "bg_hover": "#0A2342"
+    },
+    "status": {
+      "success_bg": "#ECFDF5",
+      "success_text": "#065F46",
+      "warning_bg": "#FFFBEB",
+      "warning_text": "#92400E",
+      "error_bg": "#FEF2F2",
+      "error_text": "#991B1B"
+    }
+  },
+  "grids": {
+    "dashboard_container": "grid grid-cols-1 md:grid-cols-4 lg:grid-cols-12 gap-6",
+    "kpi_card": "col-span-1 md:col-span-2 lg:col-span-3",
+    "main_chart": "col-span-1 md:col-span-4 lg:col-span-8",
+    "side_panel": "col-span-1 md:col-span-4 lg:col-span-4",
+    "data_table_wrapper": "col-span-full"
+  },
+  "layouts": {
+    "app_shell": "flex h-screen w-full overflow-hidden bg-[#F4F5F7] text-[#06182F] font-sans",
+    "sidebar": "w-[260px] flex-shrink-0 bg-[#06182F] flex flex-col border-r border-[#0A2342]",
+    "main_content": "flex-1 flex flex-col min-w-0 overflow-hidden",
+    "header": "h-16 flex-shrink-0 flex items-center justify-between px-6 bg-white border-b border-[#E5E7EB] z-10 relative",
+    "page_content": "flex-1 overflow-auto p-6 lg:p-8 space-y-6"
+  },
+  "visual_enhancers": {
+    "shadows": {
+      "card": "shadow-[0_2px_8px_rgba(6,24,47,0.04)]",
+      "dropdown": "shadow-[0_8px_30px_rgba(6,24,47,0.12)]",
+      "button": "shadow-[0_1px_2px_rgba(6,24,47,0.05)]"
+    },
+    "borders": "border border-[#E5E7EB] rounded-lg",
+    "kpi_cards": "bg-white p-5 rounded-lg border border-[#E5E7EB] flex flex-col gap-3 relative overflow-hidden group hover:border-[#BFC5CB] transition-colors",
+    "glass": "bg-white/90 backdrop-blur-md border border-white/20"
+  },
+  "component_patterns": {
+    "buttons": {
+      "base": "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-[#F28C18] focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none",
+      "primary": "bg-[#F28C18] text-white hover:bg-[#D96B0B] shadow-sm",
+      "secondary": "bg-white border border-[#E5E7EB] text-[#0A2342] hover:bg-[#F4F5F7]",
+      "ghost": "text-[#5C6670] hover:text-[#06182F] hover:bg-[#E5E7EB]/50"
+    },
+    "tables": {
+      "container": "w-full border border-[#E5E7EB] rounded-lg overflow-hidden bg-white",
+      "header_row": "bg-[#F8F9FA] border-b border-[#E5E7EB]",
+      "header_cell": "px-4 py-3 text-left text-xs font-semibold tracking-wider uppercase text-[#5C6670]",
+      "row": "border-b border-[#E5E7EB] hover:bg-[#F8F9FA]/50 transition-colors last:border-0",
+      "cell": "px-4 py-3 text-sm text-[#06182F] whitespace-nowrap"
+    },
+    "inputs": {
+      "base": "flex h-10 w-full rounded-md border border-[#E5E7EB] bg-white px-3 py-2 text-sm placeholder:text-[#BFC5CB] focus:outline-none focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] transition-colors"
+    },
+    "badges": "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
+  },
+  "image_urls": {
+    "login_background": {
+      "url": "https://images.unsplash.com/photo-1669003153363-6d7ba8e20c7e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjB3YXJlaG91c2UlMjBhZXJpYWx8ZW58MHx8fHwxNzg0MTQ2Mzk1fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Aerial view of modern logistics warehouse. Apply a dark #06182F overlay at 70% opacity for the login page background.",
+      "category": "backgrounds"
+    },
+    "avatars": [
+      {
+        "url": "https://images.pexels.com/photos/30692588/pexels-photo-30692588.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Mature businessman for Company Owner/Admin role avatar.",
+        "category": "user_avatar"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODB8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdCUyMG9mZmljZXxlbnwwfHx8fDE3ODQxNDYzOTV8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Female professional for MNP Personnel role avatar.",
+        "category": "user_avatar"
+      }
+    ]
+  },
+  "motion": {
+    "hover": "transition-all duration-200 ease-out",
+    "dropdown": "animate-in fade-in zoom-in-95 duration-150",
+    "sidebar": "transition-all duration-300 ease-in-out",
+    "fade_in": "animate-in fade-in duration-300"
+  },
+  "accessibility": {
+    "contrast": "Ensure text-primary (#06182F) on surface (#FFFFFF) for maximum readability. Yamini Orange (#F28C18) should only be used for primary CTAs and key highlights, not for body text.",
+    "testing": "All interactive and key informational elements MUST include a `data-testid` attribute. Convention: kebab-case, role-based. e.g., `data-testid=\"sidebar-inventory-link\"`."
+  },
+  "charts": {
+    "library": "recharts",
+    "colors": ["#0A2342", "#F28C18", "#5C6670", "#BFC5CB"],
+    "styling": "Use crisp lines (strokeWidth={2}). Use faint dashed grid lines (#E5E7EB) or remove vertical grids entirely. Tooltips must have a solid white background with #E5E7EB border and soft shadow. DO NOT use transparent backgrounds for tooltips."
+  },
+  "icons": {
+    "library": "@phosphor-icons/react",
+    "style": "Use regular or bold weights for high-density, crisp visibility. Avoid extremely thin/light icons."
+  },
+  "instructions_to_main_agent": [
+    "You have .js files not .tsx file. All components must be written in standard modern Javascript and React.",
+    "DO NOT use a fully transparent background in header or dropdowns. Ensure solid #FFFFFF or solid #06182F.",
+    "Do NOT center align the app container. Never add .App { text-align: center; }. Everything must be left-aligned according to modern dashboard standards.",
+    "Utilize standard 12-column CSS Grid structure for the dashboard to achieve maximum information density without breaking the layout.",
+    "Use Phosphor Icons for an enterprise feel. Install via `yarn add @phosphor-icons/react`.",
+    "For KPI Cards, position the main metric at the top or center, and use a small red/green trend indicator. No bloated whitespace.",
+    "Implement Sonner for toast notifications at the top-right.",
+    "Tables should be dense. Use `py-3` on cells, not `py-4` or `py-6`. Enterprise users want to see more data, not more padding.",
+    "Avoid generic border radii. Use `rounded-md` for buttons/inputs, `rounded-lg` for cards/panels."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": "Focus on high information density, precise alignment, and professional aesthetics. Eliminate all generic 'AI slop' gradients or rounded, playful shapes. This is an enterprise tool. Use data-testid on every interactive element. Do not create placeholder images; use the provided image URLs. Strictly follow the color palette—Yamini Orange is the accent, Deep Navy is the anchor."
+}
