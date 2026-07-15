@@ -1,0 +1,48 @@
+{
+  "summary": "First iteration full-stack test of YAMINI FLOW V2. Backend: 45/45 pytest tests PASSED covering auth (4 roles), RBAC, catalog, inventory, warehouses, partners, orders lifecycle, procurement/PO, Tally sync (mocked), AI insight generation via Claude Sonnet 4.6 (Emergent LLM), analytics overview, notifications, audit logs, settings. Frontend: verified admin/dealer/mnp/supplier login + role-scoped sidebars; dashboard KPIs render (revenue/orders/inventory/dealers); Analytics charts render (revenue vs orders, state distribution, dealer performance); Products/Inventory/Orders/Procurement/PurchaseOrders pages load with expected data; Tally sync UI adds a log row on click (13→14); AI Insights UI generated a real Claude Sonnet 4.6 executive briefing appearing in Recent Insights; Dealer place-order flow works and redirects to /orders; MNP hitting /audit is redirected to /dashboard (route RBAC guard works). No blocking bugs.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/analytics/overview", "issue": "Dealer role sees GLOBAL inventory_value (₹87,80,810) and total_units (3553) — inventory aggregation is not filtered by dealer scope. Arguably intentional (catalog-wide 'SKUs Available') but 'Inventory Value' shown to a dealer is misleading."},
+      {"endpoint": "/api/analytics/overview", "issue": "revenue_trend uses ISO string range comparison against orders.created_at (also ISO strings) — works only because both are UTC-aware ISO; if timezone-naive dates ever seeded, comparison will drift. Consider storing datetime objects."},
+      {"endpoint": "/api/orders (POST)", "issue": "reservation logic decrements reserved only when order status becomes delivered/cancelled — if an order sits in approved and someone else creates order, reserved stays inflated; no soft TTL. Not a functional bug for MVP."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "LoginPage", "issue": "React warning: 'Cannot update a component (Router) while rendering a different component (LoginPage)' — caused by calling `navigate('/dashboard')` inline during render when user is already logged in (line 14 of Login.js). Should be wrapped in useEffect.", "selector": "src/pages/Login.js:14", "priority": "MEDIUM"},
+      {"component": "Recharts containers", "issue": "Repeated console warning: 'The width(-1) and height(-1) of chart should be greater than 0' on Dashboard and Analytics — parent container likely has no min-height/min-width set during initial layout. Charts still render after resize but warning is noisy.", "selector": "Dashboard.js, Analytics.js (ResponsiveContainer)", "priority": "LOW"},
+      {"component": "Sidebar/nav?", "issue": "React hydration warning: 'In HTML, <span> cannot be a child of <option>' — a <span> is being nested inside a native <option> element somewhere in Products or Inventory page.", "selector": "unknown — likely Products.js or Inventory.js filter <select>", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Move `navigate('/dashboard')` in Login.js into a useEffect to eliminate the React setState-during-render warning.",
+    "Investigate the <span> inside <option> hydration warning (check Products.js / Inventory.js filter <select> — likely a Radix/shadcn Select used incorrectly or a native <select> with formatted <option> children).",
+    "Give Recharts ResponsiveContainer explicit minHeight (or wrap in a fixed-height div) to remove width(-1)/height(-1) warnings.",
+    "(Optional) Filter inventory_value in /api/analytics/overview for dealer role, or rename the KPI label so a dealer doesn't see a global figure titled 'Inventory Value'."
+  ],
+  "critical_code_review_comments": [
+    "server.py: startup runs seed_all() unconditionally on every restart — harmless due to idempotent upserts but should be gated by an env flag in production.",
+    "auth.py: brute_force_check locks per (ip:email) for 15 minutes but never resets on process restart because state lives in Mongo — good. However the identifier includes IP; behind a proxy without X-Forwarded-For handling all users share one IP and can lock each other out. Consider trusting X-Forwarded-For if configured.",
+    "orders.py get_order line 36: uses ObjectId(order_id) without try/except — a malformed id returns 500 instead of 404/422. Wrap ObjectId conversions.",
+    "ops.py analytics_overview: builds 12 separate weekly aggregate queries in a loop — replace with a single $bucketAuto or $group by week to reduce round trips.",
+    "catalog.py list_inventory: no server-side pagination; loads up to 5000 rows into memory. Fine for MVP.",
+    "server.py CORS: when CORS_ORIGINS='*' the code forces allow_origins=[frontend_url] which is correct for credentials, but a comment would help future devs."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (45/45)", "frontend": "100% of tested flows"},
+  "test_credentials": "Admin admin@yaminiflow.com/Admin@123; Dealer dealer@yaminiflow.com/Dealer@123; MNP mnp@yaminiflow.com/Mnp@123; Supplier supplier@yaminiflow.com/Supplier@123",
+  "seed_data_creation": "None created. Test file cleans up any TEST_ prefixed products it creates. Existing seeded data (6 products, 3 warehouses, 24 orders, 6 POs, 13 tally logs, 2 dealers) used for read tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend has full pytest suite at /app/backend/tests/backend_test.py covering all critical endpoints — reuse it. AI insight test does a real LLM call (~15s). Frontend uses withCredentials + Bearer token; both work. Tally is fully MOCKED (per spec). Known non-blocking issues: (1) Login.js navigate-in-render warning, (2) Recharts width(-1) warnings, (3) <span> inside <option> hydration warning. RBAC route guard on frontend works (MNP → /audit redirects to /dashboard).",
+  "mocked_apis_verified": "/api/tally/sync and /api/tally/status — confirmed writing to tally_sync_logs collection, records/duration randomized in expected ranges. Endpoint clearly MOCKED per user spec, no real Tally ODBC connection attempted."
+}
