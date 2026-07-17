@@ -45,11 +45,11 @@ export default function LoginPage() {
 
       {/* Left hero */}
       <div className="hidden lg:flex login-hero flex-1 flex-col justify-between p-12 text-white">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-md gradient-brand-accent flex items-center justify-center font-display text-white font-bold text-xl shadow-lg">YF</div>
+        <div className="flex items-center gap-3.5">
+          <img src="/logo.png" alt="Yamini Flow Logo" className="w-12 h-12 rounded-xl object-cover shadow-lg border border-white/15" />
           <div>
             <div className="font-display text-xl font-semibold tracking-tight">YAMINI FLOW</div>
-            <div className="text-[11px] uppercase tracking-[0.2em] text-white/50">The Intelligent Distribution Platform</div>
+            <div className="text-[11px] uppercase tracking-[0.2em] text-[#F28C18] font-medium">The Intelligent Distribution Platform</div>
           </div>
         </div>
 
@@ -86,10 +86,10 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center bg-white p-6 lg:p-12">
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-md gradient-brand-accent flex items-center justify-center font-display text-white font-bold">YF</div>
+            <img src="/logo.png" alt="Yamini Flow Logo" className="w-11 h-11 rounded-lg object-cover shadow-md border border-[#E5E7EB]" />
             <div>
-              <div className="font-display font-semibold">YAMINI FLOW</div>
-              <div className="text-[10px] uppercase tracking-widest text-[#5C6670]">Distribution Intelligence</div>
+              <div className="font-display font-semibold text-[#06182F]">YAMINI FLOW</div>
+              <div className="text-[10px] uppercase tracking-widest text-[#F28C18] font-medium">Distribution Intelligence</div>
             </div>
           </div>
 

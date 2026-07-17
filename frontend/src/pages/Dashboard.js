@@ -242,7 +242,7 @@ export default function Dashboard() {
                     <Robot size={14} /> AI Intelligence
                   </div>
                   <h3 className="font-display text-2xl font-semibold leading-tight tracking-tight mb-2">
-                    Ask Yamini AI to explain what's happening in your business.
+                    Ask Yamini AI to explain what&apos;s happening in your business.
                   </h3>
                   <p className="text-sm text-white/70">
                     Get instant executive summaries, dealer rankings, demand forecasts and procurement recommendations — powered by Claude.

@@ -61,13 +61,11 @@ export default function Sidebar() {
 
   return (
     <aside className="yf-sidebar w-[260px] flex-shrink-0 flex flex-col h-screen" data-testid="app-sidebar">
-      <div className="px-6 py-5 border-b border-white/5 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-md gradient-brand-accent flex items-center justify-center font-display text-white font-bold shadow-lg">
-          YF
-        </div>
+      <div className="px-6 py-5 border-b border-white/5 flex items-center gap-3.5">
+        <img src="/logo.png" alt="Yamini Flow Logo" className="w-10 h-10 rounded-lg object-cover shadow-lg border border-white/10 flex-shrink-0" />
         <div className="leading-tight">
-          <div className="text-white font-display font-semibold text-[15px]">YAMINI FLOW</div>
-          <div className="text-[11px] text-white/50 tracking-widest uppercase">Distribution OS</div>
+          <div className="text-white font-display font-semibold text-[15px] tracking-wide">YAMINI FLOW</div>
+          <div className="text-[10px] text-[#F28C18] font-medium tracking-widest uppercase mt-0.5">Distribution OS</div>
         </div>
       </div>
 

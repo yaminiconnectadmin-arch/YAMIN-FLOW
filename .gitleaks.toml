@@ -1,0 +1,22 @@
+title = "Yamini Flow Gitleaks Secret Protection Rules"
+
+[allowlist]
+description = "Ignore sample or example keys in test files and docs"
+paths = [
+  '''test_.*\.py''',
+  '''\.spec\.js''',
+  '''README\.md''',
+  '''docs/.*\.md'''
+]
+
+[[rules]]
+id = "jwt-secret-key"
+description = "Detected potential JWT Secret or Private Key"
+regex = '''(?i)(jwt_secret|jwt_key|private_key)\s*=\s*['"][0-9a-zA-Z\-_=]{16,}['"]'''
+tags = ["secret", "jwt"]
+
+[[rules]]
+id = "mongodb-connection-string"
+description = "Detected MongoDB Connection String with Credentials"
+regex = '''mongodb(\+srv)?://[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+@.*'''
+tags = ["database", "mongodb", "secret"]

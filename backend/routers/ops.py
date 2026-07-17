@@ -263,8 +263,12 @@ async def _gather_business_context() -> dict:
 
 @router.post("/ai/insight")
 async def ai_insight(payload: AiInsightIn, admin: dict = Depends(require_roles("admin", "mnp"))):
-    """Generate an AI insight via emergentintegrations Claude Sonnet."""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    """Generate an AI insight via emergentintegrations Claude Sonnet with direct REST fallback."""
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        use_emergent = True
+    except ImportError:
+        use_emergent = False
 
     ctx = await _gather_business_context()
     topic_prompts = {
@@ -284,18 +288,72 @@ async def ai_insight(payload: AiInsightIn, admin: dict = Depends(require_roles("
         f"- Top Dealers: " + ", ".join([f"{d.get('name')} (₹{d.get('revenue',0):,.0f}, {d.get('orders',0)} orders)" for d in ctx["top_dealers"]]) + "\n"
         f"- Top Products: " + ", ".join([f"{p.get('name')} ({p.get('units',0)} units)" for p in ctx["top_products"]]) + "\n"
     )
-    chat = LlmChat(
-        api_key=os.environ["EMERGENT_LLM_KEY"],
-        session_id=f"insight-{payload.topic}-{admin['id']}",
-        system_message="You are a senior distribution business analyst for an ERP platform called Yamini Flow. Write concise, executive-grade insights in plain prose (max 180 words). Use INR (₹) and refer only to data provided. Never invent numbers. End with a short 'Recommended Actions:' bullet list of 2-3 items.",
-    ).with_model("anthropic", "claude-sonnet-4-6")
 
-    user_msg = UserMessage(text=f"{context_text}\n\nTask: {prompt}")
-    try:
-        response = await chat.send_message(user_msg)
-        text = response if isinstance(response, str) else str(response)
-    except Exception as e:
-        text = f"AI service unavailable ({str(e)[:120]}). Fallback: {prompt}. Snapshot revenue ₹{ctx['revenue']:,.0f}."
+    text = ""
+    if use_emergent:
+        chat = LlmChat(
+            api_key=os.environ.get("EMERGENT_LLM_KEY", ""),
+            session_id=f"insight-{payload.topic}-{admin['id']}",
+            system_message="You are a senior distribution business analyst for an ERP platform called Yamini Flow. Write concise, executive-grade insights in plain prose (max 180 words). Use INR (₹) and refer only to data provided. Never invent numbers. End with a short 'Recommended Actions:' bullet list of 2-3 items.",
+        ).with_model("anthropic", "claude-sonnet-4-6")
+        user_msg = UserMessage(text=f"{context_text}\n\nTask: {prompt}")
+        try:
+            response = await chat.send_message(user_msg)
+            text = response if isinstance(response, str) else str(response)
+        except Exception as e:
+            text = f"AI service unavailable ({str(e)[:120]}). Fallback: {prompt}. Snapshot revenue ₹{ctx['revenue']:,.0f}."
+    else:
+        import httpx
+        api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("EMERGENT_LLM_KEY")
+        if api_key:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    res = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": api_key,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json"
+                        },
+                        json={
+                            "model": "claude-3-5-sonnet-20241022",
+                            "max_tokens": 500,
+                            "system": "You are a senior distribution business analyst for an ERP platform called Yamini Flow. Write concise, executive-grade insights in plain prose (max 180 words). Use INR (₹) and refer only to data provided. Never invent numbers. End with a short 'Recommended Actions:' bullet list of 2-3 items.",
+                            "messages": [
+                                {"role": "user", "content": f"{context_text}\n\nTask: {prompt}"}
+                            ]
+                        }
+                    )
+                    if res.status_code == 200:
+                        text = res.json()["content"][0]["text"]
+                    else:
+                        raise Exception(f"Anthropic API returned {res.status_code}")
+            except Exception as e:
+                openai_key = os.environ.get("OPENAI_API_KEY") or api_key
+                try:
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        res = await client.post(
+                            "https://api.openai.com/v1/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {openai_key}",
+                                "content-type": "application/json"
+                            },
+                            json={
+                                "model": "gpt-4o",
+                                "messages": [
+                                    {"role": "system", "content": "You are a senior distribution business analyst for an ERP platform called Yamini Flow. Write concise, executive-grade insights in plain prose (max 180 words). Use INR (₹) and refer only to data provided. Never invent numbers. End with a short 'Recommended Actions:' bullet list of 2-3 items."},
+                                    {"role": "user", "content": f"{context_text}\n\nTask: {prompt}"}
+                                ]
+                            }
+                        )
+                        if res.status_code == 200:
+                            text = res.json()["choices"][0]["message"]["content"]
+                        else:
+                            raise Exception(f"OpenAI API returned {res.status_code}")
+                except Exception as e2:
+                    text = f"AI service unavailable (Direct API errors: {e}, {e2}). Fallback: {prompt}. Snapshot revenue ₹{ctx['revenue']:,.0f}."
+        else:
+            text = f"AI service unavailable (No API keys configured). Fallback: {prompt}. Snapshot revenue ₹{ctx['revenue']:,.0f}."
 
     doc = {
         "topic": payload.topic,

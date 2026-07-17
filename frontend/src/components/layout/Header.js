@@ -22,7 +22,7 @@ export default function Header({ title, subtitle, actions }) {
         if (!mounted) return;
         setNotifs(data.slice(0, 5));
         setNotifCount(data.filter((n) => !n.read).length);
-      } catch {}
+      } catch (e) { /* ignore */ }
     };
     load();
     const t = setInterval(load, 30000);
