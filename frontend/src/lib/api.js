@@ -29,6 +29,8 @@ export function formatApiErrorDetail(detail) {
 export const fmt = {
   inr: (n) => `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`,
   num: (n) => Number(n || 0).toLocaleString("en-IN"),
+  kg: (n) => `${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} KG`,
+  pcs: (n) => `${Number(n || 0).toLocaleString("en-IN")} PCS`,
   date: (s) => {
     if (!s) return "—";
     try { return new Date(s).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); } catch { return s; }

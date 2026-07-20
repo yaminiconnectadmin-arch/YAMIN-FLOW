@@ -76,7 +76,43 @@ async def on_startup():
     except Exception as e:
         logger.exception(f"Startup error: {e}")
 
+    # Start 12 AM Auto-Collation Scheduler
+    try:
+        from routers.procurement import execute_order_collation
+        try:
+            from apscheduler.schedulers.asyncio import AsyncIOScheduler
+            from apscheduler.triggers.cron import CronTrigger
+            scheduler = AsyncIOScheduler()
+            scheduler.add_job(
+                execute_order_collation,
+                trigger=CronTrigger(hour=0, minute=0),
+                kwargs={"triggered_by": "auto_12am"},
+                id="midnight_auto_collate",
+                replace_existing=True
+            )
+            scheduler.start()
+            app.state.scheduler = scheduler
+            logger.info("APScheduler started: nightly auto-collation scheduled for 12:00 AM.")
+        except ImportError:
+            # Fallback async loop if apscheduler not installed in environment
+            import asyncio
+            from datetime import datetime
+            async def _midnight_loop():
+                while True:
+                    now = datetime.now()
+                    if now.hour == 0 and now.minute == 0:
+                        logger.info("Triggering 12 AM auto-collation from fallback async loop...")
+                        await execute_order_collation(triggered_by="auto_12am")
+                        await asyncio.sleep(65)  # wait past the minute
+                    await asyncio.sleep(30)
+            asyncio.create_task(_midnight_loop())
+            logger.info("Fallback async scheduler loop started for 12:00 AM auto-collation.")
+    except Exception as e:
+        logger.exception(f"Could not initialize collation scheduler: {e}")
+
 
 @app.on_event("shutdown")
 async def on_shutdown():
+    if hasattr(app.state, "scheduler"):
+        app.state.scheduler.shutdown()
     logger.info("YAMINI FLOW shutting down")

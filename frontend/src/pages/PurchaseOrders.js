@@ -27,6 +27,7 @@ export default function PurchaseOrdersPage() {
     } catch { toast.error("Failed to load"); }
     finally { setLoading(false); }
   };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [status]);
 
   const updateStatus = async (po, newStatus) => {

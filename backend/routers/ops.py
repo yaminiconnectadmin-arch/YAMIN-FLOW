@@ -513,6 +513,40 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
     }
 
 
+@router.get("/analytics/mnps-summary")
+async def mnps_summary(admin: dict = Depends(require_admin)):
+    mnps = await db.users.find({"role": "mnp"}).to_list(200)
+    rows = []
+    for m in mnps:
+        mid = str(m["_id"])
+        dealers = await db.users.find({"role": "dealer", "mnp_id": mid}).to_list(500)
+        dealer_ids = [str(d["_id"]) for d in dealers]
+        
+        rev, orders = 0, 0
+        if dealer_ids:
+            agg = await db.orders.aggregate([
+                {"$match": {"dealer_id": {"$in": dealer_ids}, "status": {"$in": ["delivered", "shipped", "approved"]}}},
+                {"$group": {"_id": None, "revenue": {"$sum": "$total"}, "orders": {"$sum": 1}}}
+            ]).to_list(1)
+            if agg:
+                rev = agg[0]["revenue"]
+                orders = agg[0]["orders"]
+                
+        rows.append({
+            "mnp_id": mid,
+            "name": m.get("name", ""),
+            "area": m.get("area", ""),
+            "state": m.get("state", ""),
+            "phone": m.get("phone", ""),
+            "target_monthly": m.get("target_monthly", 0),
+            "distributor_count": len(dealers),
+            "revenue": round(rev, 2),
+            "orders": orders,
+        })
+    rows.sort(key=lambda x: -x["revenue"])
+    return rows
+
+
 @router.get("/analytics/mnp/dealers")
 async def mnp_dealer_analytics(user: dict = Depends(require_roles("admin", "mnp"))):
     if user["role"] == "mnp":

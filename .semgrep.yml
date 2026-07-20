@@ -6,7 +6,6 @@ rules:
     languages:
       - javascript
       - python
-
   - id: prevent-hardcoded-jwt-secret
     patterns:
       - pattern-either:
@@ -16,11 +15,10 @@ rules:
     severity: ERROR
     languages:
       - python
-
   - id: require-parameterized-queries
     pattern: db.$COLLECTION.find({ $where: ... })
     message: "Avoid raw $where MongoDB queries to prevent NoSQL injection."
     severity: ERROR
     languages:
-      - javascript
-      - python
+  - javascript
+  - python

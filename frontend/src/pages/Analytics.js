@@ -16,6 +16,7 @@ export default function AnalyticsPage() {
   const { user } = useAuth();
   const [data, setData] = useState(null);
   const [mnpDealers, setMnpDealers] = useState([]);
+  const [mnpsSummary, setMnpsSummary] = useState([]);
   const [loading, setLoading] = useState(true);
   const [drillState, setDrillState] = useState(null);
   const [drillData, setDrillData] = useState(null);
@@ -23,12 +24,14 @@ export default function AnalyticsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [o, m] = await Promise.all([
+        const [o, m, s] = await Promise.all([
           api.get("/analytics/overview"),
           user.role === "admin" || user.role === "mnp" ? api.get("/analytics/mnp/dealers") : Promise.resolve({ data: [] }),
+          user.role === "admin" ? api.get("/analytics/mnps-summary") : Promise.resolve({ data: [] }),
         ]);
         setData(o.data);
         setMnpDealers(m.data);
+        setMnpsSummary(s.data);
       } catch { toast.error("Failed to load analytics"); }
       finally { setLoading(false); }
     })();
@@ -115,16 +118,76 @@ export default function AnalyticsPage() {
         </div>
       </PageSection>
 
-      {(user.role === "admin" || user.role === "mnp") && (
+      {user.role === "admin" && (
         <PageSection
-          title="Dealer Performance"
-          description="Revenue and orders per dealer"
+          title="Regional MNP Network & Distributor Analytics"
+          description="Performance overview across each assigned MNP and their active distributors"
+          className="mb-6"
           actions={
             <ExportButton
-              filename="yamini-flow-dealer-performance-{date}.csv"
+              filename="yamini-flow-mnp-analytics-{date}.csv"
+              rows={mnpsSummary}
+              columns={[
+                { key: "name", label: "Regional MNP" },
+                { key: "area", label: "Area" },
+                { key: "state", label: "State" },
+                { key: "distributor_count", label: "Distributors Added" },
+                { key: "target_monthly", label: "Monthly Target" },
+                { key: "orders", label: "Orders" },
+                { key: "revenue", label: "Revenue" },
+              ]}
+            />
+          }
+        >
+          {mnpsSummary.length === 0 ? <EmptyState title="No regional MNPs added yet" /> : (
+            <div className="overflow-x-auto">
+              <table className="yf-table w-full">
+                <thead>
+                  <tr>
+                    <th>Regional MNP</th><th>Area / State</th>
+                    <th className="text-right">Distributors Added</th>
+                    <th className="text-right">Monthly Target</th>
+                    <th className="text-right">Orders</th>
+                    <th className="text-right">Total Revenue</th>
+                    <th className="text-right">Achievement</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mnpsSummary.map((m) => {
+                    const ach = m.target_monthly > 0 ? Math.round((m.revenue / m.target_monthly) * 100) : 0;
+                    return (
+                      <tr key={m.mnp_id} data-testid={`mnp-perf-${m.mnp_id}`}>
+                        <td className="font-medium text-[#06182F]">{m.name}</td>
+                        <td className="text-xs">{m.area}{m.state ? `, ${m.state}` : ""}</td>
+                        <td className="text-right tabular font-semibold text-[#0A2342]">{m.distributor_count}</td>
+                        <td className="text-right tabular text-[#5C6670]">{fmt.inr(m.target_monthly)}</td>
+                        <td className="text-right tabular">{m.orders}</td>
+                        <td className="text-right tabular font-semibold text-[#06182F]">{fmt.inr(m.revenue)}</td>
+                        <td className="text-right">
+                          <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${ach >= 100 ? "bg-green-100 text-green-700" : ach >= 60 ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-[#5C6670]"}`}>
+                            {ach}%
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </PageSection>
+      )}
+
+      {(user.role === "admin" || user.role === "mnp") && (
+        <PageSection
+          title={user.role === "mnp" ? "My Distributor Network Performance" : "Distributor / Dealer Performance Breakdown"}
+          description="Revenue, orders, and credit limits per distributor"
+          actions={
+            <ExportButton
+              filename="yamini-flow-distributor-performance-{date}.csv"
               rows={mnpDealers}
               columns={[
-                { key: "name", label: "Dealer" },
+                { key: "name", label: "Distributor" },
                 { key: "city", label: "City" },
                 { key: "state", label: "State" },
                 { key: "credit_limit", label: "Credit Limit" },
@@ -134,28 +197,30 @@ export default function AnalyticsPage() {
             />
           }
         >
-          {mnpDealers.length === 0 ? <EmptyState title="No dealers to show" /> : (
-            <table className="yf-table w-full">
-              <thead>
-                <tr>
-                  <th>Dealer</th><th>City</th><th>State</th>
-                  <th className="text-right">Credit Limit</th>
-                  <th className="text-right">Orders</th><th className="text-right">Revenue</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mnpDealers.map((d) => (
-                  <tr key={d.dealer_id} data-testid={`dealer-perf-${d.dealer_id}`}>
-                    <td className="font-medium">{d.name}</td>
-                    <td>{d.city}</td>
-                    <td>{d.state}</td>
-                    <td className="text-right tabular">{fmt.inr(d.credit_limit)}</td>
-                    <td className="text-right tabular">{d.orders}</td>
-                    <td className="text-right tabular font-semibold">{fmt.inr(d.revenue)}</td>
+          {mnpDealers.length === 0 ? <EmptyState title="No distributors to show" /> : (
+            <div className="overflow-x-auto">
+              <table className="yf-table w-full">
+                <thead>
+                  <tr>
+                    <th>Distributor / Dealer</th><th>City</th><th>State</th>
+                    <th className="text-right">Credit Limit</th>
+                    <th className="text-right">Orders</th><th className="text-right">Revenue</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {mnpDealers.map((d) => (
+                    <tr key={d.dealer_id} data-testid={`dealer-perf-${d.dealer_id}`}>
+                      <td className="font-medium text-[#06182F]">{d.name}</td>
+                      <td>{d.city}</td>
+                      <td>{d.state}</td>
+                      <td className="text-right tabular text-[#5C6670]">{fmt.inr(d.credit_limit)}</td>
+                      <td className="text-right tabular">{d.orders}</td>
+                      <td className="text-right tabular font-semibold text-[#06182F]">{fmt.inr(d.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </PageSection>
       )}

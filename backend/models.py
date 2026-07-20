@@ -39,6 +39,19 @@ class CategoryIn(BaseModel):
     description: Optional[str] = ""
 
 
+# ---- Weight Matrix ----
+class WeightMatrixItem(BaseModel):
+    category: str  # e.g., "CSK CHIPBOARD SCREWS", "CSK DRYWALL SCREWS"
+    size: str      # e.g., "4X16", "3.5X25"
+    wt_1000_pcs_kg: float
+    qty_per_box: int = 1000
+    rate: float = 0.0
+    dealer_landing: float = 0.0
+    item_code: str
+    wd_basic: float = 0.0
+    wd_landing: float = 0.0
+
+
 # ---- Product ----
 class ProductIn(BaseModel):
     sku: str
@@ -47,8 +60,15 @@ class ProductIn(BaseModel):
     description: Optional[str] = ""
     unit: str = "pcs"
     weight_kg: float = 0
+    wt_1000_pcs_kg: float = 0
+    size: Optional[str] = ""
+    item_code: Optional[str] = ""
+    qty_per_box: int = 1000
     price: float = 0
     cost: float = 0
+    dealer_landing: float = 0
+    wd_basic: float = 0
+    wd_landing: float = 0
     gst: float = 18
     hsn: Optional[str] = ""
     moq: int = 1
@@ -126,13 +146,15 @@ class OrderIn(BaseModel):
 
 
 class OrderStatusUpdate(BaseModel):
-    status: Literal["pending", "approved", "reserved", "shipped", "delivered", "cancelled"]
+    status: Literal["pending", "approved", "reserved", "shipped", "delivered", "cancelled", "processing"]
 
 
 # ---- Purchase Order ----
 class PurchaseOrderItemIn(BaseModel):
     product_id: str
     quantity: int
+    quantity_kg: float = 0.0
+    weight_per_1000_pcs: float = 0.0
     rate: float
 
 

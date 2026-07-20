@@ -34,6 +34,7 @@ export default function ProductsPage() {
     } catch { toast.error("Failed to load products"); }
     finally { setLoading(false); }
   };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [q]);
 
   const openNew = () => { setEditing(null); setForm(emptyProduct); setDialogOpen(true); };

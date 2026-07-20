@@ -60,7 +60,7 @@ async def seed_all():
                         "credit_limit": 300000, "mnp_id": mnp_id})
 
     # Categories
-    categories = ["Electronics", "Appliances", "Hardware", "Furniture"]
+    categories = ["Electronics", "Appliances", "Hardware", "Furniture", "CSK Chipboard Screws", "CSK Drywall Screws"]
     for c in categories:
         await db.categories.update_one({"name": c}, {"$setOnInsert": {"name": c, "description": f"{c} category", "created_at": now_iso()}}, upsert=True)
 
@@ -79,34 +79,96 @@ async def seed_all():
     warehouses = await db.warehouses.find({}).to_list(100)
     wh_ids = [str(w["_id"]) for w in warehouses]
 
+    # Total Weight Matrix data (23 sizes of CSK Chipboard & Drywall Screws)
+    matrix_data = [
+        # CSK CHIPBOARD SCREWS
+        {"category": "CSK Chipboard Screws", "size": "4X16", "wt_1000_pcs_kg": 1.000, "qty_per_box": 1000, "rate": 556, "dealer_landing": 278, "item_code": "4CB16", "wd_basic": 195, "wd_landing": 231},
+        {"category": "CSK Chipboard Screws", "size": "4X20", "wt_1000_pcs_kg": 1.290, "qty_per_box": 1000, "rate": 689, "dealer_landing": 345, "item_code": "4CB20", "wd_basic": 242, "wd_landing": 286},
+        {"category": "CSK Chipboard Screws", "size": "4X25", "wt_1000_pcs_kg": 1.480, "qty_per_box": 1000, "rate": 791, "dealer_landing": 395, "item_code": "4CB25", "wd_basic": 278, "wd_landing": 328},
+        {"category": "CSK Chipboard Screws", "size": "4X30", "wt_1000_pcs_kg": 1.760, "qty_per_box": 1000, "rate": 940, "dealer_landing": 470, "item_code": "4CB30", "wd_basic": 331, "wd_landing": 390},
+        {"category": "CSK Chipboard Screws", "size": "4X35", "wt_1000_pcs_kg": 1.940, "qty_per_box": 500, "rate": 756, "dealer_landing": 378, "item_code": "4CB35", "wd_basic": 266, "wd_landing": 314},
+        {"category": "CSK Chipboard Screws", "size": "4X40", "wt_1000_pcs_kg": 2.230, "qty_per_box": 500, "rate": 869, "dealer_landing": 434, "item_code": "4CB40", "wd_basic": 306, "wd_landing": 361},
+        {"category": "CSK Chipboard Screws", "size": "4X45", "wt_1000_pcs_kg": 2.480, "qty_per_box": 500, "rate": 1846, "dealer_landing": 923, "item_code": "4CB45", "wd_basic": 649, "wd_landing": 766},
+        {"category": "CSK Chipboard Screws", "size": "4X50", "wt_1000_pcs_kg": 2.720, "qty_per_box": 400, "rate": 1620, "dealer_landing": 810, "item_code": "4CB50", "wd_basic": 570, "wd_landing": 672},
+        {"category": "CSK Chipboard Screws", "size": "5X20", "wt_1000_pcs_kg": 2.310, "qty_per_box": 500, "rate": 1100, "dealer_landing": 550, "item_code": "5CB20", "wd_basic": 385, "wd_landing": 454},
+        {"category": "CSK Chipboard Screws", "size": "5X25", "wt_1000_pcs_kg": 2.600, "qty_per_box": 500, "rate": 1250, "dealer_landing": 625, "item_code": "5CB25", "wd_basic": 438, "wd_landing": 517},
+        {"category": "CSK Chipboard Screws", "size": "5X30", "wt_1000_pcs_kg": 2.890, "qty_per_box": 500, "rate": 1400, "dealer_landing": 700, "item_code": "5CB30", "wd_basic": 490, "wd_landing": 578},
+        {"category": "CSK Chipboard Screws", "size": "5X35", "wt_1000_pcs_kg": 3.180, "qty_per_box": 400, "rate": 1550, "dealer_landing": 775, "item_code": "5CB35", "wd_basic": 543, "wd_landing": 640},
+        {"category": "CSK Chipboard Screws", "size": "5X40", "wt_1000_pcs_kg": 3.470, "qty_per_box": 400, "rate": 1700, "dealer_landing": 850, "item_code": "5CB40", "wd_basic": 595, "wd_landing": 702},
+        {"category": "CSK Chipboard Screws", "size": "5X45", "wt_1000_pcs_kg": 3.770, "qty_per_box": 300, "rate": 1850, "dealer_landing": 925, "item_code": "5CB45", "wd_basic": 648, "wd_landing": 765},
+        {"category": "CSK Chipboard Screws", "size": "5X50", "wt_1000_pcs_kg": 4.050, "qty_per_box": 300, "rate": 2000, "dealer_landing": 1000, "item_code": "5CB50", "wd_basic": 700, "wd_landing": 826},
+        # CSK DRYWALL SCREWS
+        {"category": "CSK Drywall Screws", "size": "3.5X16", "wt_1000_pcs_kg": 0.67, "qty_per_box": 1000, "rate": 322, "dealer_landing": 161, "item_code": "35D16", "wd_basic": 122, "wd_landing": 144},
+        {"category": "CSK Drywall Screws", "size": "3.5X19", "wt_1000_pcs_kg": 0.92, "qty_per_box": 1000, "rate": 368, "dealer_landing": 184, "item_code": "35D19", "wd_basic": 139, "wd_landing": 164},
+        {"category": "CSK Drywall Screws", "size": "3.5X25", "wt_1000_pcs_kg": 1.13, "qty_per_box": 1000, "rate": 450, "dealer_landing": 225, "item_code": "35D25", "wd_basic": 170, "wd_landing": 201},
+        {"category": "CSK Drywall Screws", "size": "3.5X32", "wt_1000_pcs_kg": 1.35, "qty_per_box": 750, "rate": 452, "dealer_landing": 226, "item_code": "35D32", "wd_basic": 171, "wd_landing": 202},
+        {"category": "CSK Drywall Screws", "size": "3.5X38", "wt_1000_pcs_kg": 1.53, "qty_per_box": 500, "rate": 351, "dealer_landing": 175, "item_code": "35D38", "wd_basic": 133, "wd_landing": 157},
+        {"category": "CSK Drywall Screws", "size": "3.5X50", "wt_1000_pcs_kg": 1.91, "qty_per_box": 500, "rate": 641, "dealer_landing": 321, "item_code": "35D50", "wd_basic": 243, "wd_landing": 286},
+        {"category": "CSK Drywall Screws", "size": "3.5X60", "wt_1000_pcs_kg": 2.28, "qty_per_box": 400, "rate": 619, "dealer_landing": 309, "item_code": "35D60", "wd_basic": 234, "wd_landing": 276},
+        {"category": "CSK Drywall Screws", "size": "3.5X75", "wt_1000_pcs_kg": 2.68, "qty_per_box": 200, "rate": 774, "dealer_landing": 387, "item_code": "35D75", "wd_basic": 293, "wd_landing": 346},
+    ]
+
+    for md in matrix_data:
+        await db.weight_matrix.update_one(
+            {"item_code": md["item_code"]},
+            {"$set": {**md, "updated_at": now_iso()}, "$setOnInsert": {"created_at": now_iso()}},
+            upsert=True
+        )
+
     # Products
     if await db.products.count_documents({}) == 0:
         prods = [
             {"sku": "LED-BLB-9W", "name": "LED Bulb 9W", "category": "Electronics", "description": "Energy efficient LED",
-             "unit": "pcs", "weight_kg": 0.05, "price": 120, "cost": 75, "gst": 18, "hsn": "8539",
+             "unit": "pcs", "weight_kg": 0.05, "wt_1000_pcs_kg": 50.0, "price": 120, "cost": 75, "gst": 18, "hsn": "8539",
              "moq": 50, "safety_stock": 200, "lead_time_days": 5, "status": "active",
              "primary_supplier_id": supplier_id},
             {"sku": "CEIL-FAN-48", "name": "Ceiling Fan 48\"", "category": "Appliances",
-             "description": "High speed ceiling fan", "unit": "pcs", "weight_kg": 4.5, "price": 2200, "cost": 1600,
+             "description": "High speed ceiling fan", "unit": "pcs", "weight_kg": 4.5, "wt_1000_pcs_kg": 4500.0, "price": 2200, "cost": 1600,
              "gst": 18, "hsn": "8414", "moq": 5, "safety_stock": 20, "lead_time_days": 7,
              "status": "active", "primary_supplier_id": supplier_id},
             {"sku": "SCRW-6MM", "name": "Screws 6mm (pack of 100)", "category": "Hardware",
-             "description": "Steel screws", "unit": "pack", "weight_kg": 0.3, "price": 180, "cost": 110,
+             "description": "Steel screws", "unit": "pack", "weight_kg": 0.3, "wt_1000_pcs_kg": 3.0, "price": 180, "cost": 110,
              "gst": 18, "hsn": "7318", "moq": 10, "safety_stock": 50, "lead_time_days": 4,
              "status": "active", "primary_supplier_id": supplier_id},
             {"sku": "OFC-CHR-BLK", "name": "Office Chair Black", "category": "Furniture",
-             "description": "Ergonomic office chair", "unit": "pcs", "weight_kg": 12, "price": 6500,
+             "description": "Ergonomic office chair", "unit": "pcs", "weight_kg": 12, "wt_1000_pcs_kg": 12000.0, "price": 6500,
              "cost": 4800, "gst": 18, "hsn": "9401", "moq": 2, "safety_stock": 10, "lead_time_days": 10,
              "status": "active", "primary_supplier_id": supplier_id},
             {"sku": "MICROW-25L", "name": "Microwave 25L", "category": "Appliances",
-             "description": "Convection microwave", "unit": "pcs", "weight_kg": 15, "price": 8900,
+             "description": "Convection microwave", "unit": "pcs", "weight_kg": 15, "wt_1000_pcs_kg": 15000.0, "price": 8900,
              "cost": 6700, "gst": 18, "hsn": "8516", "moq": 2, "safety_stock": 8, "lead_time_days": 12,
              "status": "active", "primary_supplier_id": supplier_id},
             {"sku": "USB-CBL-C", "name": "USB-C Cable 1m", "category": "Electronics",
-             "description": "Fast charging USB-C", "unit": "pcs", "weight_kg": 0.1, "price": 250,
+             "description": "Fast charging USB-C", "unit": "pcs", "weight_kg": 0.1, "wt_1000_pcs_kg": 100.0, "price": 250,
              "cost": 130, "gst": 18, "hsn": "8544", "moq": 25, "safety_stock": 100, "lead_time_days": 3,
              "status": "active", "primary_supplier_id": supplier_id},
         ]
+        # Also include all 23 matrix screw items as products so they show up across catalog and orders!
+        for md in matrix_data:
+            prods.append({
+                "sku": md["item_code"],
+                "name": f"{md['category']} {md['size']}",
+                "category": md["category"],
+                "description": f"CSK Screw size {md['size']} ({md['wt_1000_pcs_kg']} kg per 1000 pcs)",
+                "unit": "pcs",
+                "weight_kg": round(md["wt_1000_pcs_kg"] / 1000.0, 5),
+                "wt_1000_pcs_kg": md["wt_1000_pcs_kg"],
+                "size": md["size"],
+                "item_code": md["item_code"],
+                "qty_per_box": md["qty_per_box"],
+                "price": md["rate"],
+                "cost": md["dealer_landing"],
+                "dealer_landing": md["dealer_landing"],
+                "wd_basic": md["wd_basic"],
+                "wd_landing": md["wd_landing"],
+                "gst": 18,
+                "hsn": "7318",
+                "moq": md["qty_per_box"],
+                "safety_stock": md["qty_per_box"] * 5,
+                "lead_time_days": 5,
+                "status": "active",
+                "primary_supplier_id": supplier_id,
+            })
         for p in prods:
             p["created_at"] = now_iso()
             p["updated_at"] = now_iso()
@@ -257,3 +319,16 @@ async def create_indexes():
     await db.tally_sync_logs.create_index("created_at")
     await db.tally_webhook_events.create_index([("voucher_no", 1), ("guid", 1)])
     await db.tally_webhook_events.create_index("received_at")
+    await db.weight_matrix.create_index("item_code", unique=True)
+    await db.collations.create_index("batch_no", unique=True)
+
+
+if __name__ == "__main__":
+    import asyncio
+    async def main():
+        print("Creating indexes...")
+        await create_indexes()
+        print("Seeding database...")
+        await seed_all()
+        print("Database seed complete!")
+    asyncio.run(main())

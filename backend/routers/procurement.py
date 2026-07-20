@@ -1,13 +1,342 @@
-"""Procurement engine + Purchase Orders."""
+"""Procurement engine + Purchase Orders + Intelligent Order Collation & Weight Matrix."""
+from typing import Optional
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from db import db, serialize_doc, serialize_docs, now_iso
 from auth import get_current_user, require_admin
-from models import PurchaseOrderIn, POStatusUpdate
+from models import PurchaseOrderIn, POStatusUpdate, WeightMatrixItem
 
 router = APIRouter(tags=["procurement"])
 
 
+class CollateTriggerIn(BaseModel):
+    triggered_by: str = "manual"
+
+
+# ================== TOTAL WEIGHT MATRIX ENDPOINTS ==================
+@router.get("/procurement/weight-matrix")
+async def list_weight_matrix(category: str = "", q: str = "", user: dict = Depends(get_current_user)):
+    """List the Total Weight Matrix items (CSK Chipboard Screws, CSK Drywall Screws, etc.)."""
+    query = {}
+    if category:
+        query["category"] = category
+    if q:
+        query["$or"] = [
+            {"item_code": {"$regex": q, "$options": "i"}},
+            {"size": {"$regex": q, "$options": "i"}},
+            {"category": {"$regex": q, "$options": "i"}},
+        ]
+    docs = await db.weight_matrix.find(query).sort([("category", 1), ("wt_1000_pcs_kg", 1)]).to_list(1000)
+    return serialize_docs(docs)
+
+
+@router.post("/procurement/weight-matrix")
+async def upsert_weight_matrix_item(payload: WeightMatrixItem, admin: dict = Depends(require_admin)):
+    """Insert or update a Weight Matrix item and sync corresponding product."""
+    doc = payload.model_dump()
+    doc["updated_at"] = now_iso()
+    await db.weight_matrix.update_one(
+        {"item_code": payload.item_code},
+        {"$set": doc, "$setOnInsert": {"created_at": now_iso()}},
+        upsert=True,
+    )
+    # Also sync/update product if it exists
+    await db.products.update_one(
+        {"sku": payload.item_code},
+        {"$set": {
+            "name": f"{payload.category} {payload.size}",
+            "category": payload.category,
+            "wt_1000_pcs_kg": payload.wt_1000_pcs_kg,
+            "weight_kg": round(payload.wt_1000_pcs_kg / 1000.0, 5),
+            "size": payload.size,
+            "qty_per_box": payload.qty_per_box,
+            "price": payload.rate,
+            "cost": payload.dealer_landing,
+            "dealer_landing": payload.dealer_landing,
+            "wd_basic": payload.wd_basic,
+            "wd_landing": payload.wd_landing,
+            "updated_at": now_iso(),
+        }}
+    )
+    res = await db.weight_matrix.find_one({"item_code": payload.item_code})
+    return serialize_doc(res)
+
+
+# ================== UNCOLLATED ORDERS SUMMARY ==================
+@router.get("/procurement/uncollated-summary")
+async def get_uncollated_summary(user: dict = Depends(get_current_user)):
+    """Analyze pending/approved orders that haven't been collated into weight-based supplier POs."""
+    uncollated = await db.orders.find({
+        "status": {"$in": ["pending", "approved"]},
+        "collated": {"$ne": True}
+    }).to_list(2000)
+
+    total_orders = len(uncollated)
+    demanded_pcs_map = {}
+    for o in uncollated:
+        for item in o.get("items", []):
+            pid = item["product_id"]
+            demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + item.get("quantity", 0)
+
+    # Load products and inventory
+    prod_ids = [ObjectId(pid) for pid in demanded_pcs_map.keys() if ObjectId.is_valid(pid)]
+    prods = {str(p["_id"]): p for p in await db.products.find({"_id": {"$in": prod_ids}}).to_list(1000)}
+    inv_docs = await db.inventory.find({}).to_list(5000)
+    inv_agg = {}
+    for idx in inv_docs:
+        pid = idx["product_id"]
+        inv_agg[pid] = inv_agg.get(pid, 0) + max(0, idx.get("quantity", 0) - idx.get("reserved", 0))
+
+    # Suppliers map
+    supplier_ids = list({p["primary_supplier_id"] for p in prods.values() if p.get("primary_supplier_id")})
+    suppliers = {str(s["_id"]): s for s in await db.users.find({"_id": {"$in": [ObjectId(sid) for sid in supplier_ids if ObjectId.is_valid(sid)]}}).to_list(200)}
+
+    items_breakdown = []
+    total_pcs = 0
+    total_kg = 0.0
+
+    for pid, dem_qty in demanded_pcs_map.items():
+        p = prods.get(pid)
+        if not p:
+            continue
+        avail = inv_agg.get(pid, 0)
+        safety = p.get("safety_stock", 0)
+        deficit_pcs = max(0, dem_qty + safety - avail)
+        # If deficit is 0 but demand > 0, we still collate at least demanded or deficit
+        qty_to_order_pcs = max(deficit_pcs, dem_qty if avail < dem_qty else deficit_pcs)
+        wt_1000 = p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0)
+        if wt_1000 == 0.0:
+            wt_1000 = 1.0  # fallback weight per 1000 pcs if unknown
+        req_kg = round((qty_to_order_pcs / 1000.0) * wt_1000, 4)
+
+        sid = p.get("primary_supplier_id")
+        sup = suppliers.get(str(sid)) if sid else None
+
+        items_breakdown.append({
+            "product_id": pid,
+            "sku": p.get("sku", ""),
+            "product_name": p.get("name", ""),
+            "category": p.get("category", ""),
+            "size": p.get("size", ""),
+            "demanded_pcs": dem_qty,
+            "available_pcs": avail,
+            "safety_stock": safety,
+            "recommended_pcs": qty_to_order_pcs,
+            "wt_1000_pcs_kg": wt_1000,
+            "recommended_weight_kg": req_kg,
+            "supplier_id": str(sid) if sid else "",
+            "supplier_name": (sup.get("company") or sup.get("name")) if sup else "Unassigned Supplier",
+            "rate": p.get("cost", 0) or p.get("price", 0),
+        })
+        total_pcs += dem_qty
+        total_kg += req_kg
+
+    items_breakdown.sort(key=lambda x: -x["recommended_weight_kg"])
+    return {
+        "total_orders": total_orders,
+        "total_demanded_pcs": total_pcs,
+        "estimated_total_kg": round(total_kg, 2),
+        "items": items_breakdown,
+    }
+
+
+# ================== CORE COLLATION ENGINE ==================
+async def execute_order_collation(triggered_by: str = "manual", actor: Optional[dict] = None) -> dict:
+    """Core logic: aggregates uncollated orders, computes kg weight, creates grouped supplier POs, marks orders collated."""
+    uncollated = await db.orders.find({
+        "status": {"$in": ["pending", "approved"]},
+        "collated": {"$ne": True}
+    }).to_list(5000)
+
+    if not uncollated:
+        return {
+            "status": "noop",
+            "batch_no": None,
+            "message": "No uncollated orders found.",
+            "orders_count": 0,
+            "po_count": 0,
+            "total_pcs": 0,
+            "total_kg": 0.0
+        }
+
+    # Generate Batch number
+    count = await db.collations.count_documents({})
+    batch_no = f"COL-2026{(count + 1):04d}"
+
+    # Sum demand per product
+    demanded_pcs_map = {}
+    for o in uncollated:
+        for item in o.get("items", []):
+            pid = item["product_id"]
+            demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + item.get("quantity", 0)
+
+    prod_ids = [ObjectId(pid) for pid in demanded_pcs_map.keys() if ObjectId.is_valid(pid)]
+    prods = {str(p["_id"]): p for p in await db.products.find({"_id": {"$in": prod_ids}}).to_list(1000)}
+    inv_docs = await db.inventory.find({}).to_list(5000)
+    inv_agg = {}
+    for idx in inv_docs:
+        pid = idx["product_id"]
+        inv_agg[pid] = inv_agg.get(pid, 0) + max(0, idx.get("quantity", 0) - idx.get("reserved", 0))
+
+    # Group by supplier
+    by_supplier = {}
+    total_pcs = 0
+    total_kg = 0.0
+
+    for pid, dem_qty in demanded_pcs_map.items():
+        p = prods.get(pid)
+        if not p:
+            continue
+        avail = inv_agg.get(pid, 0)
+        safety = p.get("safety_stock", 0)
+        deficit_pcs = max(0, dem_qty + safety - avail)
+        qty_to_order_pcs = max(deficit_pcs, dem_qty if avail < dem_qty else deficit_pcs)
+        if qty_to_order_pcs <= 0:
+            continue
+
+        wt_1000 = p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0)
+        if wt_1000 == 0.0:
+            wt_1000 = 1.0
+        req_kg = round((qty_to_order_pcs / 1000.0) * wt_1000, 4)
+
+        sid = p.get("primary_supplier_id") or "unassigned"
+        if sid not in by_supplier:
+            by_supplier[sid] = []
+
+        rate = p.get("cost", 0) or p.get("price", 0)
+        by_supplier[sid].append({
+            "product_id": pid,
+            "product_name": p.get("name", ""),
+            "sku": p.get("sku", ""),
+            "quantity": qty_to_order_pcs,
+            "quantity_kg": req_kg,
+            "weight_per_1000_pcs": wt_1000,
+            "rate": rate,
+            "amount": round(qty_to_order_pcs * rate, 2),
+        })
+        total_pcs += qty_to_order_pcs
+        total_kg += req_kg
+
+    # Default warehouse for POs
+    warehouses = await db.warehouses.find({}).to_list(10)
+    wh_id = str(warehouses[0]["_id"]) if warehouses else ""
+
+    po_ids = []
+    po_nos = []
+    supplier_users = {str(s["_id"]): s for s in await db.users.find({"role": "supplier"}).to_list(100)}
+
+    for sid, items in by_supplier.items():
+        if sid == "unassigned" and not items:
+            continue
+        subtotal = sum(i["amount"] for i in items)
+        po_count = await db.purchase_orders.count_documents({})
+        po_no = f"PO-2026{(po_count + len(po_ids) + 1):04d}"
+
+        sup_name = "Assigned Supplier"
+        if sid in supplier_users:
+            sup_name = supplier_users[sid].get("company") or supplier_users[sid].get("name")
+
+        po_doc = {
+            "po_no": po_no,
+            "supplier_id": sid if sid != "unassigned" else "",
+            "supplier_name": sup_name,
+            "warehouse_id": wh_id,
+            "items": items,
+            "subtotal": round(subtotal, 2),
+            "gst": round(subtotal * 0.18, 2),
+            "total": round(subtotal * 1.18, 2),
+            "status": "draft",
+            "expected_delivery": "",
+            "notes": f"Auto-collated batch {batch_no} ({triggered_by}) — Weight-converted PO",
+            "collation_batch_no": batch_no,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        }
+        res = await db.purchase_orders.insert_one(po_doc)
+        po_ids.append(str(res.inserted_id))
+        po_nos.append(po_no)
+
+        if sid in supplier_users:
+            await db.notifications.insert_one({
+                "user_id": sid,
+                "title": f"New Weight PO {po_no} ({batch_no})",
+                "body": f"Collated weight order: ₹{po_doc['total']:.0f} — {len(items)} items",
+                "kind": "info",
+                "read": False,
+                "created_at": now_iso(),
+            })
+
+    # Mark source orders collated
+    order_ids = [o["_id"] for o in uncollated]
+    await db.orders.update_many(
+        {"_id": {"$in": order_ids}},
+        {"$set": {
+            "collated": True,
+            "collation_batch_no": batch_no,
+            "status": "processing",
+            "updated_at": now_iso()
+        }}
+    )
+
+    # Record Collation Batch
+    batch_doc = {
+        "batch_no": batch_no,
+        "triggered_by": triggered_by,
+        "orders_count": len(uncollated),
+        "total_pcs": total_pcs,
+        "total_kg": round(total_kg, 2),
+        "po_ids": po_ids,
+        "po_nos": po_nos,
+        "created_at": now_iso(),
+    }
+    await db.collations.insert_one(batch_doc)
+
+    # Notify Admin
+    await db.notifications.insert_one({
+        "role": "admin",
+        "title": f"Order Collation {batch_no} Completed",
+        "body": f"Collated {len(uncollated)} orders into {len(po_ids)} weight POs ({total_kg:.2f} KG total).",
+        "kind": "success",
+        "read": False,
+        "created_at": now_iso(),
+    })
+
+    # Audit
+    await db.audit_logs.insert_one({
+        "actor_id": actor["id"] if actor else "system_12am_scheduler",
+        "actor_email": actor["email"] if actor else "auto-scheduler@yaminiflow.com",
+        "action": "procurement.collate",
+        "target": batch_no,
+        "meta": {"orders_count": len(uncollated), "po_count": len(po_ids), "total_kg": round(total_kg, 2), "triggered_by": triggered_by},
+        "created_at": now_iso(),
+    })
+
+    return {
+        "status": "success",
+        "batch_no": batch_no,
+        "orders_count": len(uncollated),
+        "po_count": len(po_ids),
+        "po_nos": po_nos,
+        "total_pcs": total_pcs,
+        "total_kg": round(total_kg, 2),
+    }
+
+
+@router.post("/procurement/collate")
+async def trigger_collate_endpoint(payload: CollateTriggerIn = CollateTriggerIn(triggered_by="manual"), admin: dict = Depends(require_admin)):
+    """API endpoint triggered by Admin click ('Collate Orders' button)."""
+    return await execute_order_collation(triggered_by=payload.triggered_by, actor=admin)
+
+
+@router.get("/procurement/collations")
+async def list_collations(user: dict = Depends(get_current_user)):
+    """List historical order collation batches."""
+    docs = await db.collations.find({}).sort("created_at", -1).to_list(200)
+    return serialize_docs(docs)
+
+
+# ================== RECOMMENDATIONS & PO ENDPOINTS ==================
 @router.get("/procurement/recommendations")
 async def procurement_recommendations(admin: dict = Depends(get_current_user)):
     """Compute deficit = safety_stock + pending_demand - available for each product across warehouses."""
@@ -38,6 +367,10 @@ async def procurement_recommendations(admin: dict = Depends(get_current_user)):
         required = safety + pending
         deficit = max(0, required - available)
         if deficit > 0 or available < safety:
+            rec_qty = max(deficit, p.get("moq", 1))
+            wt_1000 = p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0)
+            if wt_1000 == 0.0:
+                wt_1000 = 1.0
             recs.append({
                 "product_id": pid,
                 "product_name": p["name"],
@@ -46,7 +379,9 @@ async def procurement_recommendations(admin: dict = Depends(get_current_user)):
                 "available": available,
                 "safety_stock": safety,
                 "pending_demand": pending,
-                "recommended_qty": max(deficit, p.get("moq", 1)),
+                "recommended_qty": rec_qty,
+                "wt_1000_pcs_kg": wt_1000,
+                "recommended_weight_kg": round((rec_qty / 1000.0) * wt_1000, 4),
                 "moq": p.get("moq", 1),
                 "lead_time_days": p.get("lead_time_days", 7),
                 "supplier_id": p.get("primary_supplier_id"),
@@ -54,7 +389,7 @@ async def procurement_recommendations(admin: dict = Depends(get_current_user)):
                 "urgency": "critical" if available < safety * 0.5 else ("high" if available < safety else "medium"),
             })
     # Enrich supplier name
-    sup_ids = [ObjectId(r["supplier_id"]) for r in recs if r.get("supplier_id")]
+    sup_ids = [ObjectId(r["supplier_id"]) for r in recs if r.get("supplier_id") and ObjectId.is_valid(r["supplier_id"])]
     suppliers = {str(s["_id"]): s for s in await db.users.find({"_id": {"$in": sup_ids}}).to_list(200)}
     for r in recs:
         s = suppliers.get(r.get("supplier_id"))
@@ -91,7 +426,7 @@ async def get_po(po_id: str, user: dict = Depends(get_current_user)):
 
 @router.post("/purchase-orders")
 async def create_po(payload: PurchaseOrderIn, admin: dict = Depends(require_admin)):
-    prod_ids = [ObjectId(i.product_id) for i in payload.items]
+    prod_ids = [ObjectId(i.product_id) for i in payload.items if ObjectId.is_valid(i.product_id)]
     products = {str(p["_id"]): p for p in await db.products.find({"_id": {"$in": prod_ids}}).to_list(500)}
     items_out = []
     total = 0
@@ -100,11 +435,16 @@ async def create_po(payload: PurchaseOrderIn, admin: dict = Depends(require_admi
         if not p:
             raise HTTPException(400, f"Product {i.product_id} not found")
         amount = i.quantity * i.rate
-        items_out.append({"product_id": i.product_id, "product_name": p["name"],
-                          "sku": p["sku"], "quantity": i.quantity, "rate": i.rate, "amount": amount})
+        wt_1000 = p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0) or 1.0
+        qty_kg = i.quantity_kg if i.quantity_kg > 0 else round((i.quantity / 1000.0) * wt_1000, 4)
+        items_out.append({
+            "product_id": i.product_id, "product_name": p["name"],
+            "sku": p["sku"], "quantity": i.quantity, "quantity_kg": qty_kg,
+            "weight_per_1000_pcs": wt_1000, "rate": i.rate, "amount": amount
+        })
         total += amount
 
-    supplier = await db.users.find_one({"_id": ObjectId(payload.supplier_id)})
+    supplier = await db.users.find_one({"_id": ObjectId(payload.supplier_id)}) if ObjectId.is_valid(payload.supplier_id) else None
     if not supplier:
         raise HTTPException(400, "Supplier not found")
     po_no = await _po_number()
@@ -128,7 +468,7 @@ async def create_po(payload: PurchaseOrderIn, admin: dict = Depends(require_admi
 
     await db.notifications.insert_one({
         "user_id": payload.supplier_id, "title": f"New Purchase Order {po_no}",
-        "body": f"₹{doc['total']:.0f} — {len(items_out)} items",
+        "body": f"₹{doc['total']:.0f} — {len(items_out)} items ({sum(i['quantity_kg'] for i in items_out):.2f} kg)",
         "kind": "info", "read": False, "created_at": now_iso(),
     })
     await db.audit_logs.insert_one({
@@ -141,7 +481,7 @@ async def create_po(payload: PurchaseOrderIn, admin: dict = Depends(require_admi
 
 @router.patch("/purchase-orders/{po_id}/status")
 async def update_po_status(po_id: str, payload: POStatusUpdate,
-                            user: dict = Depends(get_current_user)):
+                             user: dict = Depends(get_current_user)):
     if user["role"] not in ("admin", "supplier"):
         raise HTTPException(403, "Forbidden")
     doc = await db.purchase_orders.find_one({"_id": ObjectId(po_id)})

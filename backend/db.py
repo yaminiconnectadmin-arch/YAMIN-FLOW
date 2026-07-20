@@ -1,5 +1,9 @@
 """MongoDB connection and base models with proper ObjectId handling."""
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent / ".env")
+
 from datetime import datetime, timezone
 from typing import Annotated, Any, Optional
 from bson import ObjectId
