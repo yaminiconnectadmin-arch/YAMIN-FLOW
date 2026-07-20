@@ -15,7 +15,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/login")
 async def login(payload: LoginInput, request: Request, response: Response):
-    ident = payload.email.strip()
+    ident = (payload.login_id or payload.user_code or payload.username or payload.email or "").strip()
+    if not ident:
+        raise HTTPException(status_code=400, detail="Login ID or Email is required")
     ip = request.client.host if request.client else "unknown"
     identifier = f"{ip}:{ident.lower()}"
     await brute_force_check(identifier)

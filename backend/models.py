@@ -9,7 +9,10 @@ Role = Literal["admin", "dealer", "mnp", "supplier"]
 # ---- Auth ----
 # ---- Auth ----
 class LoginInput(BaseModel):
-    email: str  # can be email address or distributor login id (e.g. D-ST-MH-101)
+    email: Optional[str] = None
+    login_id: Optional[str] = None
+    user_code: Optional[str] = None
+    username: Optional[str] = None
     password: str
 
 

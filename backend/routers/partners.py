@@ -54,12 +54,36 @@ async def _generate_distributor_code(company: str, name: str, state: str) -> str
     return await _generate_partner_code(company, name, state, prefix="D", role="dealer")
 
 
+async def _resolve_dealer_mnp(mnp_id_raw: Optional[str]) -> tuple:
+    if not mnp_id_raw or str(mnp_id_raw).strip().lower() in ["", "direct", "none", "null"]:
+        return None, "DIRECT", "Direct (Yamini Flow HQ)"
+    try:
+        m = await db.users.find_one({"_id": ObjectId(mnp_id_raw), "role": "mnp"})
+        if m:
+            code = m.get("user_code") or m.get("login_id") or "M-ASSIGNED"
+            name = m.get("name") or "Regional MNP"
+            return str(m["_id"]), code, name
+    except Exception:
+        pass
+    return None, "DIRECT", "Direct (Yamini Flow HQ)"
+
+
 async def _list_role(role: str, mnp_id: str = None):
     q = {"role": role}
     if mnp_id:
         q["mnp_id"] = mnp_id
     docs = await db.users.find(q).sort("created_at", -1).to_list(1000)
     out = []
+
+    mnp_map = {}
+    if role == "dealer":
+        mnp_docs = await db.users.find({"role": "mnp"}).to_list(1000)
+        for m in mnp_docs:
+            mnp_map[str(m["_id"])] = {
+                "code": m.get("user_code") or m.get("login_id") or "M-ASSIGNED",
+                "name": m.get("name") or "Regional MNP"
+            }
+
     for d in docs:
         if role in ["dealer", "mnp"] and not d.get("login_id") and not d.get("user_code"):
             prefix = "M" if role == "mnp" else "D"
@@ -69,6 +93,17 @@ async def _list_role(role: str, mnp_id: str = None):
             d["login_id"] = code
         s = serialize_doc(d)
         s.pop("password_hash", None)
+
+        if role == "dealer":
+            mid = str(d.get("mnp_id") or "")
+            if mid and mid in mnp_map:
+                s["mnp_code"] = mnp_map[mid]["code"]
+                s["mnp_name"] = mnp_map[mid]["name"]
+                s["assignment_type"] = f"MNP ({s['mnp_code']})"
+            else:
+                s["mnp_code"] = "DIRECT"
+                s["mnp_name"] = "Direct (Yamini Flow HQ)"
+                s["assignment_type"] = "Direct (HQ)"
         out.append(s)
     return out
 
@@ -93,7 +128,8 @@ async def create_dealer(payload: DealerIn, user: dict = Depends(require_admin_or
         email_val = f"{code.lower()}@distributor.yaminiflow.com"
 
     # If MNP is creating distributor, link directly to them
-    mnp_id = user["id"] if user.get("role") == "mnp" else payload.mnp_id
+    mnp_id_raw = user["id"] if user.get("role") == "mnp" else payload.mnp_id
+    mid, mcode, mname = await _resolve_dealer_mnp(mnp_id_raw)
     raw_pwd = payload.password or f"Dist@{secrets.randbelow(9000)+1000}"
     
     doc = {
@@ -105,7 +141,8 @@ async def create_dealer(payload: DealerIn, user: dict = Depends(require_admin_or
         "phone": payload.phone, "company": payload.company,
         "city": payload.city, "state": payload.state,
         "gstin": payload.gstin, "credit_limit": payload.credit_limit,
-        "mnp_id": mnp_id, "status": "active",
+        "mnp_id": mid, "mnp_code": mcode, "mnp_name": mname,
+        "status": "active",
         "created_at": now_iso(), "updated_at": now_iso(),
     }
     res = await db.users.insert_one(doc)
@@ -113,6 +150,7 @@ async def create_dealer(payload: DealerIn, user: dict = Depends(require_admin_or
     s = serialize_doc(doc)
     s.pop("password_hash", None)
     s["raw_password"] = raw_pwd
+    s["assignment_type"] = f"MNP ({mcode})" if mid else "Direct (HQ)"
     return s
 
 
@@ -128,7 +166,10 @@ async def update_dealer(dealer_id: str, payload: DealerIn, user: dict = Depends(
               "credit_limit": payload.credit_limit,
               "updated_at": now_iso()}
     if user.get("role") == "admin":
-        update["mnp_id"] = payload.mnp_id
+        mid, mcode, mname = await _resolve_dealer_mnp(payload.mnp_id)
+        update["mnp_id"] = mid
+        update["mnp_code"] = mcode
+        update["mnp_name"] = mname
         
     res = await db.users.update_one(q, {"$set": update})
     if res.matched_count == 0:

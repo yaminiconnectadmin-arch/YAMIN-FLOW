@@ -266,6 +266,7 @@ export default function ProcurementPage() {
                     <thead>
                       <tr>
                         <th>SKU / Item Code</th><th>Fastener Description</th><th>Category</th>
+                        <th>Ordering Distributor(s)</th><th>Assigned Under</th>
                         <th className="text-right">Demanded PCS</th><th className="text-right">Net Deficit</th>
                         <th className="text-right">WT / 1000 PCS</th><th className="text-right">Required Weight</th>
                         <th>Assigned Primary Supplier</th>
@@ -277,6 +278,30 @@ export default function ProcurementPage() {
                           <td className="font-mono font-bold text-xs text-[#1D242B]">{it.sku}</td>
                           <td className="font-medium">{it.product_name}</td>
                           <td><span className="px-2 py-0.5 text-[11px] font-medium bg-[#F3F4F6] text-[#4B5563] rounded">{it.category}</span></td>
+                          <td>
+                            <div className="flex flex-wrap gap-1 max-w-[160px]">
+                              {it.dealer_codes && it.dealer_codes.length > 0 ? (
+                                it.dealer_codes.map((c, idx) => (
+                                  <span key={idx} className="bg-[#FEF08A] text-[#854D0E] font-mono text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm">{c}</span>
+                                ))
+                              ) : (
+                                <span className="text-xs text-[#5C6670]">—</span>
+                              )}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="flex flex-wrap gap-1 max-w-[160px]">
+                              {it.mnp_codes && it.mnp_codes.length > 0 ? (
+                                it.mnp_codes.map((c, idx) => c !== "DIRECT" ? (
+                                  <span key={idx} className="bg-[#BAE6FD] text-[#0369A1] font-mono text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm" title="Assigned MNP">🏷️ {c}</span>
+                                ) : (
+                                  <span key={idx} className="bg-[#E6F4EA] text-[#137333] font-medium text-[11px] px-1.5 py-0.5 rounded border border-[#CEEAD6]">⚡ Direct</span>
+                                ))
+                              ) : (
+                                <span className="text-xs text-[#5C6670]">—</span>
+                              )}
+                            </div>
+                          </td>
                           <td className="text-right tabular font-semibold">{fmt.num(it.demanded_pcs)} pcs</td>
                           <td className="text-right tabular text-[#5C6670]">{fmt.num(it.recommended_pcs)} pcs</td>
                           <td className="text-right tabular font-mono text-xs text-[#3B82F6]">{it.wt_1000_pcs_kg} kg</td>

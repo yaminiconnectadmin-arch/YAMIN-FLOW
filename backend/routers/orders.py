@@ -14,6 +14,38 @@ async def _order_number() -> str:
     return f"ORD-2026{(count + 1):04d}"
 
 
+async def _enrich_orders(docs: list) -> list:
+    out = serialize_docs(docs)
+    if not out:
+        return out
+    dealer_ids = {d["dealer_id"] for d in out if d.get("dealer_id") and ObjectId.is_valid(d["dealer_id"])}
+    if not dealer_ids:
+        return out
+    dealers = {str(u["_id"]): u for u in await db.users.find({"_id": {"$in": [ObjectId(x) for x in dealer_ids]}}).to_list(1000)}
+    mnp_ids = {u.get("mnp_id") for u in dealers.values() if u.get("mnp_id") and ObjectId.is_valid(u.get("mnp_id"))}
+    mnps = {str(m["_id"]): m for m in await db.users.find({"_id": {"$in": [ObjectId(x) for x in mnp_ids]}}).to_list(1000)} if mnp_ids else {}
+
+    for d in out:
+        dlr = dealers.get(d.get("dealer_id"))
+        if dlr:
+            if not d.get("dealer_code"):
+                d["dealer_code"] = dlr.get("user_code") or dlr.get("login_id") or "D-ASSIGNED"
+            if not d.get("dealer_name"):
+                d["dealer_name"] = dlr.get("company") or dlr.get("name")
+            m_id = str(dlr.get("mnp_id") or "")
+            if m_id and m_id in mnps:
+                d["mnp_code"] = mnps[m_id].get("user_code") or mnps[m_id].get("login_id") or "M-ASSIGNED"
+                d["mnp_name"] = mnps[m_id].get("name") or "Regional MNP"
+            else:
+                d["mnp_code"] = "DIRECT"
+                d["mnp_name"] = "Direct (Yamini Flow HQ)"
+        else:
+            d["dealer_code"] = d.get("dealer_code") or "D-UNKNOWN"
+            d["mnp_code"] = d.get("mnp_code") or "DIRECT"
+            d["mnp_name"] = d.get("mnp_name") or "Direct (HQ)"
+    return out
+
+
 @router.get("/orders")
 async def list_orders(status: str = "", dealer_id: str = "",
                        user: dict = Depends(get_current_user)):
@@ -28,7 +60,7 @@ async def list_orders(status: str = "", dealer_id: str = "",
     if dealer_id and user["role"] in ("admin", "mnp"):
         query["dealer_id"] = dealer_id
     docs = await db.orders.find(query).sort("created_at", -1).to_list(1000)
-    return serialize_docs(docs)
+    return await _enrich_orders(docs)
 
 
 @router.get("/orders/{order_id}")
@@ -36,9 +68,14 @@ async def get_order(order_id: str, user: dict = Depends(get_current_user)):
     doc = await db.orders.find_one({"_id": ObjectId(order_id)})
     if not doc:
         raise HTTPException(404, "Not found")
-    if user["role"] == "dealer" and str(doc.get("dealer_id")) != user["id"]:
+    if user["role"] == "dealer" and doc["dealer_id"] != user["id"]:
         raise HTTPException(403, "Forbidden")
-    return serialize_doc(doc)
+    if user["role"] == "mnp":
+        dlr = await db.users.find_one({"_id": ObjectId(doc["dealer_id"]), "mnp_id": user["id"]})
+        if not dlr:
+            raise HTTPException(403, "Forbidden")
+    enriched = await _enrich_orders([doc])
+    return enriched[0]
 
 
 @router.post("/orders")
@@ -104,11 +141,28 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
 
     dealer = await db.users.find_one({"_id": ObjectId(dealer_id)})
     order_no = await _order_number()
+    dealer_code = dealer.get("user_code") or dealer.get("login_id") or "D-ASSIGNED"
+    mnp_id_val = dealer.get("mnp_id")
+    mnp_code = "DIRECT"
+    mnp_name = "Direct (Yamini Flow HQ)"
+    if mnp_id_val and str(mnp_id_val).strip().lower() not in ["", "direct", "none", "null"]:
+        try:
+            mnp_doc = await db.users.find_one({"_id": ObjectId(mnp_id_val), "role": "mnp"})
+            if mnp_doc:
+                mnp_code = mnp_doc.get("user_code") or mnp_doc.get("login_id") or "M-ASSIGNED"
+                mnp_name = mnp_doc.get("name") or "Regional MNP"
+        except Exception:
+            pass
+
     doc = {
         "order_no": order_no,
         "dealer_id": dealer_id,
+        "dealer_code": dealer_code,
         "dealer_name": dealer.get("company") or dealer.get("name"),
         "dealer_state": dealer.get("state", ""),
+        "mnp_id": str(mnp_id_val) if (mnp_id_val and str(mnp_id_val).strip().lower() not in ["", "direct", "none", "null"]) else None,
+        "mnp_code": mnp_code,
+        "mnp_name": mnp_name,
         "warehouse_id": wh_id,
         "items": items_out,
         "subtotal": subtotal,

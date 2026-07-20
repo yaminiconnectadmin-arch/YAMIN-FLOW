@@ -207,7 +207,8 @@ export default function OrdersPage() {
                 <thead>
                   <tr>
                     <th>Order No</th>
-                    <th>Dealer / MNP</th>
+                    <th>Distributor & Code</th>
+                    <th>Assigned Under</th>
                     <th>State</th>
                     <th>Configs</th>
                     <th className="text-right">Total Weight</th>
@@ -225,7 +226,21 @@ export default function OrdersPage() {
                     return (
                       <tr key={o.id} data-testid={`order-row-${o.order_no}`}>
                         <td className="font-mono text-xs font-bold text-[#06182F] bg-[#F3F4F6] px-2 py-1 rounded w-max">{o.order_no}</td>
-                        <td className="font-medium text-[#06182F]">{o.dealer_name}</td>
+                        <td className="font-medium text-[#06182F]">
+                          <div>{o.dealer_name}</div>
+                          <div className="font-mono text-[11px] text-[#854D0E] bg-[#FEF08A] px-1.5 py-0.5 rounded font-bold w-max mt-0.5">{o.dealer_code || "D-ASSIGNED"}</div>
+                        </td>
+                        <td>
+                          {o.mnp_code && o.mnp_code !== "DIRECT" ? (
+                            <span className="bg-[#BAE6FD] text-[#0369A1] px-2 py-0.5 rounded font-mono font-bold text-xs inline-flex items-center gap-1 shadow-sm" title={o.mnp_name || "Regional MNP"}>
+                              <span>🏷️</span> {o.mnp_name ? `${o.mnp_name.split(" ")[0]} (${o.mnp_code})` : o.mnp_code}
+                            </span>
+                          ) : (
+                            <span className="bg-[#E6F4EA] text-[#137333] px-2 py-0.5 rounded font-medium text-xs border border-[#CEEAD6] inline-flex items-center gap-1">
+                              <span>⚡</span> Direct (Yamini Flow HQ)
+                            </span>
+                          )}
+                        </td>
                         <td className="text-[#5C6670]">{o.dealer_state || "—"}</td>
                         <td className="font-mono">{o.items?.length || 0}</td>
                         <td className="text-right tabular font-mono font-bold text-[#D96B0B]">
@@ -258,8 +273,26 @@ export default function OrdersPage() {
           </DialogHeader>
           {selected && (
             <div className="py-2 space-y-4 max-h-[70vh] overflow-y-auto">
-              <div className="grid grid-cols-4 gap-4 text-sm bg-[#F8FAFC] p-3 rounded-lg border border-[#E5E7EB]">
-                <div><div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Dealer</div><div className="font-bold mt-0.5 text-[#06182F]">{selected.dealer_name}</div></div>
+              <div className="grid grid-cols-5 gap-3 text-sm bg-[#F8FAFC] p-3 rounded-lg border border-[#E5E7EB]">
+                <div>
+                  <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Distributor</div>
+                  <div className="font-bold mt-0.5 text-[#06182F]">{selected.dealer_name}</div>
+                  <div className="font-mono text-[11px] text-[#854D0E] bg-[#FEF08A] px-1.5 py-0.5 rounded font-bold w-max mt-0.5">{selected.dealer_code || "D-ASSIGNED"}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Assigned Under</div>
+                  <div className="mt-1">
+                    {selected.mnp_code && selected.mnp_code !== "DIRECT" ? (
+                      <span className="bg-[#BAE6FD] text-[#0369A1] px-2 py-0.5 rounded font-mono font-bold text-xs inline-flex items-center gap-1 shadow-sm">
+                        <span>🏷️</span> {selected.mnp_code}
+                      </span>
+                    ) : (
+                      <span className="bg-[#E6F4EA] text-[#137333] px-2 py-0.5 rounded font-medium text-xs border border-[#CEEAD6] inline-flex items-center gap-1">
+                        <span>⚡</span> Direct (HQ)
+                      </span>
+                    )}
+                  </div>
+                </div>
                 <div><div className="text-[11px] uppercase text-[#5C6670] tracking-wider">State</div><div className="font-medium mt-0.5">{selected.dealer_state || "-"}</div></div>
                 <div><div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Placed On</div><div className="font-medium mt-0.5">{fmt.datetime(selected.created_at)}</div></div>
                 <div><div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Status</div><div className="mt-0.5"><StatusBadge status={selected.status} /></div></div>

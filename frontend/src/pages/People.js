@@ -24,6 +24,7 @@ export function PeoplePage({ role, title, fields, endpoint }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
   const [createdInfo, setCreatedInfo] = useState(null);
+  const [mnpList, setMnpList] = useState([]);
 
   const empty = fields.reduce((acc, f) => ({ ...acc, [f.key]: f.default ?? "" }), {});
 
@@ -36,7 +37,12 @@ export function PeoplePage({ role, title, fields, endpoint }) {
     finally { setLoading(false); }
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    if (role === "dealer") {
+      api.get("/mnp").then((res) => setMnpList(res.data || [])).catch(() => {});
+    }
+  }, [role]);
 
   const openNew = () => { setEditing(null); setForm(empty); setDialogOpen(true); };
   const openEdit = (i) => { setEditing(i); setForm({ ...empty, ...i }); setDialogOpen(true); };
@@ -90,7 +96,7 @@ export function PeoplePage({ role, title, fields, endpoint }) {
     }
     const roleLabel = role === "dealer" ? "Distributor" : role === "mnp" ? "Regional MNP" : "Supplier";
     const codeStr = item.loginCode || item.login_id || item.user_code || item.email;
-    let msg = `Hello ${item.name},\n\nWelcome to Yamini Flow as an official ${roleLabel}!\n\nHere are your secure login credentials:\n🌐 Portal URL: https://yaminiflow-frontend.vercel.app\n🏷️ Unique Distributor Login ID: ${codeStr}\n✉️ Email Address: ${item.email}`;
+    let msg = `Hello ${item.name},\n\nWelcome to Yamini Flow as an official ${roleLabel}!\n\nHere are your secure login credentials:\n🌐 Portal URL: https://yaminiflow-frontend.vercel.app\n🏷️ Unique Login ID: ${codeStr}\n✉️ Email Address: ${item.email}`;
     if (pwd) {
       msg += `\n🔑 Initial Password: ${pwd}`;
     } else {
@@ -150,7 +156,7 @@ export function PeoplePage({ role, title, fields, endpoint }) {
                     <tr key={i.id} data-testid={`${role}-row-${i.email}`}>
                       {fields.filter(f => !f.hideInTable && f.key !== "password").map((f) => (
                         <td key={f.key} className={f.mono ? "font-mono text-xs" : f.strong ? "font-medium text-[#06182F]" : ""}>
-                          {f.format ? f.format(i[f.key]) : (i[f.key] ?? "—")}
+                          {f.format ? f.format(i[f.key], i) : (i[f.key] ?? "—")}
                         </td>
                       ))}
                       <td><StatusBadge status={i.status || "active"} /></td>
@@ -210,11 +216,27 @@ export function PeoplePage({ role, title, fields, endpoint }) {
                     </button>
                   )}
                 </div>
-                <input type={f.type || "text"} value={form[f.key] ?? ""}
-                  placeholder={f.key === "password" ? "Leave blank for auto-generated password" : f.key === "email" ? "Optional (e.g. d-st-mh-101@distributor.yaminiflow.com)" : ""}
-                  onChange={(e) => setForm({ ...form, [f.key]: f.type === "number" ? Number(e.target.value) : e.target.value })}
-                  className="w-full h-10 px-3 rounded-md border border-[#E5E7EB] text-sm focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
-                  data-testid={`${role}-form-${f.key}`} />
+                {f.type === "select" && f.key === "mnp_id" ? (
+                  <select
+                    value={form[f.key] || "direct"}
+                    onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                    className="w-full h-10 px-3 rounded-md border border-[#E5E7EB] bg-white text-sm font-medium text-[#06182F] focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
+                    data-testid={`${role}-form-${f.key}`}
+                  >
+                    <option value="direct">Direct (Yamini Flow HQ — Direct Distributorship)</option>
+                    {mnpList.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        Assigned under MNP: {m.name} {m.company ? `(${m.company})` : ""} [{m.user_code || m.login_id || m.email}]
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input type={f.type || "text"} value={form[f.key] ?? ""}
+                    placeholder={f.key === "password" ? "Leave blank for auto-generated password" : f.key === "email" ? "Optional (e.g. d-st-mh-101@distributor.yaminiflow.com)" : ""}
+                    onChange={(e) => setForm({ ...form, [f.key]: f.type === "number" ? Number(e.target.value) : e.target.value })}
+                    className="w-full h-10 px-3 rounded-md border border-[#E5E7EB] text-sm focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
+                    data-testid={`${role}-form-${f.key}`} />
+                )}
               </div>
             ))}
           </div>
@@ -229,13 +251,13 @@ export function PeoplePage({ role, title, fields, endpoint }) {
 
       {/* Post-Creation WhatsApp Modal */}
       {createdInfo && (
-        <Dialog open={Boolean(createdInfo)} onOpenChange={() => setCreatedInfo(null)}>
+        <Dialog open={Boolean(createdInfo)} onOpenChange={(open) => !open && setCreatedInfo(null)}>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <div className="flex items-center gap-2 text-[#2E7D32] mb-1">
-                <CheckCircle size={22} weight="fill" />
-                <DialogTitle className="text-lg">{createdInfo.roleName} Created!</DialogTitle>
-              </div>
+              <DialogTitle className="flex items-center gap-2 text-[#06182F]">
+                <CheckCircle size={22} weight="fill" className="text-[#25D366]" />
+                {createdInfo.roleName} Registered Successfully!
+              </DialogTitle>
             </DialogHeader>
             <div className="py-3 space-y-3 text-sm">
               <p className="text-[#5C6670]">
@@ -281,6 +303,18 @@ const DEALER_FIELDS = [
       </span>
     ) : "Auto-Generated"
   )},
+  { key: "assignment_type", label: "Assigned Under", hideInForm: true, format: (v, item) => (
+    item?.mnp_code && item?.mnp_code !== "DIRECT" ? (
+      <span className="bg-[#BAE6FD] text-[#0369A1] px-2.5 py-0.5 rounded font-mono font-bold text-xs shadow-sm inline-flex items-center gap-1" title={item.mnp_name || "Assigned MNP"}>
+        <span>🏷️</span> {item.mnp_name ? `${item.mnp_name.split(" ")[0]} (${item.mnp_code})` : item.mnp_code}
+      </span>
+    ) : (
+      <span className="bg-[#E6F4EA] text-[#137333] px-2.5 py-0.5 rounded font-medium text-xs border border-[#CEEAD6] inline-flex items-center gap-1">
+        <span>⚡</span> Direct (Yamini Flow HQ)
+      </span>
+    )
+  )},
+  { key: "mnp_id", label: "Assignment (Direct / MNP)", type: "select", wide: true, hideInTable: true, default: "direct" },
   { key: "email", label: "Email Address (Optional)" },
   { key: "phone", label: "WhatsApp / Phone" },
   { key: "company", label: "Distributorship / Company Name" },

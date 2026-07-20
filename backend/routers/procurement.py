@@ -73,11 +73,40 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
     }).to_list(2000)
 
     total_orders = len(uncollated)
+    dealer_ids = {o.get("dealer_id") for o in uncollated if o.get("dealer_id") and ObjectId.is_valid(o.get("dealer_id"))}
+    dealers = {str(u["_id"]): u for u in await db.users.find({"_id": {"$in": [ObjectId(x) for x in dealer_ids]}}).to_list(1000)} if dealer_ids else {}
+    mnp_ids = {u.get("mnp_id") for u in dealers.values() if u.get("mnp_id") and ObjectId.is_valid(u.get("mnp_id"))}
+    mnps = {str(m["_id"]): m for m in await db.users.find({"_id": {"$in": [ObjectId(x) for x in mnp_ids]}}).to_list(1000)} if mnp_ids else {}
+
     demanded_pcs_map = {}
+    dealer_codes_map = {}
+    mnp_codes_map = {}
     for o in uncollated:
+        dlr = dealers.get(o.get("dealer_id"))
+        d_code = o.get("dealer_code")
+        if not d_code and dlr:
+            d_code = dlr.get("user_code") or dlr.get("login_id")
+        if not d_code:
+            d_code = "D-UNKNOWN"
+
+        m_code = o.get("mnp_code")
+        if not m_code and dlr:
+            mid = str(dlr.get("mnp_id") or "")
+            if mid and mid in mnps:
+                m_code = mnps[mid].get("user_code") or mnps[mid].get("login_id")
+            else:
+                m_code = "DIRECT"
+        if not m_code:
+            m_code = "DIRECT"
+
         for item in o.get("items", []):
             pid = item["product_id"]
             demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + item.get("quantity", 0)
+            if pid not in dealer_codes_map:
+                dealer_codes_map[pid] = set()
+                mnp_codes_map[pid] = set()
+            dealer_codes_map[pid].add(d_code)
+            mnp_codes_map[pid].add(m_code)
 
     # Load products and inventory
     prod_ids = [ObjectId(pid) for pid in demanded_pcs_map.keys() if ObjectId.is_valid(pid)]
@@ -128,6 +157,10 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
             "supplier_id": str(sid) if sid else "",
             "supplier_name": (sup.get("company") or sup.get("name")) if sup else "Unassigned Supplier",
             "rate": p.get("cost", 0) or p.get("price", 0),
+            "dealer_codes": sorted(list(dealer_codes_map.get(pid, []))),
+            "mnp_codes": sorted(list(mnp_codes_map.get(pid, []))),
+            "dealer_summary": ", ".join(sorted(list(dealer_codes_map.get(pid, [])))),
+            "mnp_summary": ", ".join(sorted(list(mnp_codes_map.get(pid, [])))),
         })
         total_pcs += dem_qty
         total_kg += req_kg
