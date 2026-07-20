@@ -15,22 +15,29 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/login")
 async def login(payload: LoginInput, request: Request, response: Response):
-    email = payload.email.lower()
+    ident = payload.email.strip()
     ip = request.client.host if request.client else "unknown"
-    identifier = f"{ip}:{email}"
+    identifier = f"{ip}:{ident.lower()}"
     await brute_force_check(identifier)
 
-    user = await db.users.find_one({"email": email})
+    # Search by email (lower), login_id (upper/exact), or user_code (upper/exact)
+    user = await db.users.find_one({"$or": [
+        {"email": ident.lower()},
+        {"login_id": ident.upper()},
+        {"login_id": ident},
+        {"user_code": ident.upper()},
+        {"user_code": ident}
+    ]})
     if not user or not verify_password(payload.password, user.get("password_hash", "")):
         await record_failed_attempt(identifier)
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(status_code=401, detail="Invalid email or distributor login code / password")
 
     if user.get("status") == "disabled":
         raise HTTPException(status_code=403, detail="Account disabled")
 
     await clear_attempts(identifier)
     uid = str(user["_id"])
-    access = create_access_token(uid, email, user["role"])
+    access = create_access_token(uid, user.get("email") or user.get("login_id") or ident, user["role"])
     refresh = create_refresh_token(uid)
     set_auth_cookies(response, access, refresh)
 

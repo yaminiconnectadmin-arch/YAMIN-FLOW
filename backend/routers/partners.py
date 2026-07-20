@@ -9,6 +9,47 @@ from models import DealerIn, SupplierIn, MnpIn
 router = APIRouter(tags=["partners"])
 
 
+STATE_ABBR_MAP = {
+    "maharashtra": "MH", "delhi": "DL", "karnataka": "KA", "gujarat": "GJ",
+    "tamil nadu": "TN", "uttar pradesh": "UP", "west bengal": "WB", "rajasthan": "RJ",
+    "telangana": "TS", "andhra pradesh": "AP", "kerala": "KL", "punjab": "PB",
+    "haryana": "HR", "madhya pradesh": "MP", "bihar": "BR", "odisha": "OD",
+    "assam": "AS", "chhattisgarh": "CG", "jharkhand": "JH", "uttarakhand": "UK",
+    "himachal pradesh": "HP", "goa": "GA", "tripura": "TR", "meghalaya": "ML",
+    "manipur": "MN", "nagaland": "NL", "arunachal pradesh": "AR", "sikkim": "SK",
+    "mizoram": "MZ", "chandigarh": "CH", "puducherry": "PY", "jammu & kashmir": "JK",
+    "ladakh": "LA"
+}
+
+
+async def _generate_distributor_code(company: str, name: str, state: str) -> str:
+    st_clean = (state or "").strip().lower()
+    st_code = STATE_ABBR_MAP.get(st_clean)
+    if not st_code:
+        if st_clean and len(st_clean) >= 2:
+            st_code = st_clean[:2].upper()
+        else:
+            st_code = "IN"
+
+    src = (company or name or "DIST").strip()
+    words = [w for w in src.replace("-", " ").split() if w]
+    if len(words) >= 2:
+        initials = "".join(w[0].upper() for w in words[:3])
+    elif words:
+        initials = words[0][:2].upper()
+    else:
+        initials = "DS"
+
+    base_count = await db.users.count_documents({"role": "dealer"})
+    idx = 100 + base_count + 1
+    while True:
+        code = f"D-{initials}-{st_code}-{idx}"
+        exists = await db.users.find_one({"$or": [{"user_code": code}, {"login_id": code}]})
+        if not exists:
+            return code
+        idx += 1
+
+
 async def _list_role(role: str, mnp_id: str = None):
     q = {"role": role}
     if mnp_id:
@@ -16,6 +57,11 @@ async def _list_role(role: str, mnp_id: str = None):
     docs = await db.users.find(q).sort("created_at", -1).to_list(1000)
     out = []
     for d in docs:
+        if role == "dealer" and not d.get("login_id") and not d.get("user_code"):
+            code = await _generate_distributor_code(d.get("company", ""), d.get("name", ""), d.get("state", ""))
+            await db.users.update_one({"_id": d["_id"]}, {"$set": {"user_code": code, "login_id": code}})
+            d["user_code"] = code
+            d["login_id"] = code
         s = serialize_doc(d)
         s.pop("password_hash", None)
         out.append(s)
@@ -33,15 +79,22 @@ async def list_dealers(user: dict = Depends(get_current_user)):
 @router.post("/dealers")
 @router.post("/distributors")
 async def create_dealer(payload: DealerIn, user: dict = Depends(require_admin_or_mnp)):
-    if await db.users.find_one({"email": payload.email.lower()}):
-        raise HTTPException(400, "Email exists")
+    email_val = (payload.email or "").strip().lower()
+    if email_val and await db.users.find_one({"email": email_val}):
+        raise HTTPException(400, "Email already registered")
     
+    code = payload.user_code or payload.login_id or await _generate_distributor_code(payload.company, payload.name, payload.state)
+    if not email_val:
+        email_val = f"{code.lower()}@distributor.yaminiflow.com"
+
     # If MNP is creating distributor, link directly to them
     mnp_id = user["id"] if user.get("role") == "mnp" else payload.mnp_id
     raw_pwd = payload.password or f"Dist@{secrets.randbelow(9000)+1000}"
     
     doc = {
-        "email": payload.email.lower(),
+        "email": email_val,
+        "user_code": code,
+        "login_id": code,
         "password_hash": hash_password(raw_pwd),
         "name": payload.name, "role": "dealer",
         "phone": payload.phone, "company": payload.company,

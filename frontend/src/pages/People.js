@@ -57,12 +57,13 @@ export function PeoplePage({ role, title, fields, endpoint }) {
       } else {
         res = await api.post(endpoint, form);
         toast.success("Created successfully");
-        if (res.data?.raw_password) {
+        if (res.data) {
           setCreatedInfo({
             name: res.data.name || form.name,
             email: res.data.email || form.email,
+            loginCode: res.data.login_id || res.data.user_code || res.data.email || form.email,
             phone: res.data.phone || form.phone,
-            password: res.data.raw_password,
+            password: res.data.raw_password || form.password || "Dist@1234",
             roleName: title.includes("/") ? "Distributor" : title.replace("s", ""),
           });
         }
@@ -88,13 +89,14 @@ export function PeoplePage({ role, title, fields, endpoint }) {
       return;
     }
     const roleLabel = role === "dealer" ? "Distributor" : role === "mnp" ? "Regional MNP" : "Supplier";
-    let msg = `Hello ${item.name},\n\nWelcome to Yamini Flow as an official ${roleLabel}!\n\nHere are your secure login credentials:\n🌐 Portal URL: https://yaminiflow-frontend.vercel.app\n✉️ Login ID (Email): ${item.email}`;
+    const codeStr = item.loginCode || item.login_id || item.user_code || item.email;
+    let msg = `Hello ${item.name},\n\nWelcome to Yamini Flow as an official ${roleLabel}!\n\nHere are your secure login credentials:\n🌐 Portal URL: https://yaminiflow-frontend.vercel.app\n🏷️ Unique Distributor Login ID: ${codeStr}\n✉️ Email Address: ${item.email}`;
     if (pwd) {
       msg += `\n🔑 Initial Password: ${pwd}`;
     } else {
       msg += `\n🔑 Password: (Your registered/initial account password)`;
     }
-    msg += `\n\nPlease log in and check your dashboard. Reach out if you need assistance!`;
+    msg += `\n\nYou can use EITHER your Unique Login ID (${codeStr}) OR your Email Address on the login screen. Reach out if you need assistance!`;
 
     const url = `https://wa.me/${cleanPhone.startsWith("91") ? cleanPhone : "91" + cleanPhone}?text=${encodeURIComponent(msg)}`;
     window.open(url, "_blank");
@@ -186,7 +188,15 @@ export function PeoplePage({ role, title, fields, endpoint }) {
             <DialogTitle>{editing ? "Edit" : "Add New"} {title.includes("/") ? "Distributor" : title.replace("s", "")}</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 py-2 max-h-[60vh] overflow-y-auto">
-            {fields.filter(f => !editing || f.key !== "password").map((f) => (
+            {!editing && role === "dealer" && (
+              <div className="col-span-2 bg-[#FFFBEB] border border-[#FDE68A] p-3 rounded-lg text-xs text-[#92400E] flex items-start gap-2.5">
+                <span className="text-base">🏷️</span>
+                <span>
+                  <strong>Automatic Distributor Code & Login ID:</strong> Upon saving, the system generates a unique location-based code starting from index 100 (e.g., <strong>D-ST-MH-101</strong>) using company initials & state. This code serves as their primary login ID!
+                </span>
+              </div>
+            )}
+            {fields.filter(f => (!editing || f.key !== "password") && !f.hideInForm).map((f) => (
               <div key={f.key} className={f.wide ? "col-span-2" : ""}>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#5C6670]">{f.label}</label>
@@ -201,7 +211,7 @@ export function PeoplePage({ role, title, fields, endpoint }) {
                   )}
                 </div>
                 <input type={f.type || "text"} value={form[f.key] ?? ""}
-                  placeholder={f.key === "password" ? "Leave blank for auto-generated password" : ""}
+                  placeholder={f.key === "password" ? "Leave blank for auto-generated password" : f.key === "email" ? "Optional (e.g. d-st-mh-101@distributor.yaminiflow.com)" : ""}
                   onChange={(e) => setForm({ ...form, [f.key]: f.type === "number" ? Number(e.target.value) : e.target.value })}
                   className="w-full h-10 px-3 rounded-md border border-[#E5E7EB] text-sm focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
                   data-testid={`${role}-form-${f.key}`} />
@@ -231,9 +241,15 @@ export function PeoplePage({ role, title, fields, endpoint }) {
               <p className="text-[#5C6670]">
                 <strong>{createdInfo.name}</strong> has been added to the Yamini Flow network. You can instantly share their credentials via WhatsApp:
               </p>
-              <div className="bg-[#F4F5F7] p-3 rounded-md border border-[#E5E7EB] font-mono text-xs space-y-1">
+              <div className="bg-[#F4F5F7] p-3 rounded-md border border-[#E5E7EB] font-mono text-xs space-y-1.5">
                 <div><span className="text-[#5C6670]">Portal:</span> https://yaminiflow-frontend.vercel.app</div>
-                <div><span className="text-[#5C6670]">Login ID:</span> <strong className="text-[#06182F]">{createdInfo.email}</strong></div>
+                {createdInfo.loginCode && (
+                  <div className="flex items-center justify-between bg-[#FEF08A] p-1.5 rounded border border-[#FDE047]">
+                    <span className="text-[#854D0E] font-bold">Unique Login ID:</span>
+                    <strong className="text-sm text-[#06182F] font-mono">{createdInfo.loginCode}</strong>
+                  </div>
+                )}
+                <div><span className="text-[#5C6670]">Email Address:</span> <strong className="text-[#06182F]">{createdInfo.email}</strong></div>
                 <div><span className="text-[#5C6670]">Password:</span> <strong className="text-[#F28C18]">{createdInfo.password}</strong></div>
               </div>
             </div>
@@ -258,7 +274,14 @@ export function PeoplePage({ role, title, fields, endpoint }) {
 
 const DEALER_FIELDS = [
   { key: "name", label: "Distributor / Contact Name", strong: true },
-  { key: "email", label: "Email (Login ID)" },
+  { key: "login_id", label: "Unique Code (Login ID)", mono: true, hideInForm: true, format: (v, item) => (
+    v || item?.user_code ? (
+      <span className="bg-[#FEF08A] text-[#854D0E] px-2 py-0.5 rounded font-mono font-bold text-xs shadow-sm">
+        {v || item?.user_code}
+      </span>
+    ) : "Auto-Generated"
+  )},
+  { key: "email", label: "Email Address (Optional)" },
   { key: "phone", label: "WhatsApp / Phone" },
   { key: "company", label: "Distributorship / Company Name" },
   { key: "city", label: "City" },

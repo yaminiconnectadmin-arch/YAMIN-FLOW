@@ -7,8 +7,9 @@ Role = Literal["admin", "dealer", "mnp", "supplier"]
 
 
 # ---- Auth ----
+# ---- Auth ----
 class LoginInput(BaseModel):
-    email: EmailStr
+    email: str  # can be email address or distributor login id (e.g. D-ST-MH-101)
     password: str
 
 
@@ -27,6 +28,8 @@ class UserOut(BaseModel):
     email: str
     name: str
     role: str
+    user_code: Optional[str] = ""
+    login_id: Optional[str] = ""
     phone: Optional[str] = None
     company: Optional[str] = None
     status: Optional[str] = "active"
@@ -100,15 +103,17 @@ class InventoryAdjustIn(BaseModel):
 # ---- Dealer / Supplier / MNP ----
 class DealerIn(BaseModel):
     name: str
-    email: EmailStr
-    phone: str
+    email: Optional[str] = ""
+    phone: Optional[str] = ""
     company: str
-    city: str
+    city: Optional[str] = ""
     state: str
     gstin: Optional[str] = ""
     credit_limit: float = 0
     mnp_id: Optional[str] = None
     password: Optional[str] = "Dealer@123"
+    user_code: Optional[str] = ""
+    login_id: Optional[str] = ""
 
 
 class SupplierIn(BaseModel):
@@ -137,11 +142,22 @@ class MnpIn(BaseModel):
 class OrderItemIn(BaseModel):
     product_id: str
     quantity: int
+    boxes: Optional[int] = None
+    size: Optional[str] = ""
+    qty_per_box: Optional[int] = 1000
+    wt_1000_pcs_kg: Optional[float] = 0.0
+    total_weight_kg: Optional[float] = 0.0
+    rate: Optional[float] = 0.0
+    dealer_landing: Optional[float] = 0.0
+    value_before_tax: Optional[float] = 0.0
+    gst_amount: Optional[float] = 0.0
+    value_after_tax: Optional[float] = 0.0
 
 
 class OrderIn(BaseModel):
     items: List[OrderItemIn]
     warehouse_id: Optional[str] = None
+    dealer_id: Optional[str] = None
     notes: Optional[str] = ""
 
 

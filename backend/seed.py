@@ -7,6 +7,11 @@ from auth import hash_password
 async def _upsert_user(email: str, password: str, name: str, role: str, extra: dict = None) -> str:
     existing = await db.users.find_one({"email": email.lower()})
     if existing:
+        if extra and ("user_code" in extra or "login_id" in extra):
+            await db.users.update_one({"_id": existing["_id"]}, {"$set": {
+                "user_code": extra.get("user_code", existing.get("user_code", "")),
+                "login_id": extra.get("login_id", existing.get("login_id", "")),
+            }})
         return str(existing["_id"])
     doc = {
         "email": email.lower(), "password_hash": hash_password(password),
@@ -45,7 +50,8 @@ async def seed_all():
     dealer_id = await _upsert_user("dealer@yaminiflow.com", "Dealer@123", "Suresh Traders", "dealer",
                                    {"phone": "+91-9000000002", "company": "Suresh Traders Pvt Ltd",
                                     "city": "Mumbai", "state": "Maharashtra", "gstin": "27ABCDE1234F1Z5",
-                                    "credit_limit": 200000, "mnp_id": mnp_id})
+                                    "credit_limit": 200000, "mnp_id": mnp_id,
+                                    "user_code": "D-ST-MH-101", "login_id": "D-ST-MH-101"})
 
     # Demo Supplier
     supplier_id = await _upsert_user("supplier@yaminiflow.com", "Supplier@123", "Metro Supplies", "supplier",
@@ -57,7 +63,8 @@ async def seed_all():
     await _upsert_user("dealer2@yaminiflow.com", "Dealer@123", "Krishna Enterprises", "dealer",
                        {"phone": "+91-9000000004", "company": "Krishna Enterprises",
                         "city": "Delhi", "state": "Delhi", "gstin": "07LMNOP9876H1Z3",
-                        "credit_limit": 300000, "mnp_id": mnp_id})
+                        "credit_limit": 300000, "mnp_id": mnp_id,
+                        "user_code": "D-KE-DL-102", "login_id": "D-KE-DL-102"})
 
     # Categories
     categories = ["Electronics", "Appliances", "Hardware", "Furniture", "CSK Chipboard Screws", "CSK Drywall Screws"]
@@ -115,64 +122,65 @@ async def seed_all():
             upsert=True
         )
 
-    # Products
-    if await db.products.count_documents({}) == 0:
-        prods = [
-            {"sku": "LED-BLB-9W", "name": "LED Bulb 9W", "category": "Electronics", "description": "Energy efficient LED",
-             "unit": "pcs", "weight_kg": 0.05, "wt_1000_pcs_kg": 50.0, "price": 120, "cost": 75, "gst": 18, "hsn": "8539",
-             "moq": 50, "safety_stock": 200, "lead_time_days": 5, "status": "active",
-             "primary_supplier_id": supplier_id},
-            {"sku": "CEIL-FAN-48", "name": "Ceiling Fan 48\"", "category": "Appliances",
-             "description": "High speed ceiling fan", "unit": "pcs", "weight_kg": 4.5, "wt_1000_pcs_kg": 4500.0, "price": 2200, "cost": 1600,
-             "gst": 18, "hsn": "8414", "moq": 5, "safety_stock": 20, "lead_time_days": 7,
-             "status": "active", "primary_supplier_id": supplier_id},
-            {"sku": "SCRW-6MM", "name": "Screws 6mm (pack of 100)", "category": "Hardware",
-             "description": "Steel screws", "unit": "pack", "weight_kg": 0.3, "wt_1000_pcs_kg": 3.0, "price": 180, "cost": 110,
-             "gst": 18, "hsn": "7318", "moq": 10, "safety_stock": 50, "lead_time_days": 4,
-             "status": "active", "primary_supplier_id": supplier_id},
-            {"sku": "OFC-CHR-BLK", "name": "Office Chair Black", "category": "Furniture",
-             "description": "Ergonomic office chair", "unit": "pcs", "weight_kg": 12, "wt_1000_pcs_kg": 12000.0, "price": 6500,
-             "cost": 4800, "gst": 18, "hsn": "9401", "moq": 2, "safety_stock": 10, "lead_time_days": 10,
-             "status": "active", "primary_supplier_id": supplier_id},
-            {"sku": "MICROW-25L", "name": "Microwave 25L", "category": "Appliances",
-             "description": "Convection microwave", "unit": "pcs", "weight_kg": 15, "wt_1000_pcs_kg": 15000.0, "price": 8900,
-             "cost": 6700, "gst": 18, "hsn": "8516", "moq": 2, "safety_stock": 8, "lead_time_days": 12,
-             "status": "active", "primary_supplier_id": supplier_id},
-            {"sku": "USB-CBL-C", "name": "USB-C Cable 1m", "category": "Electronics",
-             "description": "Fast charging USB-C", "unit": "pcs", "weight_kg": 0.1, "wt_1000_pcs_kg": 100.0, "price": 250,
-             "cost": 130, "gst": 18, "hsn": "8544", "moq": 25, "safety_stock": 100, "lead_time_days": 3,
-             "status": "active", "primary_supplier_id": supplier_id},
-        ]
-        # Also include all 23 matrix screw items as products so they show up across catalog and orders!
-        for md in matrix_data:
-            prods.append({
-                "sku": md["item_code"],
-                "name": f"{md['category']} {md['size']}",
-                "category": md["category"],
-                "description": f"CSK Screw size {md['size']} ({md['wt_1000_pcs_kg']} kg per 1000 pcs)",
-                "unit": "pcs",
-                "weight_kg": round(md["wt_1000_pcs_kg"] / 1000.0, 5),
-                "wt_1000_pcs_kg": md["wt_1000_pcs_kg"],
-                "size": md["size"],
-                "item_code": md["item_code"],
-                "qty_per_box": md["qty_per_box"],
-                "price": md["rate"],
-                "cost": md["dealer_landing"],
-                "dealer_landing": md["dealer_landing"],
-                "wd_basic": md["wd_basic"],
-                "wd_landing": md["wd_landing"],
-                "gst": 18,
-                "hsn": "7318",
-                "moq": md["qty_per_box"],
-                "safety_stock": md["qty_per_box"] * 5,
-                "lead_time_days": 5,
-                "status": "active",
-                "primary_supplier_id": supplier_id,
-            })
-        for p in prods:
-            p["created_at"] = now_iso()
-            p["updated_at"] = now_iso()
-        await db.products.insert_many(prods)
+    # Products (always upsert to ensure catalog stays in sync with exact matrix prices & weights)
+    prods = [
+        {"sku": "LED-BLB-9W", "name": "LED Bulb 9W", "category": "Electronics", "description": "Energy efficient LED",
+         "unit": "pcs", "weight_kg": 0.05, "wt_1000_pcs_kg": 50.0, "price": 120, "cost": 75, "gst": 18, "hsn": "8539",
+         "moq": 50, "safety_stock": 200, "lead_time_days": 5, "status": "active",
+         "primary_supplier_id": supplier_id},
+        {"sku": "CEIL-FAN-48", "name": "Ceiling Fan 48\"", "category": "Appliances",
+         "description": "High speed ceiling fan", "unit": "pcs", "weight_kg": 4.5, "wt_1000_pcs_kg": 4500.0, "price": 2200, "cost": 1600,
+         "gst": 18, "hsn": "8414", "moq": 5, "safety_stock": 20, "lead_time_days": 7,
+         "status": "active", "primary_supplier_id": supplier_id},
+        {"sku": "SCRW-6MM", "name": "Screws 6mm (pack of 100)", "category": "Hardware",
+         "description": "Steel screws", "unit": "pack", "weight_kg": 0.3, "wt_1000_pcs_kg": 3.0, "price": 180, "cost": 110,
+         "gst": 18, "hsn": "7318", "moq": 10, "safety_stock": 50, "lead_time_days": 4,
+         "status": "active", "primary_supplier_id": supplier_id},
+        {"sku": "OFC-CHR-BLK", "name": "Office Chair Black", "category": "Furniture",
+         "description": "Ergonomic office chair", "unit": "pcs", "weight_kg": 12, "wt_1000_pcs_kg": 12000.0, "price": 6500,
+         "cost": 4800, "gst": 18, "hsn": "9401", "moq": 2, "safety_stock": 10, "lead_time_days": 10,
+         "status": "active", "primary_supplier_id": supplier_id},
+        {"sku": "MICROW-25L", "name": "Microwave 25L", "category": "Appliances",
+         "description": "Convection microwave", "unit": "pcs", "weight_kg": 15, "wt_1000_pcs_kg": 15000.0, "price": 8900,
+         "cost": 6700, "gst": 18, "hsn": "8516", "moq": 2, "safety_stock": 8, "lead_time_days": 12,
+         "status": "active", "primary_supplier_id": supplier_id},
+        {"sku": "USB-CBL-C", "name": "USB-C Cable 1m", "category": "Electronics",
+         "description": "Fast charging USB-C", "unit": "pcs", "weight_kg": 0.1, "wt_1000_pcs_kg": 100.0, "price": 250,
+         "cost": 130, "gst": 18, "hsn": "8544", "moq": 25, "safety_stock": 100, "lead_time_days": 3,
+         "status": "active", "primary_supplier_id": supplier_id},
+    ]
+    # Also include all 23 matrix screw items as products so they show up across catalog and orders!
+    for md in matrix_data:
+        prods.append({
+            "sku": md["item_code"],
+            "name": f"{md['category']} {md['size']}",
+            "category": md["category"],
+            "description": f"CSK Screw size {md['size']} ({md['wt_1000_pcs_kg']} kg per 1000 pcs, Box of {md['qty_per_box']} pcs)",
+            "unit": "box",
+            "weight_kg": round(md["wt_1000_pcs_kg"] / 1000.0, 5),
+            "wt_1000_pcs_kg": md["wt_1000_pcs_kg"],
+            "size": md["size"],
+            "item_code": md["item_code"],
+            "qty_per_box": md["qty_per_box"],
+            "price": md["rate"],
+            "cost": md["dealer_landing"],
+            "dealer_landing": md["dealer_landing"],
+            "wd_basic": md["wd_basic"],
+            "wd_landing": md["wd_landing"],
+            "gst": 18,
+            "hsn": "7318",
+            "moq": md["qty_per_box"],
+            "safety_stock": md["qty_per_box"] * 5,
+            "lead_time_days": 5,
+            "status": "active",
+            "primary_supplier_id": supplier_id,
+        })
+    for p in prods:
+        await db.products.update_one(
+            {"sku": p["sku"]},
+            {"$set": {**p, "updated_at": now_iso()}, "$setOnInsert": {"created_at": now_iso()}},
+            upsert=True
+        )
 
     # Inventory: (warehouse × product)
     products = await db.products.find({}).to_list(200)

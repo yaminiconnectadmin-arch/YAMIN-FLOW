@@ -43,9 +43,16 @@ async def get_order(order_id: str, user: dict = Depends(get_current_user)):
 
 @router.post("/orders")
 async def create_order(payload: OrderIn, user: dict = Depends(get_current_user)):
-    if user["role"] not in ("dealer", "admin"):
-        raise HTTPException(403, "Only dealers can place orders")
-    dealer_id = user["id"] if user["role"] == "dealer" else user["id"]
+    if user["role"] not in ("dealer", "mnp", "admin"):
+        raise HTTPException(403, "Only dealers, MNPs, or admins can place orders")
+    dealer_id = user["id"]
+    if user["role"] in ("mnp", "admin") and payload.dealer_id:
+        dealer_id = payload.dealer_id
+    elif user["role"] == "mnp":
+        # Default to first dealer assigned to this MNP if none provided
+        dlr = await db.users.find_one({"role": "dealer", "mnp_id": user["id"]})
+        if dlr:
+            dealer_id = str(dlr["_id"])
 
     # Load products
     prod_ids = [ObjectId(i.product_id) for i in payload.items]
@@ -57,11 +64,22 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         p = products.get(i.product_id)
         if not p:
             raise HTTPException(400, f"Product {i.product_id} not found")
-        sub = p["price"] * i.quantity
+        # Use exact value_before_tax if computed, otherwise price * quantity
+        sub = i.value_before_tax if (i.value_before_tax and i.value_before_tax > 0) else (p["price"] * i.quantity)
         items_out.append({
             "product_id": i.product_id, "product_name": p["name"],
             "sku": p["sku"], "quantity": i.quantity,
-            "price": p["price"], "subtotal": sub,
+            "price": i.rate or p["price"], "subtotal": sub,
+            "size": i.size or p.get("size", ""),
+            "boxes": i.boxes or 1,
+            "qty_per_box": i.qty_per_box or p.get("qty_per_box", 1000),
+            "wt_1000_pcs_kg": i.wt_1000_pcs_kg or p.get("wt_1000_pcs_kg", 0.0),
+            "total_weight_kg": i.total_weight_kg or round((i.quantity / 1000.0) * (p.get("wt_1000_pcs_kg", 0.0)), 3),
+            "rate": i.rate or p.get("price", 0.0),
+            "dealer_landing": i.dealer_landing or p.get("dealer_landing", 0.0),
+            "value_before_tax": sub,
+            "gst_amount": i.gst_amount if (i.gst_amount and i.gst_amount > 0) else round(sub * 0.18, 2),
+            "value_after_tax": i.value_after_tax if (i.value_after_tax and i.value_after_tax > 0) else round(sub * 1.18, 2),
         })
         subtotal += sub
 
