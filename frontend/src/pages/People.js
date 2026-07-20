@@ -188,11 +188,11 @@ export function PeoplePage({ role, title, fields, endpoint }) {
             <DialogTitle>{editing ? "Edit" : "Add New"} {title.includes("/") ? "Distributor" : title.replace("s", "")}</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 py-2 max-h-[60vh] overflow-y-auto">
-            {!editing && role === "dealer" && (
+            {!editing && (role === "dealer" || role === "mnp") && (
               <div className="col-span-2 bg-[#FFFBEB] border border-[#FDE68A] p-3 rounded-lg text-xs text-[#92400E] flex items-start gap-2.5">
                 <span className="text-base">🏷️</span>
                 <span>
-                  <strong>Automatic Distributor Code & Login ID:</strong> Upon saving, the system generates a unique location-based code starting from index 100 (e.g., <strong>D-ST-MH-101</strong>) using company initials & state. This code serves as their primary login ID!
+                  <strong>Automatic Unique Code & Login ID:</strong> Upon saving, the system generates a unique location-indexed code starting from index 100 (e.g., <strong>{role === "mnp" ? "M-RK-MH-101" : "D-ST-MH-101"}</strong>) using initials & state. This code serves as their primary login ID!
                 </span>
               </div>
             )}
@@ -305,8 +305,16 @@ const SUPPLIER_FIELDS = [
 
 const MNP_FIELDS = [
   { key: "name", label: "Regional MNP Name", strong: true },
-  { key: "email", label: "Email (Login ID)" },
+  { key: "login_id", label: "Unique Code (Login ID)", mono: true, hideInForm: true, format: (v, item) => (
+    v || item?.user_code ? (
+      <span className="bg-[#BAE6FD] text-[#0369A1] px-2 py-0.5 rounded font-mono font-bold text-xs shadow-sm">
+        {v || item?.user_code}
+      </span>
+    ) : "Auto-Generated"
+  )},
+  { key: "email", label: "Email Address (Optional)" },
   { key: "phone", label: "WhatsApp / Phone" },
+  { key: "company", label: "Company / Agency Name" },
   { key: "area", label: "Assigned Area" },
   { key: "state", label: "State" },
   { key: "target_monthly", label: "Monthly Target (₹)", type: "number", format: (v) => v ? fmt.inr(v) : "—", default: 500000 },

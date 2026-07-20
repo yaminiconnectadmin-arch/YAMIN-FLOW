@@ -44,7 +44,7 @@ async def seed_all():
     # Demo MNP
     mnp_id = await _upsert_user("mnp@yaminiflow.com", "Mnp@123", "Rajesh Kumar", "mnp",
                                 {"phone": "+91-9000000001", "area": "West Zone", "state": "Maharashtra",
-                                 "target_monthly": 500000})
+                                 "target_monthly": 500000, "user_code": "M-RK-MH-101", "login_id": "M-RK-MH-101"})
 
     # Demo Dealer
     dealer_id = await _upsert_user("dealer@yaminiflow.com", "Dealer@123", "Suresh Traders", "dealer",
@@ -304,9 +304,9 @@ async def seed_all():
     with open("/app/memory/test_credentials.md", "w") as f:
         f.write("# YAMINI FLOW — Test Credentials\n\n")
         f.write("## Admin\n- Email: admin@yaminiflow.com\n- Password: Admin@123\n- Role: admin\n\n")
-        f.write("## Dealer\n- Email: dealer@yaminiflow.com\n- Password: Dealer@123\n- Role: dealer\n\n")
-        f.write("## Dealer 2\n- Email: dealer2@yaminiflow.com\n- Password: Dealer@123\n- Role: dealer\n\n")
-        f.write("## MNP\n- Email: mnp@yaminiflow.com\n- Password: Mnp@123\n- Role: mnp\n\n")
+        f.write("## Dealer\n- Email: dealer@yaminiflow.com / Code: D-ST-MH-101\n- Password: Dealer@123\n- Role: dealer\n\n")
+        f.write("## Dealer 2\n- Email: dealer2@yaminiflow.com / Code: D-KE-DL-102\n- Password: Dealer@123\n- Role: dealer\n\n")
+        f.write("## MNP\n- Email: mnp@yaminiflow.com / Code: M-RK-MH-101\n- Password: Mnp@123\n- Role: mnp\n\n")
         f.write("## Supplier\n- Email: supplier@yaminiflow.com\n- Password: Supplier@123\n- Role: supplier\n\n")
         f.write("## Auth Endpoints\n- POST /api/auth/login\n- POST /api/auth/register (admin only)\n- GET /api/auth/me\n- POST /api/auth/logout\n")
 

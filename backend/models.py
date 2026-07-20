@@ -130,12 +130,15 @@ class SupplierIn(BaseModel):
 
 class MnpIn(BaseModel):
     name: str
-    email: EmailStr
+    email: Optional[str] = ""
     phone: str
     area: str
     state: str
+    company: Optional[str] = ""
     target_monthly: float = 0
     password: Optional[str] = "Mnp@123"
+    user_code: Optional[str] = ""
+    login_id: Optional[str] = ""
 
 
 # ---- Order ----

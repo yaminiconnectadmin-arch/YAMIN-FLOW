@@ -32,7 +32,7 @@ export default function LoginPage() {
     const creds = {
       admin: ["admin@yaminiflow.com", "Admin@123"],
       dealer: ["D-ST-MH-101", "Dealer@123"],
-      mnp: ["mnp@yaminiflow.com", "Mnp@123"],
+      mnp: ["M-RK-MH-101", "Mnp@123"],
       supplier: ["supplier@yaminiflow.com", "Supplier@123"],
     }[role];
     setEmail(creds[0]);
@@ -63,7 +63,7 @@ export default function LoginPage() {
             One ecosystem. <br /> Every distributor, MNP & supplier — <span className="text-[#F28C18]">in flow.</span>
           </h1>
           <p className="mt-5 text-white/70 text-[15px] leading-relaxed max-w-md">
-            Intelligent weight-matrix conversions, automated 12 AM / single-click collation, and real-time distributor code tracking (e.g. D-ST-MH-101) across all regions.
+            Intelligent weight-matrix conversions, automated 12 AM / single-click collation, and real-time distributor & MNP code tracking (e.g. D-ST-MH-101, M-RK-MH-101) across all regions.
           </p>
           <div className="grid grid-cols-2 gap-4 pt-6 mt-6 border-t border-white/10 text-xs">
             <div>
@@ -71,7 +71,7 @@ export default function LoginPage() {
               <div className="text-[#BFC5CB]">Exact box & weight calculations</div>
             </div>
             <div>
-              <div className="font-bold text-white mb-0.5">Unique Distributor Codes</div>
+              <div className="font-bold text-white mb-0.5">Unique Distributor & MNP Codes</div>
               <div className="text-[#BFC5CB]">Location-indexed login identifiers</div>
             </div>
           </div>
@@ -97,20 +97,20 @@ export default function LoginPage() {
           <div className="mb-8">
             <div className="text-[10px] uppercase tracking-[0.2em] text-[#F28C18] font-semibold mb-2">Sign in</div>
             <h2 className="font-display text-3xl font-semibold text-[#06182F] tracking-tight">Access your workspace</h2>
-            <p className="text-sm text-[#5C6670] mt-2">Enter your email address or unique Distributor Login Code.</p>
+            <p className="text-sm text-[#5C6670] mt-2">Enter your email address or unique Distributor / MNP Login Code.</p>
           </div>
 
           <form onSubmit={submit} className="space-y-4" data-testid="login-form">
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#5C6670] mb-1.5">
-                Email or Distributor Code <span className="text-[#F28C18] lowercase">(e.g. D-ST-MH-101)</span>
+                Email or Login Code <span className="text-[#F28C18] lowercase">(e.g. D-ST-MH-101, M-RK-MH-101)</span>
               </label>
               <div className="relative">
                 <Envelope size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#BFC5CB]" />
                 <input
                   type="text" required value={email} onChange={(e) => setEmail(e.target.value)}
                   className="w-full h-11 pl-10 pr-3 rounded-md border border-[#E5E7EB] focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none text-sm text-[#06182F] bg-white transition-colors"
-                  placeholder="you@company.com or D-ST-MH-101"
+                  placeholder="you@company.com or D-ST-MH-101 or M-RK-MH-101"
                   data-testid="login-email-input"
                 />
               </div>
@@ -145,7 +145,7 @@ export default function LoginPage() {
               {[
                 { r: "admin", label: "Admin" },
                 { r: "dealer", label: "Distributor (Code: D-ST-MH-101)" },
-                { r: "mnp", label: "MNP" },
+                { r: "mnp", label: "MNP (Code: M-RK-MH-101)" },
                 { r: "supplier", label: "Supplier" },
               ].map((d) => (
                 <button
