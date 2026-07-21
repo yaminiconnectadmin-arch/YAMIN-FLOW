@@ -1,9 +1,11 @@
+import React, { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import InstallModal from "@/components/InstallPrompt";
 import {
   ChartBar, Package, Warehouse, Users, Truck, ShoppingCart, TrendUp,
   Robot, Bell, ClipboardText, GearSix, Storefront, Receipt, FileText,
-  Handshake, MapTrifold, ArrowsClockwise, ShieldCheck,
+  Handshake, MapTrifold, ArrowsClockwise, ShieldCheck, DeviceMobile,
 } from "@phosphor-icons/react";
 
 const NAV = {
@@ -11,7 +13,6 @@ const NAV = {
     { section: "Overview" },
     { to: "/dashboard", label: "Dashboard", icon: ChartBar },
     { to: "/analytics", label: "Analytics", icon: TrendUp },
-    { to: "/ai-insights", label: "AI Insights", icon: Robot },
     { section: "Distribution" },
     { to: "/products", label: "Products", icon: Package },
     { to: "/inventory", label: "Inventory", icon: Warehouse },
@@ -43,7 +44,6 @@ const NAV = {
     { to: "/analytics", label: "Analytics", icon: TrendUp },
     { to: "/dealers", label: "My Dealers", icon: Storefront },
     { to: "/orders", label: "Orders", icon: ShoppingCart },
-    { to: "/ai-insights", label: "AI Insights", icon: Robot },
     { to: "/notifications", label: "Notifications", icon: Bell },
   ],
   supplier: [
@@ -58,6 +58,7 @@ export default function Sidebar() {
   const { user } = useAuth();
   const items = NAV[user?.role] || [];
   const location = useLocation();
+  const [showInstallModal, setShowInstallModal] = useState(false);
 
   return (
     <aside className="yf-sidebar w-[260px] flex-shrink-0 flex flex-col h-screen" data-testid="app-sidebar">
@@ -97,6 +98,22 @@ export default function Sidebar() {
         })}
       </nav>
 
+      <div className="px-3 py-2 border-t border-white/5">
+        <button
+          onClick={() => setShowInstallModal(true)}
+          className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg bg-gradient-to-r from-[#F28C18]/20 to-[#F28C18]/10 hover:from-[#F28C18]/30 hover:to-[#F28C18]/20 border border-[#F28C18]/30 text-white font-medium text-[13px] transition-all shadow-sm"
+          data-testid="sidebar-install-app-btn"
+        >
+          <div className="w-6 h-6 rounded-md bg-[#F28C18] flex items-center justify-center text-white flex-shrink-0 shadow">
+            <DeviceMobile size={15} weight="bold" />
+          </div>
+          <div className="text-left leading-tight">
+            <div className="font-semibold text-white">Add App to Device</div>
+            <div className="text-[10px] text-[#F28C18]">Install Yamini Flow</div>
+          </div>
+        </button>
+      </div>
+
       <div className="px-4 py-4 border-t border-white/5">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white text-sm font-semibold">
@@ -108,6 +125,8 @@ export default function Sidebar() {
           </div>
         </div>
       </div>
+
+      <InstallModal isOpen={showInstallModal} onClose={() => setShowInstallModal(false)} />
     </aside>
   );
 }

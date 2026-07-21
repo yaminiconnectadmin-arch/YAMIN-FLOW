@@ -15,7 +15,6 @@ import WarehousesPage from "@/pages/Warehouses";
 import ProcurementPage from "@/pages/Procurement";
 import PurchaseOrdersPage from "@/pages/PurchaseOrders";
 import TallySyncPage from "@/pages/TallySync";
-import AIInsightsPage from "@/pages/AIInsights";
 import AnalyticsPage from "@/pages/Analytics";
 import NotificationsPage from "@/pages/Notifications";
 import AuditLogsPage from "@/pages/AuditLogs";
@@ -25,7 +24,10 @@ import InvoicesPage from "@/pages/Invoices";
 function RootRedirect() {
   const { user, loading } = useAuth();
   if (loading || user === null) return null;
-  return <Navigate to={user ? "/dashboard" : "/login"} replace />;
+  if (!user) return <Navigate to="/login" replace />;
+  const savedPath = localStorage.getItem("yf_last_path");
+  const targetPath = savedPath && savedPath !== "/" && savedPath !== "/login" ? savedPath : "/dashboard";
+  return <Navigate to={targetPath} replace />;
 }
 
 export default function App() {
@@ -57,7 +59,6 @@ export default function App() {
             <Route path="/procurement" element={<ProtectedRoute roles={["admin", "mnp"]}><ProcurementPage /></ProtectedRoute>} />
             <Route path="/purchase-orders" element={<ProtectedRoute roles={["admin", "supplier"]}><PurchaseOrdersPage /></ProtectedRoute>} />
             <Route path="/tally" element={<ProtectedRoute roles={["admin", "mnp"]}><TallySyncPage /></ProtectedRoute>} />
-            <Route path="/ai-insights" element={<ProtectedRoute roles={["admin", "mnp"]}><AIInsightsPage /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute roles={["admin", "mnp"]}><AnalyticsPage /></ProtectedRoute>} />
             <Route path="/audit" element={<ProtectedRoute roles={["admin"]}><AuditLogsPage /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute roles={["admin"]}><SettingsPage /></ProtectedRoute>} />

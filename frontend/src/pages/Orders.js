@@ -3,6 +3,7 @@ import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
 import { ExportButton } from "@/lib/csv";
+import { ExportExcelButton } from "@/lib/excel";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/sonner";
 import {

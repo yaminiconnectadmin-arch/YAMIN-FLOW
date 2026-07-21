@@ -3,6 +3,7 @@ import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
 import { ExportButton } from "@/lib/csv";
+import { ExportExcelButton } from "@/lib/excel";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Plus, PencilSimple, Trash, WhatsappLogo, Sparkle, CheckCircle } from "@phosphor-icons/react";
@@ -117,6 +118,34 @@ export function PeoplePage({ role, title, fields, endpoint }) {
     window.open(url, "_blank");
   };
 
+  const sendTargetReminder = (item) => {
+    const cleanPhone = (item.phone || "").replace(/[^0-9]/g, "");
+    if (!cleanPhone) {
+      toast.error("No valid phone number for WhatsApp");
+      return;
+    }
+    const achieved = item.current_month_revenue || 0;
+    const target = item.target_monthly || 0;
+    const pct = target > 0 ? Math.round((achieved / target) * 100) : 0;
+    const remaining = Math.max(0, target - achieved);
+    const msg = [
+      `Hello ${item.name},`,
+      ``,
+      `🎯 *Your Monthly Sales Target Update*`,
+      ``,
+      `📊 Target: ₹${target.toLocaleString("en-IN")}`,
+      `✅ Achieved: ₹${achieved.toLocaleString("en-IN")} (${pct}%)`,
+      remaining > 0
+        ? `⚡ Remaining: ₹${remaining.toLocaleString("en-IN")} — Keep pushing!`
+        : `🎉 Target Achieved! Great work this month!`,
+      ``,
+      `Reach out if you need any support.`,
+      `— Yamini Flow Team`,
+    ].join("\n");
+    const url = `https://wa.me/${cleanPhone.startsWith("91") ? cleanPhone : "91" + cleanPhone}?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank");
+  };
+
   const filtered = q ? items.filter((i) =>
     Object.values(i).some((v) => String(v || "").toLowerCase().includes(q.toLowerCase()))
   ) : items;
@@ -145,6 +174,30 @@ export function PeoplePage({ role, title, fields, endpoint }) {
                 key: f.key, label: f.label, format: f.format,
               }))}
             />
+            {(role === "dealer") && (
+              <ExportExcelButton
+                filename={`yamini-flow-distributors-{date}.xlsx`}
+                sheetName="Distributors"
+                rows={filtered}
+                columns={[
+                  { key: "user_code", label: "Dealer Code", width: 16 },
+                  { key: "name", label: "Name", width: 22 },
+                  { key: "company", label: "Company", width: 26 },
+                  { key: "city", label: "City", width: 16 },
+                  { key: "state", label: "State", width: 16 },
+                  { key: "mnp_name", label: "Assigned MNP", width: 22 },
+                  { key: "target_monthly", label: "Monthly Target (₹)", rawNumber: true, width: 20 },
+                  { key: "target_quarterly", label: "Quarterly Target (₹)", rawNumber: true, width: 22 },
+                  { key: "current_month_revenue", label: "Current Month Revenue (₹)", rawNumber: true, width: 26 },
+                  { key: "fulfillment_pct", label: "Fulfillment %", rawNumber: true, width: 16 },
+                  { key: "extra_sales", label: "Extra Sales (₹)", rawNumber: true, width: 18 },
+                  { key: "credit_limit", label: "Credit Limit (₹)", rawNumber: true, width: 20 },
+                  { key: "phone", label: "Phone", width: 16 },
+                  { key: "gstin", label: "GSTIN", width: 20 },
+                  { key: "status", label: "Status", width: 12 },
+                ]}
+              />
+            )}
           </div>
         }
       >
@@ -178,6 +231,15 @@ export function PeoplePage({ role, title, fields, endpoint }) {
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#E8F5E9] text-[#2E7D32] hover:bg-[#C8E6C9] text-xs font-medium transition-colors"
                             >
                               <WhatsappLogo size={14} weight="fill" /> WhatsApp
+                            </button>
+                          )}
+                          {role === "dealer" && i.phone && i.target_monthly > 0 && (
+                            <button
+                              onClick={() => sendTargetReminder(i)}
+                              title="Send Target Reminder via WhatsApp"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#FEF3C7] text-[#92400E] hover:bg-[#FDE68A] text-xs font-medium transition-colors"
+                            >
+                              <WhatsappLogo size={14} weight="fill" /> 🎯 Remind
                             </button>
                           )}
                           {canManage && (

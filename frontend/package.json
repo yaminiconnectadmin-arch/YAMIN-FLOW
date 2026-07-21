@@ -60,6 +60,7 @@
     "tailwind-merge": "3.2.0",
     "tailwindcss-animate": "1.0.7",
     "vaul": "1.1.2",
+    "xlsx": "^0.18.5",
     "zod": "3.24.4"
   },
   "scripts": {
@@ -82,7 +83,6 @@
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "7.21.11",
     "@craco/craco": "7.1.0",
-
     "@eslint/js": "9.23.0",
     "@types/lodash": "4.17.24",
     "autoprefixer": "10.4.20",

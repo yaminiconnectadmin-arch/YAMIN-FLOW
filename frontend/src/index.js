@@ -13,6 +13,14 @@ const queryClient = new QueryClient({
   },
 });
 
+// Capture PWA install prompt event globally early before React mounts
+window.deferredPWAInstallPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  window.deferredPWAInstallPrompt = e;
+  window.dispatchEvent(new Event("pwaInstallAvailable"));
+});
+
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
   <React.StrictMode>
@@ -21,3 +29,9 @@ root.render(
     </QueryClientProvider>
   </React.StrictMode>,
 );
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
