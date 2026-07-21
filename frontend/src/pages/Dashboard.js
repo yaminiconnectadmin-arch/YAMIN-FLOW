@@ -91,6 +91,40 @@ export default function Dashboard() {
             />
           </div>
 
+          {/* Target Tracking Row for Dealers/MNPs */}
+          {(isDealer || isMnp) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 stagger">
+              <PageSection title="Monthly Target Fulfillment" description="Current month progress">
+                <div className="p-5 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-[#5C6670]">Revenue Achieved</span>
+                    <span className="font-bold text-[#06182F]">{fmt.inr(data.kpis.current_month_revenue || 0)} / {fmt.inr(data.kpis.target_monthly || 0)}</span>
+                  </div>
+                  <div className="w-full h-3 bg-[#E5E7EB] rounded-full overflow-hidden">
+                    <div className="h-full bg-[#16A34A]" style={{ width: `${Math.min(100, data.kpis.target_monthly ? (data.kpis.current_month_revenue / data.kpis.target_monthly) * 100 : 0)}%` }} />
+                  </div>
+                  {data.kpis.current_month_revenue > data.kpis.target_monthly && data.kpis.target_monthly > 0 && (
+                    <div className="text-xs text-[#16A34A] font-bold">+{fmt.inr(data.kpis.current_month_revenue - data.kpis.target_monthly)} Extra Sales Generated!</div>
+                  )}
+                </div>
+              </PageSection>
+              <PageSection title="Quarterly Target Fulfillment" description="Current quarter progress">
+                <div className="p-5 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-[#5C6670]">Quarterly Revenue</span>
+                    <span className="font-bold text-[#06182F]">{fmt.inr(data.kpis.current_quarter_revenue || 0)} / {fmt.inr(data.kpis.target_quarterly || 0)}</span>
+                  </div>
+                  <div className="w-full h-3 bg-[#E5E7EB] rounded-full overflow-hidden">
+                    <div className="h-full bg-[#F28C18]" style={{ width: `${Math.min(100, data.kpis.target_quarterly ? (data.kpis.current_quarter_revenue / data.kpis.target_quarterly) * 100 : 0)}%` }} />
+                  </div>
+                  {data.kpis.current_quarter_revenue > data.kpis.target_quarterly && data.kpis.target_quarterly > 0 && (
+                    <div className="text-xs text-[#16A34A] font-bold">+{fmt.inr(data.kpis.current_quarter_revenue - data.kpis.target_quarterly)} Extra Sales Generated!</div>
+                  )}
+                </div>
+              </PageSection>
+            </div>
+          )}
+
           {/* Charts Row */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <PageSection

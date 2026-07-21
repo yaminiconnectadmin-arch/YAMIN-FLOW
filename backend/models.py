@@ -113,6 +113,8 @@ class DealerIn(BaseModel):
     state: str
     gstin: Optional[str] = ""
     credit_limit: float = 0
+    target_monthly: float = 0
+    target_quarterly: float = 0
     mnp_id: Optional[str] = None
     password: Optional[str] = "Dealer@123"
     user_code: Optional[str] = ""
@@ -139,6 +141,7 @@ class MnpIn(BaseModel):
     state: str
     company: Optional[str] = ""
     target_monthly: float = 0
+    target_quarterly: float = 0
     password: Optional[str] = "Mnp@123"
     user_code: Optional[str] = ""
     login_id: Optional[str] = ""

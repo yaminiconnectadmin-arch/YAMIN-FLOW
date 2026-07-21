@@ -1,10 +1,12 @@
 """Dealers, Suppliers, MNP users."""
 import secrets
+from typing import Optional, List, Dict, Any
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from db import db, serialize_doc, serialize_docs, now_iso
 from auth import get_current_user, require_admin, require_admin_or_mnp, hash_password
 from models import DealerIn, SupplierIn, MnpIn
+from datetime import datetime, timezone
 
 router = APIRouter(tags=["partners"])
 
@@ -83,6 +85,15 @@ async def _list_role(role: str, mnp_id: str = None):
                 "code": m.get("user_code") or m.get("login_id") or "M-ASSIGNED",
                 "name": m.get("name") or "Regional MNP"
             }
+        
+        # Calculate current month's revenue for all dealers
+        now = datetime.now(timezone.utc)
+        start_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc).isoformat()
+        rev_agg = await db.orders.aggregate([
+            {"$match": {"created_at": {"$gte": start_of_month}, "status": {"$in": ["delivered", "shipped", "approved"]}}},
+            {"$group": {"_id": "$dealer_id", "revenue": {"$sum": "$total"}}}
+        ]).to_list(1000)
+        dealer_rev_map = {r["_id"]: r["revenue"] for r in rev_agg}
 
     for d in docs:
         if role in ["dealer", "mnp"] and not d.get("login_id") and not d.get("user_code"):
@@ -104,6 +115,13 @@ async def _list_role(role: str, mnp_id: str = None):
                 s["mnp_code"] = "DIRECT"
                 s["mnp_name"] = "Direct (Yamini Flow HQ)"
                 s["assignment_type"] = "Direct (HQ)"
+            
+            # Attach fulfillment metrics
+            rev = dealer_rev_map.get(str(d["_id"]), 0)
+            target = s.get("target_monthly", 0)
+            s["current_month_revenue"] = round(rev, 2)
+            s["fulfillment_pct"] = round((rev / target * 100), 1) if target > 0 else 0
+            s["extra_sales"] = round(max(0, rev - target), 2)
         out.append(s)
     return out
 
@@ -141,6 +159,7 @@ async def create_dealer(payload: DealerIn, user: dict = Depends(require_admin_or
         "phone": payload.phone, "company": payload.company,
         "city": payload.city, "state": payload.state,
         "gstin": payload.gstin, "credit_limit": payload.credit_limit,
+        "target_monthly": payload.target_monthly, "target_quarterly": payload.target_quarterly,
         "mnp_id": mid, "mnp_code": mcode, "mnp_name": mname,
         "status": "active",
         "created_at": now_iso(), "updated_at": now_iso(),
@@ -164,6 +183,7 @@ async def update_dealer(dealer_id: str, payload: DealerIn, user: dict = Depends(
     update = {"name": payload.name, "phone": payload.phone, "company": payload.company,
               "city": payload.city, "state": payload.state, "gstin": payload.gstin,
               "credit_limit": payload.credit_limit,
+              "target_monthly": payload.target_monthly, "target_quarterly": payload.target_quarterly,
               "updated_at": now_iso()}
     if user.get("role") == "admin":
         mid, mcode, mname = await _resolve_dealer_mnp(payload.mnp_id)
@@ -262,6 +282,7 @@ async def create_mnp(payload: MnpIn, admin: dict = Depends(require_admin)):
         "phone": payload.phone, "area": payload.area, "state": payload.state,
         "company": payload.company or "",
         "target_monthly": payload.target_monthly,
+        "target_quarterly": payload.target_quarterly,
         "status": "active", "created_at": now_iso(), "updated_at": now_iso(),
     }
     res = await db.users.insert_one(doc)
@@ -275,6 +296,7 @@ async def create_mnp(payload: MnpIn, admin: dict = Depends(require_admin)):
 async def update_mnp(mnp_id: str, payload: MnpIn, admin: dict = Depends(require_admin)):
     update = {"name": payload.name, "phone": payload.phone, "area": payload.area,
               "state": payload.state, "target_monthly": payload.target_monthly,
+              "target_quarterly": payload.target_quarterly,
               "updated_at": now_iso()}
     await db.users.update_one({"_id": ObjectId(mnp_id), "role": "mnp"}, {"$set": update})
     doc = await db.users.find_one({"_id": ObjectId(mnp_id)})

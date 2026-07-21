@@ -322,6 +322,20 @@ const DEALER_FIELDS = [
   { key: "state", label: "State" },
   { key: "gstin", label: "GSTIN", mono: true },
   { key: "credit_limit", label: "Credit Limit (₹)", type: "number", format: (v) => v ? fmt.inr(v) : "—", default: 100000 },
+  { key: "target_monthly", label: "Monthly Target (₹)", type: "number", hideInTable: true, default: 50000 },
+  { key: "target_quarterly", label: "Quarterly Target (₹)", type: "number", hideInTable: true, default: 150000 },
+  { key: "fulfillment", label: "Monthly Fulfillment", hideInForm: true, format: (_, item) => (
+      <div className="flex flex-col gap-1 w-32">
+        <div className="flex items-center justify-between text-[10px]">
+          <span className="text-[#5C6670]">Target: <span className="font-semibold text-[#06182F]">{fmt.inr(item.target_monthly || 0)}</span></span>
+          <span className="font-bold text-[#F28C18]">{item.fulfillment_pct || 0}%</span>
+        </div>
+        <div className="w-full h-1.5 bg-[#E5E7EB] rounded-full overflow-hidden">
+          <div className="h-full bg-[#F28C18]" style={{ width: `${Math.min(100, item.fulfillment_pct || 0)}%` }} />
+        </div>
+        {item.extra_sales > 0 && <div className="text-[10px] text-[#16A34A] font-bold mt-0.5">+{fmt.inr(item.extra_sales)} Extra!</div>}
+      </div>
+  )},
   { key: "password", label: "Initial Password", wide: true, default: "" },
 ];
 
@@ -352,6 +366,7 @@ const MNP_FIELDS = [
   { key: "area", label: "Assigned Area" },
   { key: "state", label: "State" },
   { key: "target_monthly", label: "Monthly Target (₹)", type: "number", format: (v) => v ? fmt.inr(v) : "—", default: 500000 },
+  { key: "target_quarterly", label: "Quarterly Target (₹)", type: "number", format: (v) => v ? fmt.inr(v) : "—", default: 1500000 },
   { key: "password", label: "Initial Password", wide: true, default: "" },
 ];
 

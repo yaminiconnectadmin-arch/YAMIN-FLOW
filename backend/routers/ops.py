@@ -392,6 +392,11 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
     else:
         order_q = {}
 
+    # Fetch target details for the current user
+    user_doc = await db.users.find_one({"_id": ObjectId(user["id"])})
+    target_monthly = user_doc.get("target_monthly", 0) if user_doc else 0
+    target_quarterly = user_doc.get("target_quarterly", 0) if user_doc else 0
+
     total_revenue = 0
     total_orders = 0
     pending_orders = 0
@@ -409,6 +414,30 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
                 pending_orders = a["count"]
             if a["_id"] == "delivered":
                 delivered = a["count"]
+
+    # Calculate current month and current quarter revenue
+    current_month_revenue = 0
+    current_quarter_revenue = 0
+    if order_q is not None:
+        start_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc).isoformat()
+        current_quarter = (now.month - 1) // 3 + 1
+        start_of_quarter = datetime(now.year, 3 * current_quarter - 2, 1, tzinfo=timezone.utc).isoformat()
+        
+        q_month = {**order_q, "created_at": {"$gte": start_of_month}, "status": {"$in": ["delivered", "shipped", "approved"]}}
+        agg_month = await db.orders.aggregate([
+            {"$match": q_month},
+            {"$group": {"_id": None, "revenue": {"$sum": "$total"}}}
+        ]).to_list(1)
+        if agg_month:
+            current_month_revenue = agg_month[0]["revenue"]
+            
+        q_quarter = {**order_q, "created_at": {"$gte": start_of_quarter}, "status": {"$in": ["delivered", "shipped", "approved"]}}
+        agg_quarter = await db.orders.aggregate([
+            {"$match": q_quarter},
+            {"$group": {"_id": None, "revenue": {"$sum": "$total"}}}
+        ]).to_list(1)
+        if agg_quarter:
+            current_quarter_revenue = agg_quarter[0]["revenue"]
 
     # Inventory value
     inv_agg = await db.inventory.aggregate([
@@ -502,6 +531,10 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
             "dealer_count": dealer_count,
             "supplier_count": supplier_count,
             "product_count": product_count,
+            "target_monthly": target_monthly,
+            "target_quarterly": target_quarterly,
+            "current_month_revenue": round(current_month_revenue, 2),
+            "current_quarter_revenue": round(current_quarter_revenue, 2),
         },
         "revenue_trend": weeks,
         "state_data": [{"state": s["_id"] or "Unknown", "revenue": round(s["revenue"], 2), "orders": s["orders"]} for s in state_data],
@@ -539,6 +572,7 @@ async def mnps_summary(admin: dict = Depends(require_admin)):
             "state": m.get("state", ""),
             "phone": m.get("phone", ""),
             "target_monthly": m.get("target_monthly", 0),
+            "target_quarterly": m.get("target_quarterly", 0),
             "distributor_count": len(dealers),
             "revenue": round(rev, 2),
             "orders": orders,
@@ -567,6 +601,8 @@ async def mnp_dealer_analytics(user: dict = Depends(require_roles("admin", "mnp"
             "dealer_id": did, "name": d.get("company") or d["name"],
             "city": d.get("city", ""), "state": d.get("state", ""),
             "credit_limit": d.get("credit_limit", 0),
+            "target_monthly": d.get("target_monthly", 0),
+            "target_quarterly": d.get("target_quarterly", 0),
             "revenue": round(rev, 2), "orders": orders,
         })
     rows.sort(key=lambda x: -x["revenue"])
