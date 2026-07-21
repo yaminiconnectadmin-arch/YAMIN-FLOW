@@ -44,7 +44,16 @@ export function PeoplePage({ role, title, fields, endpoint }) {
     }
   }, [role]);
 
-  const openNew = () => { setEditing(null); setForm(empty); setDialogOpen(true); };
+  const openNew = () => {
+    const defaultForm = { ...empty };
+    // If the logged-in user is an MNP, auto-assign themselves as the MNP
+    if (isMnp && role === "dealer") {
+      defaultForm.mnp_id = user.id;
+    }
+    setEditing(null);
+    setForm(defaultForm);
+    setDialogOpen(true);
+  };
   const openEdit = (i) => { setEditing(i); setForm({ ...empty, ...i }); setDialogOpen(true); };
   
   const autoGenPassword = () => {
@@ -202,7 +211,15 @@ export function PeoplePage({ role, title, fields, endpoint }) {
                 </span>
               </div>
             )}
-            {fields.filter(f => (!editing || f.key !== "password") && !f.hideInForm).map((f) => (
+            {fields.filter(f => {
+              // Hide password field when editing
+              if (editing && f.key === "password") return false;
+              // Hide form-only hidden fields
+              if (f.hideInForm) return false;
+              // MNPs: hide mnp_id when editing (can't reassign)
+              if (f.key === "mnp_id" && editing && isMnp) return false;
+              return true;
+            }).map((f) => (
               <div key={f.key} className={f.wide ? "col-span-2" : ""}>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#5C6670]">{f.label}</label>
@@ -217,19 +234,28 @@ export function PeoplePage({ role, title, fields, endpoint }) {
                   )}
                 </div>
                 {f.type === "select" && f.key === "mnp_id" ? (
-                  <select
-                    value={form[f.key] || "direct"}
-                    onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                    className="w-full h-10 px-3 rounded-md border border-[#E5E7EB] bg-white text-sm font-medium text-[#06182F] focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
-                    data-testid={`${role}-form-${f.key}`}
-                  >
-                    <option value="direct">Direct (Yamini Flow HQ — Direct Distributorship)</option>
-                    {mnpList.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        Assigned under MNP: {m.name} {m.company ? `(${m.company})` : ""} [{m.user_code || m.login_id || m.email}]
-                      </option>
-                    ))}
-                  </select>
+                  // MNPs: show locked read-only field with their own code
+                  // Admins editing: hide field (mnp reassignment not supported in edit)
+                  isMnp ? (
+                    <div className="w-full h-10 px-3 rounded-md border border-[#E5E7EB] bg-[#F9FAFB] text-sm font-medium text-[#5C6670] flex items-center gap-2">
+                      <span>🔒</span>
+                      <span>Auto-assigned to your MNP code</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={form[f.key] || "direct"}
+                      onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                      className="w-full h-10 px-3 rounded-md border border-[#E5E7EB] bg-white text-sm font-medium text-[#06182F] focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
+                      data-testid={`${role}-form-${f.key}`}
+                    >
+                      <option value="direct">Direct (Yamini Flow HQ — Direct Distributorship)</option>
+                      {mnpList.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          Assigned under MNP: {m.name} {m.company ? `(${m.company})` : ""} [{m.user_code || m.login_id || m.email}]
+                        </option>
+                      ))}
+                    </select>
+                  )
                 ) : (
                   <input type={f.type || "text"} value={form[f.key] ?? ""}
                     placeholder={f.key === "password" ? "Leave blank for auto-generated password" : f.key === "email" ? "Optional (e.g. d-st-mh-101@distributor.yaminiflow.com)" : ""}
