@@ -4,6 +4,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 Role = Literal["admin", "dealer", "mnp", "supplier"]
+AdminRole = Literal["super_admin", "staff"]
 
 
 # ---- Auth ----
@@ -214,3 +215,25 @@ class NotificationIn(BaseModel):
     title: str
     body: str
     kind: Literal["info", "success", "warning", "error"] = "info"
+
+
+# ---- Staff / Employee Access ----
+class StaffCreateIn(BaseModel):
+    name: str
+    email: Optional[str] = None
+    login_id: Optional[str] = None
+    password: str = Field(default="Welcome@2026", min_length=6)
+    allowed_tabs: List[str] = Field(default_factory=list)  # ["all"] = unrestricted
+    is_active: bool = True
+
+
+class StaffUpdateIn(BaseModel):
+    name: Optional[str] = None
+    allowed_tabs: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+    new_password: Optional[str] = Field(default=None, min_length=6)
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=6)

@@ -28,9 +28,15 @@ def _secret() -> str:
     return os.environ["JWT_SECRET"]
 
 
-def create_access_token(user_id: str, email: str, role: str) -> str:
+def create_access_token(user_id: str, email: str, role: str,
+                        admin_role: str = "super_admin",
+                        allowed_tabs: list | None = None,
+                        must_change_password: bool = False) -> str:
     payload = {
         "sub": user_id, "email": email, "role": role,
+        "admin_role": admin_role,
+        "allowed_tabs": allowed_tabs or ["all"],
+        "must_change_password": must_change_password,
         "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_MIN),
         "type": "access",
     }
@@ -75,6 +81,11 @@ async def get_current_user(request: Request) -> dict:
             raise HTTPException(status_code=401, detail="User not found")
         u = serialize_doc(user)
         u.pop("password_hash", None)
+        # Ensure RBAC fields are present (default to super_admin for existing admins)
+        if u.get("role") == "admin":
+            u.setdefault("admin_role", "super_admin")
+            u.setdefault("allowed_tabs", ["all"])
+            u.setdefault("must_change_password", False)
         return u
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -92,6 +103,15 @@ def require_roles(*roles: str):
 
 require_admin = require_roles("admin")
 require_admin_or_mnp = require_roles("admin", "mnp")
+
+
+async def require_super_admin(user: dict = Depends(get_current_user)) -> dict:
+    """Only users with role=admin AND admin_role=super_admin may proceed."""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if user.get("admin_role", "super_admin") != "super_admin":
+        raise HTTPException(status_code=403, detail="Super Admin access required")
+    return user
 
 
 async def brute_force_check(identifier: str) -> None:

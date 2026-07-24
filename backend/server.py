@@ -16,6 +16,7 @@ from routers.partners import router as partners_router
 from routers.orders import router as orders_router
 from routers.procurement import router as procurement_router
 from routers.ops import router as ops_router
+from routers.staff_router import router as staff_router
 
 
 logging.basicConfig(level=logging.INFO,
@@ -55,14 +56,14 @@ async def health():
 
 
 # mount versioned + non-versioned same routes (v1 alias)
-for r in [auth_router, catalog_router, partners_router, orders_router, procurement_router, ops_router]:
+for r in [auth_router, catalog_router, partners_router, orders_router, procurement_router, ops_router, staff_router]:
     api.include_router(r)
 
 app.include_router(api)
 
 # v1 alias
 v1 = APIRouter(prefix="/api/v1")
-for r in [auth_router, catalog_router, partners_router, orders_router, procurement_router, ops_router]:
+for r in [auth_router, catalog_router, partners_router, orders_router, procurement_router, ops_router, staff_router]:
     v1.include_router(r)
 app.include_router(v1)
 

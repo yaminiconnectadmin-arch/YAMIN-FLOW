@@ -39,29 +39,30 @@ export default function App() {
             <Route path="/" element={<RootRedirect />} />
             <Route path="/login" element={<LoginPage />} />
 
-            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            {/* Dashboard — accessible to all logged-in users */}
+            <Route path="/dashboard" element={<ProtectedRoute tabKey="dashboard"><Dashboard /></ProtectedRoute>} />
 
-            {/* Admin + MNP + Dealer common */}
-            <Route path="/orders" element={<ProtectedRoute><OrdersPage /></ProtectedRoute>} />
-            <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+            {/* Common (Admin + MNP + Dealer) */}
+            <Route path="/orders" element={<ProtectedRoute tabKey="orders"><OrdersPage /></ProtectedRoute>} />
+            <Route path="/notifications" element={<ProtectedRoute tabKey="notifications"><NotificationsPage /></ProtectedRoute>} />
 
-            {/* Dealer */}
+            {/* Dealer-only */}
             <Route path="/browse" element={<ProtectedRoute roles={["dealer", "admin"]}><DealerBrowse /></ProtectedRoute>} />
             <Route path="/invoices" element={<ProtectedRoute roles={["dealer", "admin"]}><InvoicesPage /></ProtectedRoute>} />
 
-            {/* Admin / MNP */}
-            <Route path="/products" element={<ProtectedRoute roles={["admin", "mnp"]}><ProductsPage /></ProtectedRoute>} />
-            <Route path="/inventory" element={<ProtectedRoute roles={["admin", "mnp"]}><InventoryPage /></ProtectedRoute>} />
-            <Route path="/warehouses" element={<ProtectedRoute roles={["admin"]}><WarehousesPage /></ProtectedRoute>} />
-            <Route path="/dealers" element={<ProtectedRoute roles={["admin", "mnp"]}><DealersPage /></ProtectedRoute>} />
-            <Route path="/suppliers" element={<ProtectedRoute roles={["admin"]}><SuppliersPage /></ProtectedRoute>} />
-            <Route path="/mnp" element={<ProtectedRoute roles={["admin"]}><MnpPage /></ProtectedRoute>} />
-            <Route path="/procurement" element={<ProtectedRoute roles={["admin", "mnp"]}><ProcurementPage /></ProtectedRoute>} />
-            <Route path="/purchase-orders" element={<ProtectedRoute roles={["admin", "supplier"]}><PurchaseOrdersPage /></ProtectedRoute>} />
-            <Route path="/tally" element={<ProtectedRoute roles={["admin", "mnp"]}><TallySyncPage /></ProtectedRoute>} />
-            <Route path="/analytics" element={<ProtectedRoute roles={["admin", "mnp"]}><AnalyticsPage /></ProtectedRoute>} />
-            <Route path="/audit" element={<ProtectedRoute roles={["admin"]}><AuditLogsPage /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute roles={["admin"]}><SettingsPage /></ProtectedRoute>} />
+            {/* Admin / MNP — each gets its tabKey for staff gating */}
+            <Route path="/analytics"       element={<ProtectedRoute roles={["admin", "mnp"]}     tabKey="analytics"      ><AnalyticsPage /></ProtectedRoute>} />
+            <Route path="/products"        element={<ProtectedRoute roles={["admin", "mnp"]}     tabKey="products"       ><ProductsPage /></ProtectedRoute>} />
+            <Route path="/inventory"       element={<ProtectedRoute roles={["admin", "mnp"]}     tabKey="inventory"      ><InventoryPage /></ProtectedRoute>} />
+            <Route path="/warehouses"      element={<ProtectedRoute roles={["admin"]}            tabKey="warehouses"     ><WarehousesPage /></ProtectedRoute>} />
+            <Route path="/dealers"         element={<ProtectedRoute roles={["admin", "mnp"]}     tabKey="dealers"        ><DealersPage /></ProtectedRoute>} />
+            <Route path="/suppliers"       element={<ProtectedRoute roles={["admin"]}            tabKey="suppliers"      ><SuppliersPage /></ProtectedRoute>} />
+            <Route path="/mnp"             element={<ProtectedRoute roles={["admin"]}            tabKey="mnp"            ><MnpPage /></ProtectedRoute>} />
+            <Route path="/procurement"     element={<ProtectedRoute roles={["admin", "mnp"]}     tabKey="procurement"    ><ProcurementPage /></ProtectedRoute>} />
+            <Route path="/purchase-orders" element={<ProtectedRoute roles={["admin", "supplier"]}tabKey="purchase-orders"><PurchaseOrdersPage /></ProtectedRoute>} />
+            <Route path="/tally"           element={<ProtectedRoute roles={["admin", "mnp"]}     tabKey="tally"          ><TallySyncPage /></ProtectedRoute>} />
+            <Route path="/audit"           element={<ProtectedRoute roles={["admin"]}            tabKey="audit"          ><AuditLogsPage /></ProtectedRoute>} />
+            <Route path="/settings"        element={<ProtectedRoute roles={["admin"]}            tabKey="settings"       ><SettingsPage /></ProtectedRoute>} />
 
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

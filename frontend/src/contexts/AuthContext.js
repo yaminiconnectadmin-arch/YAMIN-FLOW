@@ -10,6 +10,12 @@ export function AuthProvider({ children }) {
   const check = useCallback(async () => {
     try {
       const { data } = await api.get("/auth/me");
+      // Ensure RBAC fields default correctly for non-admin roles
+      if (data.role === "admin") {
+        data.admin_role = data.admin_role || "super_admin";
+        data.allowed_tabs = data.allowed_tabs || ["all"];
+        data.must_change_password = data.must_change_password ?? false;
+      }
       setUser(data);
     } catch {
       setUser(false);
@@ -29,8 +35,14 @@ export function AuthProvider({ children }) {
         password,
       });
       if (data.access_token) localStorage.setItem("yf_token", data.access_token);
-      setUser(data.user);
-      return { ok: true, user: data.user };
+      const u = data.user;
+      if (u.role === "admin") {
+        u.admin_role = u.admin_role || "super_admin";
+        u.allowed_tabs = u.allowed_tabs || ["all"];
+        u.must_change_password = u.must_change_password ?? false;
+      }
+      setUser(u);
+      return { ok: true, user: u };
     } catch (e) {
       return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) || e.message };
     }
@@ -43,8 +55,14 @@ export function AuthProvider({ children }) {
     setUser(false);
   };
 
+  /** Call after a successful password change to refresh the user object */
+  const refreshUser = async (newToken) => {
+    if (newToken) localStorage.setItem("yf_token", newToken);
+    await check();
+  };
+
   return (
-    <AuthCtx.Provider value={{ user, loading, login, logout, refresh: check }}>
+    <AuthCtx.Provider value={{ user, loading, login, logout, refresh: check, refreshUser }}>
       {children}
     </AuthCtx.Provider>
   );

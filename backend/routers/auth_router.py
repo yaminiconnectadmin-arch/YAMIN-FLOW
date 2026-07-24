@@ -8,7 +8,7 @@ from auth import (
     set_auth_cookies, clear_auth_cookies, get_current_user, require_admin,
     brute_force_check, record_failed_attempt, clear_attempts,
 )
-from models import LoginInput, RegisterInput
+from models import LoginInput, RegisterInput, ChangePasswordIn
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -39,12 +39,27 @@ async def login(payload: LoginInput, request: Request, response: Response):
 
     await clear_attempts(identifier)
     uid = str(user["_id"])
-    access = create_access_token(uid, user.get("email") or user.get("login_id") or ident, user["role"])
+    admin_role = user.get("admin_role", "super_admin") if user["role"] == "admin" else None
+    allowed_tabs = user.get("allowed_tabs", ["all"]) if user["role"] == "admin" else []
+    must_change_password = user.get("must_change_password", False)
+    access = create_access_token(
+        uid,
+        user.get("email") or user.get("login_id") or ident,
+        user["role"],
+        admin_role=admin_role or "super_admin",
+        allowed_tabs=allowed_tabs,
+        must_change_password=must_change_password,
+    )
     refresh = create_refresh_token(uid)
     set_auth_cookies(response, access, refresh)
 
     u = serialize_doc(user)
     u.pop("password_hash", None)
+    # Ensure RBAC fields returned
+    if u.get("role") == "admin":
+        u.setdefault("admin_role", "super_admin")
+        u.setdefault("allowed_tabs", ["all"])
+        u.setdefault("must_change_password", False)
     return {"user": u, "access_token": access}
 
 
@@ -72,3 +87,32 @@ async def register(payload: RegisterInput, response: Response, admin: dict = Dep
     }
     res = await db.users.insert_one(doc)
     return {"id": str(res.inserted_id), "email": email, "role": payload.role, "name": payload.name}
+
+
+@router.post("/change-password")
+async def change_password(payload: ChangePasswordIn, response: Response,
+                          user: dict = Depends(get_current_user)):
+    """First-login or voluntary password change. Re-issues a fresh JWT after success."""
+    db_user = await db.users.find_one({"_id": ObjectId(user["id"])})
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not verify_password(payload.current_password, db_user.get("password_hash", "")):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    await db.users.update_one(
+        {"_id": ObjectId(user["id"])},
+        {"$set": {"password_hash": hash_password(payload.new_password),
+                  "must_change_password": False,
+                  "updated_at": now_iso()}},
+    )
+    # Re-issue tokens with must_change_password = False
+    uid = user["id"]
+    ident = user.get("email") or user.get("login_id") or uid
+    access = create_access_token(
+        uid, ident, user["role"],
+        admin_role=user.get("admin_role", "super_admin"),
+        allowed_tabs=user.get("allowed_tabs", ["all"]),
+        must_change_password=False,
+    )
+    refresh = create_refresh_token(uid)
+    set_auth_cookies(response, access, refresh)
+    return {"ok": True, "access_token": access}
