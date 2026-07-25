@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import AppShell from "@/components/layout/AppShell";
 import { KPICard, PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
 import {
-  CurrencyInr, ShoppingCart, Warehouse, Users, Package, TrendUp, Lightning, Robot, ArrowRight, Handshake,
+  CurrencyInr, ShoppingCart, Warehouse, Users, Package, TrendUp, Robot, ArrowRight,
 } from "@phosphor-icons/react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,

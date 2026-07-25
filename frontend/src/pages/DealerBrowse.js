@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
-import { PageSection, EmptyState } from "@/components/common/Common";
+import { EmptyState } from "@/components/common/Common";
 import { Plus, Minus, ShoppingCart, Scales, Stack, CheckCircle } from "@phosphor-icons/react";
 import { toast } from "@/components/ui/sonner";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function DealerBrowse() {
-  const { user } = useAuth();
+  useAuth();
   const [products, setProducts] = useState([]);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("CSK Chipboard Screws");
@@ -38,6 +38,7 @@ export default function DealerBrowse() {
         setLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, cat]);
 
   const categories = ["CSK Chipboard Screws", "CSK Drywall Screws", "Electronics", "Appliances", "Hardware", "Furniture", "All"];
