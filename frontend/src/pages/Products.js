@@ -3,7 +3,7 @@ import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
 import { ExportButton } from "@/lib/csv";
-import { Plus, Trash, PencilSimple, Scales, Stack } from "@phosphor-icons/react";
+import { Plus, Trash, PencilSimple } from "@phosphor-icons/react";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -37,6 +37,7 @@ export default function ProductsPage() {
     finally { setLoading(false); }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [q, categoryFilter]);
 
   const openNew = () => { setEditing(null); setForm(emptyProduct); setDialogOpen(true); };
