@@ -45,7 +45,29 @@ export default function ProtectedRoute({ roles, tabKey, children }) {
   ) {
     const tabs = user.allowed_tabs || [];
     if (!tabs.includes("all") && !tabs.includes(tabKey)) {
-      return <Navigate to="/dashboard" replace />;
+      // Find the first tab they DO have access to
+      const TAB_PATHS = {
+        dashboard: "/dashboard",
+        analytics: "/analytics",
+        products: "/products",
+        inventory: "/inventory",
+        orders: "/orders",
+        procurement: "/procurement",
+        "purchase-orders": "/purchase-orders",
+        dealers: "/dealers",
+        mnp: "/mnp",
+        suppliers: "/suppliers",
+        warehouses: "/warehouses",
+        tally: "/tally",
+        notifications: "/notifications",
+        audit: "/audit",
+        settings: "/settings",
+      };
+      const firstAllowedTab = tabs.find((t) => TAB_PATHS[t]);
+      if (firstAllowedTab) {
+        return <Navigate to={TAB_PATHS[firstAllowedTab]} replace />;
+      }
+      return <Navigate to="/login" replace />;
     }
   }
 
