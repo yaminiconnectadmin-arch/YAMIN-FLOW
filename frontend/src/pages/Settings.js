@@ -466,7 +466,7 @@ export default function SettingsPage() {
                 <div className="text-center py-10 rounded-xl border-2 border-dashed border-[#E5E7EB]">
                   <UserGear size={32} className="mx-auto text-[#CBD5E0] mb-3" />
                   <p className="text-sm font-medium text-[#5C6670]">No employee accounts yet</p>
-                  <p className="text-[12px] text-[#9AA5B4] mt-1">Click "Add Employee" to grant limited admin access</p>
+                  <p className="text-[12px] text-[#9AA5B4] mt-1">Click &quot;Add Employee&quot; to grant limited admin access</p>
                 </div>
               ) : (
                 <div className="space-y-2.5">
