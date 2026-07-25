@@ -4,7 +4,7 @@ import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, KPICard, EmptyState } from "@/components/common/Common";
 import { ExportButton } from "@/lib/csv";
 import { toast } from "@/components/ui/sonner";
-import { ArrowsClockwise, CheckCircle, XCircle, Clock, Plugs, Copy, Eye, EyeSlash, ArrowClockwise, Broadcast } from "@phosphor-icons/react";
+import { ArrowsClockwise, CheckCircle, XCircle, Plugs, Copy, Eye, EyeSlash, ArrowClockwise, Broadcast } from "@phosphor-icons/react";
 
 const MODULES = [
   { key: "products", label: "Products" },

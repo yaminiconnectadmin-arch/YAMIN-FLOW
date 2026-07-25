@@ -4,7 +4,7 @@ import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
 import { toast } from "@/components/ui/sonner";
 import {
-  Lightning, Package, Clock, CheckCircle, ArrowRight, MagnifyingGlass,
+  Lightning, Package, Clock, MagnifyingGlass,
   Scales, Stack, PencilSimple, Plus, Sparkle, ArrowsClockwise, FileText
 } from "@phosphor-icons/react";
 import {

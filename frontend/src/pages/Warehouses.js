@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { api, fmt } from "@/lib/api";
+import { api } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
-import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
-import { Plus, PencilSimple, Trash } from "@phosphor-icons/react";
+import { PageSection, EmptyState } from "@/components/common/Common";
+import { Plus, PencilSimple } from "@phosphor-icons/react";
 import { toast } from "@/components/ui/sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,

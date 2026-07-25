@@ -3,24 +3,24 @@ import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
 import { ExportButton } from "@/lib/csv";
-import { ExportExcelButton } from "@/lib/excel";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Eye, Plus, ShoppingCart, Stack, Scales, CheckCircle } from "@phosphor-icons/react";
-import { useNavigate } from "react-router-dom";
+import { Eye, Plus, Stack } from "@phosphor-icons/react";
+
 
 const STATUS_OPTIONS = ["pending", "approved", "reserved", "shipped", "delivered", "cancelled"];
 
 export default function OrdersPage() {
-  const { user } = useAuth();
+  useAuth();
   const [orders, setOrders] = useState([]);
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+
 
   // Fastener Order Placement Modal State
   const [newOrderModalOpen, setNewOrderModalOpen] = useState(false);
@@ -40,6 +40,7 @@ export default function OrdersPage() {
     finally { setLoading(false); }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [status]);
 
   // Load products for the order modal when opened
@@ -57,6 +58,7 @@ export default function OrdersPage() {
     }
   }, [newOrderModalOpen, cat]);
 
+  // eslint-disable-next-line no-unused-vars
   const updateStatus = async (o, newStatus) => {
     try {
       await api.patch(`/orders/${o.id}/status`, { status: newStatus });

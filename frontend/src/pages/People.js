@@ -37,12 +37,12 @@ export function PeoplePage({ role, title, fields, endpoint }) {
     } catch { toast.error("Failed to load directory"); }
     finally { setLoading(false); }
   };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     load();
     if (role === "dealer") {
       api.get("/mnp").then((res) => setMnpList(res.data || [])).catch(() => {});
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
 
   const openNew = () => {
