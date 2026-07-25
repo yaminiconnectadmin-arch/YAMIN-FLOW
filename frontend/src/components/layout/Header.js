@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { api } from "@/lib/api";
-import { MagnifyingGlass, Bell, SignOut, CircleNotch } from "@phosphor-icons/react";
+import { MagnifyingGlass, Bell, SignOut } from "@phosphor-icons/react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
