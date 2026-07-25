@@ -3,8 +3,8 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import InstallModal from "@/components/InstallPrompt";
 import {
-  ChartBar, Package, Warehouse, Users, Truck, ShoppingCart, TrendUp,
-  Robot, Bell, ClipboardText, GearSix, Storefront, Receipt, FileText,
+  ChartBar, Package, Warehouse, ShoppingCart, TrendUp,
+  Bell, ClipboardText, GearSix, Storefront, Receipt, FileText,
   Handshake, MapTrifold, ArrowsClockwise, ShieldCheck, DeviceMobile,
   Crown, UserGear,
 } from "@phosphor-icons/react";

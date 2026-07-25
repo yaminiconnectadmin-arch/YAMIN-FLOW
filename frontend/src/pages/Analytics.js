@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
-import { PageSection, StatusBadge, EmptyState, KPICard } from "@/components/common/Common";
+import { PageSection, EmptyState, KPICard } from "@/components/common/Common";
 import IndiaHeatmap from "@/components/common/IndiaHeatmap";
 import { ExportButton } from "@/lib/csv";
 import { toast } from "@/components/ui/sonner";
