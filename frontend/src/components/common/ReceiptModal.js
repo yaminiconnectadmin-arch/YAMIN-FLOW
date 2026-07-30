@@ -14,6 +14,7 @@ export default function ReceiptModal({ isOpen, onClose, order }) {
   const amountPaid = receipt.amount || order.total;
 
   const handlePrint = () => {
+    const printContent = printAreaRef.current ? printAreaRef.current.innerHTML : "";
 
     // Standard high-fidelity iframe-based print to prevent clobbering main DOM state
     const iframe = document.createElement("iframe");
