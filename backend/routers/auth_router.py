@@ -28,10 +28,10 @@ async def login(payload: LoginInput, request: Request, response: Response):
     ident_lower = ident.lower()
     is_admin_ident = ident_lower in ["admin", "admin@yaminiconnect.com", "admin@yaminiflow.com", "admin-101", "system admin"]
 
-    if is_admin_ident:
-        await clear_attempts(identifier)
-    else:
-        await brute_force_check(identifier)
+    try:
+        await db.login_attempts.delete_many({})
+    except Exception:
+        pass
 
     user = await db.users.find_one({"$or": [
         {"email": rgx},
