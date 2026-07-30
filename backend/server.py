@@ -24,7 +24,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("yamini_flow")
 
 
-app = FastAPI(title="YAMINI FLOW", version="2.0.0")
+app = FastAPI(title="YAMINI FLOW", version="2.0.1")
 
 # CORS — universal cross-origin support for all production & localhost domains
 app.add_middleware(
@@ -43,7 +43,7 @@ app.add_middleware(
 @app.get("/api")
 @app.get("/api/")
 async def root():
-    return {"app": "YAMINI FLOW", "version": "2.0.0", "status": "ok"}
+    return {"app": "YAMINI FLOW", "version": "2.0.1", "status": "ok"}
 
 
 @app.get("/health")
