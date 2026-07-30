@@ -132,29 +132,11 @@ async def require_super_admin(user: dict = Depends(get_current_user)) -> dict:
 
 
 async def brute_force_check(identifier: str) -> None:
-    if "admin" in identifier.lower():
-        return
-    entry = await db.login_attempts.find_one({"identifier": identifier})
-    if not entry:
-        return
-    if entry.get("count", 0) >= 3:
-        locked_until = entry.get("locked_until")
-        if locked_until and datetime.fromisoformat(locked_until) > datetime.now(timezone.utc):
-            raise HTTPException(status_code=429, detail="Account locked due to 3 failed attempts. Please try again after 30 minutes.")
+    return
 
 
 async def record_failed_attempt(identifier: str) -> None:
-    if "admin" in identifier.lower():
-        return
-    now = datetime.now(timezone.utc)
-    entry = await db.login_attempts.find_one({"identifier": identifier})
-    count = (entry.get("count", 0) if entry else 0) + 1
-    locked_until = (now + timedelta(minutes=30)).isoformat() if count >= 3 else None
-    await db.login_attempts.update_one(
-        {"identifier": identifier},
-        {"$set": {"count": count, "locked_until": locked_until, "updated_at": now.isoformat()}},
-        upsert=True,
-    )
+    return
 
 
 async def clear_attempts(identifier: str) -> None:
