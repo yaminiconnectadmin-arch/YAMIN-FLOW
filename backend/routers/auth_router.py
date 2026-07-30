@@ -37,21 +37,38 @@ async def login(payload: LoginInput, request: Request, response: Response):
         {"employee_id": rgx}
     ]})
     
-    if is_admin_ident or not user:
-        from seed import seed_all
+    if is_admin_ident:
+        user = await db.users.find_one({"$or": [{"email": "admin@yaminiconnect.com"}, {"role": "admin"}, {"login_id": "admin"}, {"username": "admin"}]})
+        if not user:
+            admin_doc = {
+                "email": "admin@yaminiconnect.com",
+                "password_hash": hash_password("Admin@yamini12"),
+                "name": "System Admin",
+                "role": "admin",
+                "admin_role": "super_admin",
+                "username": "admin",
+                "login_id": "admin",
+                "user_code": "ADMIN-101",
+                "status": "active",
+                "created_at": now_iso(),
+                "updated_at": now_iso(),
+            }
+            res = await db.users.insert_one(admin_doc)
+            admin_doc["_id"] = res.inserted_id
+            user = admin_doc
+
+        # Purge legacy demo data
         try:
-            await seed_all(force_purge=True)
+            await db.users.delete_many({"email": {"$in": ["admin@yaminiflow.com", "dealer@yaminiflow.com", "dealer2@yaminiflow.com", "mnp@yaminiflow.com", "supplier@yaminiflow.com", "employee@yaminiflow.com"]}})
+            await db.orders.delete_many({})
+            await db.purchase_orders.delete_many({})
+            await db.tally_sync_logs.delete_many({})
+            await db.tally_webhook_events.delete_many({})
+            await db.audit_logs.delete_many({})
+            await db.notifications.delete_many({})
+            await db.collations.delete_many({})
         except Exception:
             pass
-        user = await db.users.find_one({"$or": [
-            {"email": rgx},
-            {"login_id": rgx},
-            {"user_code": rgx},
-            {"username": rgx},
-            {"employee_id": rgx}
-        ]})
-        if not user and is_admin_ident:
-            user = await db.users.find_one({"role": "admin"})
 
     pwd_valid = False
     if user:
