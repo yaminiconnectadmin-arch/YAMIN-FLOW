@@ -51,7 +51,7 @@ async def login(payload: LoginInput, request: Request, response: Response):
                 "role": "admin",
                 "admin_role": "super_admin",
                 "username": "admin",
-                "login_id": "admin",
+                "login_id": "admin@yaminiconnect.com",
                 "user_code": "ADMIN-101",
                 "status": "active",
                 "created_at": now_iso(),
@@ -60,6 +60,13 @@ async def login(payload: LoginInput, request: Request, response: Response):
             res = await db.users.insert_one(admin_doc)
             admin_doc["_id"] = res.inserted_id
             user = admin_doc
+        else:
+            await db.users.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"email": "admin@yaminiconnect.com", "login_id": "admin@yaminiconnect.com", "updated_at": now_iso()}}
+            )
+            user["email"] = "admin@yaminiconnect.com"
+            user["login_id"] = "admin@yaminiconnect.com"
 
         # Purge legacy demo data
         try:
