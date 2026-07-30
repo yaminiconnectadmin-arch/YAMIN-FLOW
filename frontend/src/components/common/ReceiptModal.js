@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Printer, X } from "@phosphor-icons/react";
+import { Printer } from "@phosphor-icons/react";
 import { fmt } from "@/lib/api";
 
 export default function ReceiptModal({ isOpen, onClose, order }) {
@@ -14,8 +14,6 @@ export default function ReceiptModal({ isOpen, onClose, order }) {
   const amountPaid = receipt.amount || order.total;
 
   const handlePrint = () => {
-    const printContent = printAreaRef.current.innerHTML;
-    const originalContent = document.body.innerHTML;
 
     // Standard high-fidelity iframe-based print to prevent clobbering main DOM state
     const iframe = document.createElement("iframe");

@@ -4,13 +4,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import AppShell from "@/components/layout/AppShell";
 import { KPICard, PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
 import {
-  CurrencyInr, ShoppingCart, Warehouse, Users, Package, Robot, ArrowRight,
+  CurrencyInr, ShoppingCart, Warehouse, Users, Package,
 } from "@phosphor-icons/react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   BarChart, Bar, PieChart, Pie, Cell,
 } from "recharts";
-import { Link } from "react-router-dom";
 
 const CHART_COLORS = ["#0A2342", "#F28C18", "#5C6670", "#BFC5CB", "#0EA5E9"];
 

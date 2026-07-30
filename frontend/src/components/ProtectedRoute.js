@@ -36,7 +36,6 @@ export default function ProtectedRoute({ roles, tabKey, children }) {
   // Role-level gate
   const userRole = user.role;
   const isStaffRole = userRole === "staff" || userRole === "employee" || user.admin_role === "staff";
-  const effectiveRoles = isStaffRole ? [...(roles || []), "staff", "employee"] : roles;
 
   if (roles && !roles.includes(userRole) && !(roles.includes("admin") && isStaffRole)) {
     return <Navigate to="/dashboard" replace />;
