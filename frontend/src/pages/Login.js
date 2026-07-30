@@ -2,17 +2,45 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast, Toaster } from "@/components/ui/sonner";
-import { CircleNotch, IdentificationCard, Lock } from "@phosphor-icons/react";
+import { CircleNotch, IdentificationCard, Lock, Eye, EyeSlash } from "@phosphor-icons/react";
 
 export default function LoginPage() {
-  const [loginId, setLoginId] = useState("D-ST-MH-101");
-  const [password, setPassword] = useState("Dealer@123");
+  const [loginId, setLoginId] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login, user } = useAuth();
   const navigate = useNavigate();
 
+  const getFirstAllowedPath = (u) => {
+    if (!u) return "/dashboard";
+    const isStaff = u.role === "admin" && u.admin_role === "staff";
+    if (isStaff && u.allowed_tabs && !u.allowed_tabs.includes("all")) {
+      const TAB_PATHS = {
+        dashboard: "/dashboard",
+        analytics: "/analytics",
+        products: "/products",
+        inventory: "/inventory",
+        orders: "/orders",
+        procurement: "/procurement",
+        "purchase-orders": "/purchase-orders",
+        dealers: "/dealers",
+        mnp: "/mnp",
+        suppliers: "/suppliers",
+        warehouses: "/warehouses",
+        tally: "/tally",
+        notifications: "/notifications",
+        audit: "/audit",
+        settings: "/settings",
+      };
+      const firstTab = u.allowed_tabs.find((t) => TAB_PATHS[t]);
+      if (firstTab) return TAB_PATHS[firstTab];
+    }
+    return "/dashboard";
+  };
+
   useEffect(() => {
-    if (user && user !== false) navigate("/dashboard", { replace: true });
+    if (user && user !== false) navigate(getFirstAllowedPath(user), { replace: true });
   }, [user, navigate]);
 
   const submit = async (e) => {
@@ -22,21 +50,10 @@ export default function LoginPage() {
     setLoading(false);
     if (res.ok) {
       toast.success(`Welcome back, ${res.user.name}`);
-      navigate("/dashboard");
+      navigate(getFirstAllowedPath(res.user));
     } else {
       toast.error(res.error);
     }
-  };
-
-  const fillDemo = (role) => {
-    const creds = {
-      dealer: ["D-ST-MH-101", "Dealer@123"],
-      mnp: ["M-RK-MH-101", "Mnp@123"],
-      admin: ["admin@yaminiflow.com", "Admin@123"],
-      supplier: ["supplier@yaminiflow.com", "Supplier@123"],
-    }[role];
-    setLoginId(creds[0]);
-    setPassword(creds[1]);
   };
 
   return (
@@ -63,7 +80,7 @@ export default function LoginPage() {
             One ecosystem. <br /> Every distributor, MNP & supplier — <span className="text-[#F28C18]">in flow.</span>
           </h1>
           <p className="mt-5 text-white/70 text-[15px] leading-relaxed max-w-md">
-            Intelligent weight-matrix conversions, automated 12 AM / single-click collation, and real-time distributor & MNP code tracking (e.g. D-ST-MH-101, M-RK-MH-101) across all regions.
+            Intelligent weight-matrix conversions, automated 12 AM / single-click collation, and real-time distributor, employee & MNP code tracking across all regions.
           </p>
           <div className="grid grid-cols-2 gap-4 pt-6 mt-6 border-t border-white/10 text-xs">
             <div>
@@ -71,8 +88,8 @@ export default function LoginPage() {
               <div className="text-[#BFC5CB]">Exact box & weight calculations</div>
             </div>
             <div>
-              <div className="font-bold text-white mb-0.5">Unique Distributor & MNP Codes</div>
-              <div className="text-[#BFC5CB]">Location-indexed login identifiers</div>
+              <div className="font-bold text-white mb-0.5">Unique Login Codes</div>
+              <div className="text-[#BFC5CB]">Location & employee indexed login IDs</div>
             </div>
           </div>
         </div>
@@ -97,34 +114,49 @@ export default function LoginPage() {
           <div className="mb-8">
             <div className="text-[10px] uppercase tracking-[0.2em] text-[#F28C18] font-semibold mb-2">Sign in</div>
             <h2 className="font-display text-3xl font-semibold text-[#06182F] tracking-tight">Access your workspace</h2>
-            <p className="text-sm text-[#5C6670] mt-2">Enter your unique Distributor / MNP Login ID or email address.</p>
+            <p className="text-sm text-[#5C6670] mt-2">Enter your Email Address or Unique Login ID.</p>
           </div>
 
           <form onSubmit={submit} className="space-y-4" data-testid="login-form">
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#5C6670] mb-1.5">
-                Unique Login ID / Code <span className="text-[#F28C18] lowercase">(e.g. D-ST-MH-101, M-RK-MH-101)</span> or Email
+                Login ID / Email Address
               </label>
               <div className="relative">
                 <IdentificationCard size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#F28C18]" />
                 <input
                   type="text" required value={loginId} onChange={(e) => setLoginId(e.target.value)}
                   className="w-full h-11 pl-10 pr-3 rounded-md border border-[#E5E7EB] focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none text-sm font-mono font-medium text-[#06182F] bg-white transition-colors"
-                  placeholder="Enter your Unique ID (e.g. D-ST-MH-101) or Email"
+                  placeholder="admin@yaminiconnect.com"
                   data-testid="login-id-input"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#5C6670] mb-1.5">Password</label>
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#5C6670] mb-1.5">
+                Password
+              </label>
               <div className="relative">
                 <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#BFC5CB]" />
                 <input
-                  type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-                  className="w-full h-11 pl-10 pr-3 rounded-md border border-[#E5E7EB] focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none text-sm text-[#06182F] bg-white transition-colors"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full h-11 pl-10 pr-10 rounded-md border border-[#E5E7EB] focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none text-sm text-[#06182F] bg-white transition-colors"
                   placeholder="••••••••"
                   data-testid="login-password-input"
                 />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#5C6670] hover:text-[#06182F] focus:outline-none p-1 transition-colors"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  data-testid="password-toggle-eye"
+                >
+                  {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
 
@@ -133,30 +165,9 @@ export default function LoginPage() {
               className="w-full h-11 rounded-md gradient-brand-accent text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-sm hover:shadow-md transition-all disabled:opacity-70"
               data-testid="login-submit-button"
             >
-              {loading ? <><CircleNotch size={16} className="animate-spin" /> Signing in…</> : "Sign in with Unique ID"}
+              {loading ? <><CircleNotch size={16} className="animate-spin" /> Signing in…</> : "Sign in"}
             </button>
           </form>
-
-          <div className="mt-8">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-[#5C6670] mb-3 font-semibold flex items-center gap-2">
-              <span className="w-8 h-px bg-[#E5E7EB]"></span> Try a demo role (Click to autofill)
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { r: "dealer", label: "Distributor (D-ST-MH-101)" },
-                { r: "mnp", label: "MNP (M-RK-MH-101)" },
-                { r: "admin", label: "Admin Account" },
-                { r: "supplier", label: "Supplier Account" },
-              ].map((d) => (
-                <button
-                  key={d.r} type="button" onClick={() => fillDemo(d.r)}
-                  className="text-xs py-2 px-2 rounded-md border border-[#E5E7EB] hover:border-[#F28C18] hover:bg-[#F28C18]/5 transition-colors text-[#0A2342] font-medium truncate"
-                  data-testid={`demo-${d.r}-button`}
-                  title={`Fill demo credentials for ${d.label}`}
-                >{d.label}</button>
-              ))}
-            </div>
-          </div>
 
           <div className="mt-8 text-center text-[11px] text-[#BFC5CB] uppercase tracking-widest">
             Yamini Flow · v2.0 · Enterprise ERP
@@ -166,3 +177,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

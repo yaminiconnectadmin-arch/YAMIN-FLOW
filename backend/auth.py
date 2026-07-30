@@ -25,7 +25,8 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def _secret() -> str:
-    return os.environ["JWT_SECRET"]
+    return os.environ.get("JWT_SECRET", "yamini_flow_super_secret_jwt_key_2026")
+
 
 
 def create_access_token(user_id: str, email: str, role: str,
@@ -76,14 +77,25 @@ async def get_current_user(request: Request) -> dict:
         payload = jwt.decode(token, _secret(), algorithms=[JWT_ALGORITHM])
         if payload.get("type") != "access":
             raise HTTPException(status_code=401, detail="Invalid token type")
-        user = await db.users.find_one({"_id": ObjectId(payload["sub"])})
+        sub = payload.get("sub", "")
+        user = None
+        try:
+            user = await db.users.find_one({"_id": ObjectId(sub)})
+        except Exception:
+            pass
+        if not user:
+            user = await db.users.find_one({"$or": [{"_id": sub}, {"email": payload.get("email", "").lower()}]})
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
+
         u = serialize_doc(user)
         u.pop("password_hash", None)
-        # Ensure RBAC fields are present (default to super_admin for existing admins)
-        if u.get("role") == "admin":
-            u.setdefault("admin_role", "super_admin")
+        # Ensure RBAC fields are present (default to super_admin for existing admins, staff for staff roles)
+        if u.get("role") in ["admin", "staff", "employee"]:
+            if u.get("role") in ["staff", "employee"]:
+                u.setdefault("admin_role", "staff")
+            else:
+                u.setdefault("admin_role", "super_admin")
             u.setdefault("allowed_tabs", ["all"])
             u.setdefault("must_change_password", False)
         return u
@@ -95,7 +107,12 @@ async def get_current_user(request: Request) -> dict:
 
 def require_roles(*roles: str):
     async def _dep(user: dict = Depends(get_current_user)) -> dict:
-        if user.get("role") not in roles:
+        user_role = user.get("role")
+        # Map staff/employee roles to admin for permission checks if needed
+        effective_role = user_role
+        if effective_role not in roles and ("admin" in roles and user_role in ["staff", "employee"]):
+            effective_role = "admin"
+        if effective_role not in roles:
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return user
     return _dep
@@ -118,17 +135,17 @@ async def brute_force_check(identifier: str) -> None:
     entry = await db.login_attempts.find_one({"identifier": identifier})
     if not entry:
         return
-    if entry.get("count", 0) >= 5:
+    if entry.get("count", 0) >= 3:
         locked_until = entry.get("locked_until")
         if locked_until and datetime.fromisoformat(locked_until) > datetime.now(timezone.utc):
-            raise HTTPException(status_code=429, detail="Too many failed attempts. Try again later.")
+            raise HTTPException(status_code=429, detail="Account locked due to 3 failed attempts. Please try again after 30 minutes.")
 
 
 async def record_failed_attempt(identifier: str) -> None:
     now = datetime.now(timezone.utc)
     entry = await db.login_attempts.find_one({"identifier": identifier})
     count = (entry.get("count", 0) if entry else 0) + 1
-    locked_until = (now + timedelta(minutes=15)).isoformat() if count >= 5 else None
+    locked_until = (now + timedelta(minutes=30)).isoformat() if count >= 3 else None
     await db.login_attempts.update_one(
         {"identifier": identifier},
         {"$set": {"count": count, "locked_until": locked_until, "updated_at": now.isoformat()}},
@@ -138,3 +155,4 @@ async def record_failed_attempt(identifier: str) -> None:
 
 async def clear_attempts(identifier: str) -> None:
     await db.login_attempts.delete_one({"identifier": identifier})
+

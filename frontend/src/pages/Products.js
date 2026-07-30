@@ -3,7 +3,7 @@ import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
 import { ExportButton } from "@/lib/csv";
-import { Plus, Trash, PencilSimple } from "@phosphor-icons/react";
+import { Plus, Trash, PencilSimple, Tag } from "@phosphor-icons/react";
 import { toast } from "@/components/ui/sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -21,12 +21,23 @@ export default function ProductsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [q, setQ] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyProduct);
+  const [categoryForm, setCategoryForm] = useState({ name: "", description: "" });
+  const [editingCategory, setEditingCategory] = useState(null);
+
+  const loadCategories = async () => {
+    try {
+      const { data } = await api.get("/categories");
+      setCategories(data);
+    } catch { toast.error("Failed to load categories"); }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -40,7 +51,18 @@ export default function ProductsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [q, categoryFilter]);
 
-  const openNew = () => { setEditing(null); setForm(emptyProduct); setDialogOpen(true); };
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  const openNew = () => {
+    setEditing(null);
+    setForm({
+      ...emptyProduct,
+      category: categories[0]?.name || emptyProduct.category
+    });
+    setDialogOpen(true);
+  };
   const openEdit = (p) => {
     setEditing(p);
     setForm({ ...emptyProduct, ...p, item_code: p.item_code || p.sku });
@@ -74,7 +96,49 @@ export default function ProductsPage() {
     load();
   };
 
-  const categories = ["All", "CSK Chipboard Screws", "CSK Drywall Screws", "Electronics", "Appliances", "Hardware", "Furniture"];
+  const saveCategory = async () => {
+    const nameVal = (categoryForm.name || "").trim();
+    if (!nameVal) {
+      toast.error("Category name is required");
+      return;
+    }
+    try {
+      if (editingCategory) {
+        await api.put(`/categories/${editingCategory.id || editingCategory._id}`, {
+          name: nameVal,
+          description: categoryForm.description
+        });
+        toast.success("Category updated");
+      } else {
+        await api.post("/categories", {
+          name: nameVal,
+          description: categoryForm.description
+        });
+        toast.success("Category created");
+      }
+      setCategoryForm({ name: "", description: "" });
+      setEditingCategory(null);
+      loadCategories();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to save category");
+    }
+  };
+
+  const editCategory = (cat) => {
+    setEditingCategory(cat);
+    setCategoryForm({ name: cat.name, description: cat.description || "" });
+  };
+
+  const deleteCategory = async (cat) => {
+    if (!window.confirm(`Delete category "${cat.name}"?`)) return;
+    try {
+      await api.delete(`/categories/${cat.id || cat._id}`);
+      toast.success("Category deleted");
+      loadCategories();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to delete category");
+    }
+  };
 
   return (
     <AppShell
@@ -82,15 +146,20 @@ export default function ProductsPage() {
       subtitle={`${products.length} registered items (Enriched with Total Weight Matrix Specifications & Exact Rates)`}
       actions={
         isAdmin && (
-          <button onClick={openNew} className="inline-flex items-center gap-2 px-4 h-9 rounded-md gradient-brand-accent text-white text-sm font-semibold shadow-sm hover:shadow-md transition-all" data-testid="new-product-button">
-            <Plus size={14} weight="bold" /> New Fastener / SKU
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => { setCategoryForm({ name: "", description: "" }); setEditingCategory(null); setCategoryDialogOpen(true); }} className="inline-flex items-center gap-2 px-4 h-9 rounded-md border border-[#E5E7EB] bg-white text-[#1D242B] text-sm font-semibold shadow-sm hover:bg-[#F8FAFC] transition-all">
+              <Tag size={14} weight="bold" /> Manage Categories
+            </button>
+            <button onClick={openNew} className="inline-flex items-center gap-2 px-4 h-9 rounded-md gradient-brand-accent text-white text-sm font-semibold shadow-sm hover:shadow-md transition-all" data-testid="new-product-button">
+              <Plus size={14} weight="bold" /> New Fastener / SKU
+            </button>
+          </div>
         )
       }
     >
       {/* Category Filter Pills */}
       <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
-        {categories.map((c) => (
+        {["All", ...categories.map(c => c.name)].map((c) => (
           <button
             key={c}
             onClick={() => setCategoryFilter(c === "All" ? "" : c)}
@@ -221,14 +290,11 @@ export default function ProductsPage() {
             </div>
             <div className="col-span-1">
               <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#5C6670] mb-1.5">Category</label>
-              <select value={form.category || "CSK Chipboard Screws"} onChange={(e) => setForm({ ...form, category: e.target.value })}
+              <select value={form.category || ""} onChange={(e) => setForm({ ...form, category: e.target.value })}
                 className="w-full h-10 px-3 rounded-md border border-[#E5E7EB] text-sm bg-white focus:border-[#F28C18]">
-                <option value="CSK Chipboard Screws">CSK Chipboard Screws</option>
-                <option value="CSK Drywall Screws">CSK Drywall Screws</option>
-                <option value="Electronics">Electronics</option>
-                <option value="Appliances">Appliances</option>
-                <option value="Hardware">Hardware</option>
-                <option value="Furniture">Furniture</option>
+                {categories.map((cat) => (
+                  <option key={cat.id || cat._id} value={cat.name}>{cat.name}</option>
+                ))}
               </select>
             </div>
 
@@ -292,6 +358,83 @@ export default function ProductsPage() {
             <button onClick={save} className="h-9 px-4 rounded-md gradient-brand-accent text-white text-sm font-semibold" data-testid="save-product-button">
               {editing ? "Save Changes" : "Create SKU Specification"}
             </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Category Management Dialog */}
+      <Dialog open={categoryDialogOpen} onOpenChange={setCategoryDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Manage Product Categories</DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-4">
+            {/* Add / Edit Category Form */}
+            <div className="bg-[#F8FAFC] p-3 rounded-lg border border-[#E2E8F0] space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[#1D242B]">
+                {editingCategory ? "Edit Category" : "Add New Category"}
+              </h4>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  placeholder="Category Name (e.g. Washers)"
+                  value={categoryForm.name}
+                  onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                  className="w-full h-9 px-3 rounded-md border border-[#E5E7EB] text-sm focus:border-[#F28C18] outline-none bg-white"
+                />
+                <input
+                  type="text"
+                  placeholder="Description"
+                  value={categoryForm.description}
+                  onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
+                  className="w-full h-9 px-3 rounded-md border border-[#E5E7EB] text-sm focus:border-[#F28C18] outline-none bg-white"
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                {editingCategory && (
+                  <button
+                    onClick={() => { setEditingCategory(null); setCategoryForm({ name: "", description: "" }); }}
+                    className="h-8 px-3 rounded-md border border-[#E5E7EB] text-xs"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  onClick={saveCategory}
+                  className="h-8 px-4 rounded-md gradient-brand-accent text-white text-xs font-semibold"
+                >
+                  {editingCategory ? "Update" : "Add Category"}
+                </button>
+              </div>
+            </div>
+
+            {/* List of current categories */}
+            <div className="max-h-[35vh] overflow-y-auto pr-1 space-y-2">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-[#5C6670]">Existing Categories</label>
+              {categories.length === 0 ? (
+                <p className="text-xs text-center text-[#5C6670] py-4">No categories registered.</p>
+              ) : (
+                categories.map((cat) => (
+                  <div key={cat.id || cat._id} className="flex items-center justify-between p-2.5 rounded-md border border-[#E5E7EB] hover:bg-[#F8FAFC]">
+                    <div>
+                      <p className="text-sm font-semibold text-[#1D242B]">{cat.name}</p>
+                      {cat.description && <p className="text-xs text-[#5C6670]">{cat.description}</p>}
+                    </div>
+                    <div className="flex gap-1">
+                      <button onClick={() => editCategory(cat)} className="p-1 rounded hover:bg-[#E2E8F0] text-[#5C6670]">
+                        <PencilSimple size={14} />
+                      </button>
+                      <button onClick={() => deleteCategory(cat)} className="p-1 rounded hover:bg-red-50 text-red-500">
+                        <Trash size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <button onClick={() => setCategoryDialogOpen(false)} className="h-9 px-4 rounded-md border border-[#E5E7EB] text-sm">Close</button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

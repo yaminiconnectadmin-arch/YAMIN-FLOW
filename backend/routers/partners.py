@@ -86,11 +86,15 @@ async def _list_role(role: str, mnp_id: str = None):
                 "name": m.get("name") or "Regional MNP"
             }
         
-        # Calculate current month's revenue for all dealers
+        # Calculate current month's revenue for all dealers (Tally verified only)
         now = datetime.now(timezone.utc)
         start_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc).isoformat()
         rev_agg = await db.orders.aggregate([
-            {"$match": {"created_at": {"$gte": start_of_month}, "status": {"$in": ["delivered", "shipped", "approved"]}}},
+            {"$match": {
+                "created_at": {"$gte": start_of_month},
+                "status": {"$in": ["delivered", "shipped", "approved"]},
+                "tally_voucher_no": {"$exists": True, "$ne": None}
+            }},
             {"$group": {"_id": "$dealer_id", "revenue": {"$sum": "$total"}}}
         ]).to_list(1000)
         dealer_rev_map = {r["_id"]: r["revenue"] for r in rev_agg}

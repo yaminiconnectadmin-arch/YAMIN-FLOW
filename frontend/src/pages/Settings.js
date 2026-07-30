@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { api } from "@/lib/api";
+import { api, formatApiErrorDetail } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection } from "@/components/common/Common";
 import { toast } from "@/components/ui/sonner";
@@ -30,8 +30,8 @@ const ALL_TABS = [
 ];
 
 function genPassword() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!";
-  return Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#";
+  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -56,13 +56,13 @@ function TabCheckbox({ tabKey, label, checked, onChange }) {
 function AddStaffModal({ onClose, onCreated }) {
   const [name, setName] = useState("");
   const [loginId, setLoginId] = useState("");
-  const [password, setPassword] = useState("Welcome@2026");
+  const [password, setPassword] = useState("Emp@1234");
   const [showPwd, setShowPwd] = useState(false);
-  const [selectedTabs, setSelectedTabs] = useState([]);
+  const [selectedTabs, setSelectedTabs] = useState(() => ALL_TABS.map((t) => t.key));
   const [loading, setLoading] = useState(false);
 
   const toggleTab = (key) =>
-    setSelectedTabs((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]);
+    setSelectedTabs((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
 
   const selectAll = () => setSelectedTabs(ALL_TABS.map((t) => t.key));
   const clearAll = () => setSelectedTabs([]);
@@ -73,28 +73,38 @@ function AddStaffModal({ onClose, onCreated }) {
       toast.error("Name, Login ID, and Password are required");
       return;
     }
+    if (password.trim().length > 8) {
+      toast.error("Password must not exceed 8 characters");
+      return;
+    }
     if (selectedTabs.length === 0) {
       toast.error("Select at least one tab to grant access");
       return;
     }
     setLoading(true);
     try {
+      const cleanTabs = selectedTabs.filter((k) => k !== "all");
+      const finalTabs = cleanTabs.length === ALL_TABS.length ? ["all"] : cleanTabs;
       const { data } = await api.post("/staff", {
         name: name.trim(),
         login_id: loginId.trim(),
-        password,
-        allowed_tabs: selectedTabs,
+        password: password.trim(),
+        allowed_tabs: finalTabs,
         is_active: true,
       });
       toast.success(`Employee "${data.name}" created!`);
       onCreated(data);
+
       onClose();
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Failed to create employee");
+      const detailMsg = formatApiErrorDetail(err?.response?.data?.detail);
+      const msg = detailMsg || err?.response?.data?.message || "Failed to create employee";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -140,9 +150,11 @@ function AddStaffModal({ onClose, onCreated }) {
               <div className="relative flex-1">
                 <input
                   type={showPwd ? "text" : "password"}
+                  maxLength={8}
                   value={password} onChange={(e) => setPassword(e.target.value)}
                   className="w-full h-10 px-3 pr-10 rounded-md border border-[#E5E7EB] text-sm font-mono focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none"
                 />
+
                 <button type="button" onClick={() => setShowPwd((p) => !p)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-[#5C6670] hover:text-[#1A2233]">
                   {showPwd ? <EyeSlash size={15} /> : <Eye size={15} />}
@@ -193,16 +205,24 @@ function AddStaffModal({ onClose, onCreated }) {
 }
 
 function EditTabsModal({ staff, onClose, onUpdated }) {
-  const [selectedTabs, setSelectedTabs] = useState(staff.allowed_tabs || []);
+  const [selectedTabs, setSelectedTabs] = useState(() => {
+    const raw = staff.allowed_tabs || [];
+    if (raw.includes("all")) {
+      return ALL_TABS.map((t) => t.key);
+    }
+    return raw.filter((k) => k !== "all");
+  });
   const [loading, setLoading] = useState(false);
 
   const toggleTab = (key) =>
-    setSelectedTabs((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]);
+    setSelectedTabs((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
 
   const save = async () => {
     setLoading(true);
     try {
-      const { data } = await api.put(`/staff/${staff.id}`, { allowed_tabs: selectedTabs });
+      const cleanTabs = selectedTabs.filter((k) => k !== "all");
+      const finalTabs = cleanTabs.length === ALL_TABS.length ? ["all"] : cleanTabs;
+      const { data } = await api.put(`/staff/${staff.id}`, { allowed_tabs: finalTabs });
       toast.success("Access updated");
       onUpdated(data);
       onClose();
@@ -212,6 +232,7 @@ function EditTabsModal({ staff, onClose, onUpdated }) {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -361,10 +382,11 @@ export default function SettingsPage() {
   const set = (k, v) => setSettings({ ...settings, [k]: v });
 
   const handleToggleLock = async (s) => {
+    const sid = s.id || s._id;
     const newActive = s.status === "disabled" || s.is_active === false;
     try {
-      const { data } = await api.put(`/staff/${s.id}`, { is_active: newActive });
-      setStaffList((prev) => prev.map((x) => x.id === s.id ? data : x));
+      const { data } = await api.put(`/staff/${sid}`, { is_active: newActive });
+      setStaffList((prev) => (Array.isArray(prev) ? prev.map((x) => ((x.id === sid || x._id === sid) ? data : x)) : []));
       toast.success(newActive ? "Access unlocked" : "Access locked");
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Failed");
@@ -372,15 +394,17 @@ export default function SettingsPage() {
   };
 
   const handleDelete = async (s) => {
+    const sid = s.id || s._id;
     if (!window.confirm(`Permanently remove "${s.name}"? This cannot be undone.`)) return;
     try {
-      await api.delete(`/staff/${s.id}`);
-      setStaffList((prev) => prev.filter((x) => x.id !== s.id));
+      await api.delete(`/staff/${sid}`);
+      setStaffList((prev) => (Array.isArray(prev) ? prev.filter((x) => x.id !== sid && x._id !== sid) : []));
       toast.success(`"${s.name}" removed`);
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Failed");
     }
   };
+
 
   return (
     <AppShell title="Settings" subtitle="Global platform configuration">
@@ -503,7 +527,10 @@ export default function SettingsPage() {
       {showAddModal && (
         <AddStaffModal
           onClose={() => setShowAddModal(false)}
-          onCreated={(newStaff) => setStaffList((prev) => [newStaff, ...prev])}
+          onCreated={(newStaff) => {
+            setStaffList((prev) => (Array.isArray(prev) ? [newStaff, ...prev] : [newStaff]));
+            loadStaff();
+          }}
         />
       )}
       {editingStaff && (
@@ -511,11 +538,14 @@ export default function SettingsPage() {
           staff={editingStaff}
           onClose={() => setEditingStaff(null)}
           onUpdated={(updated) => {
-            setStaffList((prev) => prev.map((x) => x.id === updated.id ? updated : x));
+            const uid = updated.id || updated._id;
+            setStaffList((prev) => (Array.isArray(prev) ? prev.map((x) => ((x.id === uid || x._id === uid) ? updated : x)) : []));
             setEditingStaff(null);
+            loadStaff();
           }}
         />
       )}
     </AppShell>
   );
 }
+

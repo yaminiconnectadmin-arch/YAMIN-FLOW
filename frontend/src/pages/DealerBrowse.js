@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 export default function DealerBrowse() {
   useAuth();
   const [products, setProducts] = useState([]);
+  const [dbCategories, setDbCategories] = useState([]);
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("CSK Chipboard Screws");
   const [cart, setCart] = useState({});
@@ -20,6 +21,22 @@ export default function DealerBrowse() {
   // Interactive Fastener Configuration State
   const [selectedProductId, setSelectedProductId] = useState("");
   const [boxCount, setBoxCount] = useState(10);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get("/categories");
+        setDbCategories(data);
+        if (data.length > 0) {
+          if (!data.some(c => c.name === "CSK Chipboard Screws")) {
+            setCat(data[0].name);
+          }
+        }
+      } catch {
+        toast.error("Failed to load categories");
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -41,7 +58,7 @@ export default function DealerBrowse() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, cat]);
 
-  const categories = ["CSK Chipboard Screws", "CSK Drywall Screws", "Electronics", "Appliances", "Hardware", "Furniture", "All"];
+  const categories = [...dbCategories.map(c => c.name), "All"];
 
   const selectedProduct = products.find((p) => p.id === selectedProductId) || products[0];
 

@@ -19,7 +19,7 @@ class LoginInput(BaseModel):
 
 class RegisterInput(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=6)
+    password: str = Field(min_length=1, max_length=8)
     name: str
     role: Role
     phone: Optional[str] = None
@@ -38,6 +38,7 @@ class UserOut(BaseModel):
     company: Optional[str] = None
     status: Optional[str] = "active"
     created_at: Optional[str] = None
+
 
 
 # ---- Category ----
@@ -202,13 +203,8 @@ class TallySyncIn(BaseModel):
     direction: Literal["push", "pull"] = "push"
 
 
-# ---- AI ----
-class AiInsightIn(BaseModel):
-    topic: Literal["dealer_ranking", "supplier_ranking", "demand_forecast", "procurement", "sales_summary", "dead_stock", "custom"]
-    context: Optional[str] = ""
-
-
 # ---- Notifications ----
+
 class NotificationIn(BaseModel):
     user_id: Optional[str] = None
     role: Optional[str] = None
@@ -222,7 +218,7 @@ class StaffCreateIn(BaseModel):
     name: str
     email: Optional[str] = None
     login_id: Optional[str] = None
-    password: str = Field(default="Welcome@2026", min_length=6)
+    password: str = Field(default="Emp@123", max_length=8)
     allowed_tabs: List[str] = Field(default_factory=list)  # ["all"] = unrestricted
     is_active: bool = True
 
@@ -231,9 +227,10 @@ class StaffUpdateIn(BaseModel):
     name: Optional[str] = None
     allowed_tabs: Optional[List[str]] = None
     is_active: Optional[bool] = None
-    new_password: Optional[str] = Field(default=None, min_length=6)
+    new_password: Optional[str] = Field(default=None, max_length=8)
 
 
 class ChangePasswordIn(BaseModel):
     current_password: str
-    new_password: str = Field(min_length=6)
+    new_password: str = Field(max_length=8)
+

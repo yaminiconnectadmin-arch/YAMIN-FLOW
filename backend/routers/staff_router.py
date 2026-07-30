@@ -9,7 +9,7 @@ router = APIRouter(prefix="/staff", tags=["staff"])
 
 # All valid tab keys in the admin panel
 ALL_TAB_KEYS = [
-    "dashboard", "analytics", "products", "inventory", "orders",
+    "all", "dashboard", "analytics", "products", "inventory", "orders",
     "procurement", "purchase-orders", "dealers", "mnp", "suppliers",
     "warehouses", "tally", "notifications", "audit", "settings",
 ]
@@ -17,8 +17,11 @@ ALL_TAB_KEYS = [
 
 def _serialize_staff(doc: dict) -> dict:
     s = serialize_doc(doc)
+    if "id" in s:
+        s["_id"] = s["id"]
     s.pop("password_hash", None)
     return s
+
 
 
 @router.get("")
@@ -37,23 +40,27 @@ async def create_staff(payload: StaffCreateIn, sa: dict = Depends(require_super_
         raise HTTPException(status_code=400, detail="email or login_id is required")
 
     # Validate allowed_tabs — "all" is a valid shorthand
-    if payload.allowed_tabs and payload.allowed_tabs != ["all"]:
-        invalid = [t for t in payload.allowed_tabs if t not in ALL_TAB_KEYS]
+    if payload.allowed_tabs:
+        invalid = [t for t in payload.allowed_tabs if t not in ALL_TAB_KEYS and t != "all"]
         if invalid:
             raise HTTPException(status_code=400,
                                 detail=f"Invalid tab keys: {invalid}. Valid: {ALL_TAB_KEYS}")
 
+
     # Check duplicate
-    lookup_or = []
-    if payload.email:
-        lookup_or.append({"email": payload.email.lower()})
-    if payload.login_id:
-        lookup_or.append({"login_id": payload.login_id.upper()})
+    login_code = (payload.login_id or "").strip().upper()
+    email_val = payload.email.lower().strip() if payload.email else f"{login_code.lower()}@staff.yaminiflow.local"
+
+    lookup_or = [{"email": email_val}]
+    if login_code:
+        lookup_or.append({"login_id": login_code})
     if await db.users.find_one({"$or": lookup_or}):
-        raise HTTPException(status_code=400, detail="Email / Login ID already exists")
+        raise HTTPException(status_code=400, detail="Email or Login ID already exists")
 
     doc = {
         "name": payload.name,
+        "email": email_val,
+        "login_id": login_code,
         "role": "admin",
         "admin_role": "staff",
         "allowed_tabs": payload.allowed_tabs or [],
@@ -65,13 +72,13 @@ async def create_staff(payload: StaffCreateIn, sa: dict = Depends(require_super_
         "updated_at": now_iso(),
         "created_by": sa.get("id") or sa.get("_id", ""),
     }
-    if payload.email:
-        doc["email"] = payload.email.lower()
-    if payload.login_id:
-        doc["login_id"] = payload.login_id.upper()
 
-    res = await db.users.insert_one(doc)
-    doc["_id"] = res.inserted_id
+    try:
+        from pymongo.errors import DuplicateKeyError
+        res = await db.users.insert_one(doc)
+        doc["_id"] = res.inserted_id
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Email or Login ID already exists")
 
     # Audit log
     await db.audit_logs.insert_one({
@@ -83,6 +90,7 @@ async def create_staff(payload: StaffCreateIn, sa: dict = Depends(require_super_
         "allowed_tabs": payload.allowed_tabs,
         "created_at": now_iso(),
     })
+
 
     return _serialize_staff(doc)
 
@@ -105,12 +113,11 @@ async def update_staff(staff_id: str, payload: StaffUpdateIn,
     if payload.name is not None:
         updates["name"] = payload.name
     if payload.allowed_tabs is not None:
-        if payload.allowed_tabs != ["all"]:
-            invalid = [t for t in payload.allowed_tabs if t not in ALL_TAB_KEYS]
-            if invalid:
-                raise HTTPException(status_code=400,
-                                    detail=f"Invalid tab keys: {invalid}")
+        invalid = [t for t in payload.allowed_tabs if t not in ALL_TAB_KEYS and t != "all"]
+        if invalid:
+            raise HTTPException(status_code=400, detail=f"Invalid tab keys: {invalid}")
         updates["allowed_tabs"] = payload.allowed_tabs
+
     if payload.is_active is not None:
         updates["is_active"] = payload.is_active
         updates["status"] = "active" if payload.is_active else "disabled"

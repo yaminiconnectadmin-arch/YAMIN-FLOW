@@ -7,7 +7,8 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Request
 from db import db, serialize_doc, serialize_docs, now_iso
 from auth import get_current_user, require_admin, require_roles
-from models import TallySyncIn, AiInsightIn, NotificationIn
+from models import TallySyncIn, NotificationIn
+
 from tally_client import perform_tally_sync
 from tally_webhook import (
     parse_tally_xml, normalize_json, persist_events,
@@ -222,159 +223,8 @@ async def event_unlink(event_id: str, admin: dict = Depends(require_admin)):
     return result
 
 
-# ------------------ AI INSIGHTS ------------------
-async def _gather_business_context() -> dict:
-    total_orders = await db.orders.count_documents({})
-    delivered = await db.orders.count_documents({"status": "delivered"})
-    revenue_pipe = [{"$match": {"status": {"$in": ["delivered", "shipped", "approved"]}}},
-                     {"$group": {"_id": None, "revenue": {"$sum": "$total"}}}]
-    r = await db.orders.aggregate(revenue_pipe).to_list(1)
-    revenue = r[0]["revenue"] if r else 0
-    dealers = await db.users.count_documents({"role": "dealer"})
-    suppliers = await db.users.count_documents({"role": "supplier"})
-    products = await db.products.count_documents({})
-    # Top dealers by revenue
-    top_dealers = await db.orders.aggregate([
-        {"$match": {"status": {"$in": ["delivered", "shipped", "approved"]}}},
-        {"$group": {"_id": "$dealer_id", "name": {"$first": "$dealer_name"},
-                     "state": {"$first": "$dealer_state"}, "revenue": {"$sum": "$total"},
-                     "orders": {"$sum": 1}}},
-        {"$sort": {"revenue": -1}}, {"$limit": 5}
-    ]).to_list(5)
-    # Top products
-    top_products_pipe = [
-        {"$unwind": "$items"},
-        {"$group": {"_id": "$items.product_id", "name": {"$first": "$items.product_name"},
-                     "units": {"$sum": "$items.quantity"}, "revenue": {"$sum": "$items.subtotal"}}},
-        {"$sort": {"revenue": -1}}, {"$limit": 5}
-    ]
-    top_products = await db.orders.aggregate(top_products_pipe).to_list(5)
-    return {
-        "total_orders": total_orders,
-        "delivered_orders": delivered,
-        "revenue": round(revenue, 2),
-        "dealers": dealers,
-        "suppliers": suppliers,
-        "products": products,
-        "top_dealers": top_dealers,
-        "top_products": top_products,
-    }
-
-
-@router.post("/ai/insight")
-async def ai_insight(payload: AiInsightIn, admin: dict = Depends(require_roles("admin", "mnp"))):
-    """Generate an AI insight via emergentintegrations Claude Sonnet with direct REST fallback."""
-    try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        use_emergent = True
-    except ImportError:
-        use_emergent = False
-
-    ctx = await _gather_business_context()
-    topic_prompts = {
-        "dealer_ranking": "Rank the top dealers by revenue and orders, explain who is driving growth and who might need attention.",
-        "supplier_ranking": "Assess supplier reliability and performance based on lead times and PO status.",
-        "demand_forecast": "Provide a short demand forecast for the next 30 days based on historical order volume and top products.",
-        "procurement": "Recommend procurement priorities based on inventory levels and pending demand.",
-        "sales_summary": "Provide a concise executive sales summary with 3 headline numbers and 3 actionable observations.",
-        "dead_stock": "Identify products with low velocity / risk of dead stock and give recommendations.",
-    }
-    prompt = topic_prompts.get(payload.topic, payload.context or "Provide a distribution business insight.")
-    context_text = (
-        f"Business Snapshot:\n"
-        f"- Total Orders: {ctx['total_orders']} (delivered: {ctx['delivered_orders']})\n"
-        f"- Revenue (approved+): ₹{ctx['revenue']:,.0f}\n"
-        f"- Dealers: {ctx['dealers']}  Suppliers: {ctx['suppliers']}  SKUs: {ctx['products']}\n"
-        f"- Top Dealers: " + ", ".join([f"{d.get('name')} (₹{d.get('revenue',0):,.0f}, {d.get('orders',0)} orders)" for d in ctx["top_dealers"]]) + "\n"
-        f"- Top Products: " + ", ".join([f"{p.get('name')} ({p.get('units',0)} units)" for p in ctx["top_products"]]) + "\n"
-    )
-
-    text = ""
-    if use_emergent:
-        chat = LlmChat(
-            api_key=os.environ.get("EMERGENT_LLM_KEY", ""),
-            session_id=f"insight-{payload.topic}-{admin['id']}",
-            system_message="You are a senior distribution business analyst for an ERP platform called Yamini Flow. Write concise, executive-grade insights in plain prose (max 180 words). Use INR (₹) and refer only to data provided. Never invent numbers. End with a short 'Recommended Actions:' bullet list of 2-3 items.",
-        ).with_model("anthropic", "claude-sonnet-4-6")
-        user_msg = UserMessage(text=f"{context_text}\n\nTask: {prompt}")
-        try:
-            response = await chat.send_message(user_msg)
-            text = response if isinstance(response, str) else str(response)
-        except Exception as e:
-            text = f"AI service unavailable ({str(e)[:120]}). Fallback: {prompt}. Snapshot revenue ₹{ctx['revenue']:,.0f}."
-    else:
-        import httpx
-        api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("EMERGENT_LLM_KEY")
-        if api_key:
-            try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    res = await client.post(
-                        "https://api.anthropic.com/v1/messages",
-                        headers={
-                            "x-api-key": api_key,
-                            "anthropic-version": "2023-06-01",
-                            "content-type": "application/json"
-                        },
-                        json={
-                            "model": "claude-3-5-sonnet-20241022",
-                            "max_tokens": 500,
-                            "system": "You are a senior distribution business analyst for an ERP platform called Yamini Flow. Write concise, executive-grade insights in plain prose (max 180 words). Use INR (₹) and refer only to data provided. Never invent numbers. End with a short 'Recommended Actions:' bullet list of 2-3 items.",
-                            "messages": [
-                                {"role": "user", "content": f"{context_text}\n\nTask: {prompt}"}
-                            ]
-                        }
-                    )
-                    if res.status_code == 200:
-                        text = res.json()["content"][0]["text"]
-                    else:
-                        raise Exception(f"Anthropic API returned {res.status_code}")
-            except Exception as e:
-                openai_key = os.environ.get("OPENAI_API_KEY") or api_key
-                try:
-                    async with httpx.AsyncClient(timeout=30.0) as client:
-                        res = await client.post(
-                            "https://api.openai.com/v1/chat/completions",
-                            headers={
-                                "Authorization": f"Bearer {openai_key}",
-                                "content-type": "application/json"
-                            },
-                            json={
-                                "model": "gpt-4o",
-                                "messages": [
-                                    {"role": "system", "content": "You are a senior distribution business analyst for an ERP platform called Yamini Flow. Write concise, executive-grade insights in plain prose (max 180 words). Use INR (₹) and refer only to data provided. Never invent numbers. End with a short 'Recommended Actions:' bullet list of 2-3 items."},
-                                    {"role": "user", "content": f"{context_text}\n\nTask: {prompt}"}
-                                ]
-                            }
-                        )
-                        if res.status_code == 200:
-                            text = res.json()["choices"][0]["message"]["content"]
-                        else:
-                            raise Exception(f"OpenAI API returned {res.status_code}")
-                except Exception as e2:
-                    text = f"AI service unavailable (Direct API errors: {e}, {e2}). Fallback: {prompt}. Snapshot revenue ₹{ctx['revenue']:,.0f}."
-        else:
-            text = f"AI service unavailable (No API keys configured). Fallback: {prompt}. Snapshot revenue ₹{ctx['revenue']:,.0f}."
-
-    doc = {
-        "topic": payload.topic,
-        "actor_id": admin["id"],
-        "prompt": prompt,
-        "output": text,
-        "context_snapshot": ctx,
-        "created_at": now_iso(),
-    }
-    res = await db.ai_insights.insert_one(doc)
-    doc["_id"] = res.inserted_id
-    return serialize_doc(doc)
-
-
-@router.get("/ai/history")
-async def ai_history(limit: int = 20, user: dict = Depends(require_roles("admin", "mnp"))):
-    docs = await db.ai_insights.find({}).sort("created_at", -1).to_list(limit)
-    return serialize_docs(docs)
-
-
 # ------------------ ANALYTICS ------------------
+
 @router.get("/analytics/overview")
 async def analytics_overview(user: dict = Depends(get_current_user)):
     role = user["role"]
@@ -423,7 +273,12 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
         current_quarter = (now.month - 1) // 3 + 1
         start_of_quarter = datetime(now.year, 3 * current_quarter - 2, 1, tzinfo=timezone.utc).isoformat()
         
-        q_month = {**order_q, "created_at": {"$gte": start_of_month}, "status": {"$in": ["delivered", "shipped", "approved"]}}
+        q_month = {
+            **order_q,
+            "created_at": {"$gte": start_of_month},
+            "status": {"$in": ["delivered", "shipped", "approved"]},
+            "tally_voucher_no": {"$exists": True, "$ne": None}
+        }
         agg_month = await db.orders.aggregate([
             {"$match": q_month},
             {"$group": {"_id": None, "revenue": {"$sum": "$total"}}}
@@ -431,7 +286,12 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
         if agg_month:
             current_month_revenue = agg_month[0]["revenue"]
             
-        q_quarter = {**order_q, "created_at": {"$gte": start_of_quarter}, "status": {"$in": ["delivered", "shipped", "approved"]}}
+        q_quarter = {
+            **order_q,
+            "created_at": {"$gte": start_of_quarter},
+            "status": {"$in": ["delivered", "shipped", "approved"]},
+            "tally_voucher_no": {"$exists": True, "$ne": None}
+        }
         agg_quarter = await db.orders.aggregate([
             {"$match": q_quarter},
             {"$group": {"_id": None, "revenue": {"$sum": "$total"}}}
@@ -558,7 +418,11 @@ async def mnps_summary(admin: dict = Depends(require_admin)):
         rev, orders = 0, 0
         if dealer_ids:
             agg = await db.orders.aggregate([
-                {"$match": {"dealer_id": {"$in": dealer_ids}, "status": {"$in": ["delivered", "shipped", "approved"]}}},
+                {"$match": {
+                    "dealer_id": {"$in": dealer_ids},
+                    "status": {"$in": ["delivered", "shipped", "approved"]},
+                    "tally_voucher_no": {"$exists": True, "$ne": None}
+                }},
                 {"$group": {"_id": None, "revenue": {"$sum": "$total"}, "orders": {"$sum": 1}}}
             ]).to_list(1)
             if agg:
@@ -592,7 +456,11 @@ async def mnp_dealer_analytics(user: dict = Depends(require_roles("admin", "mnp"
     for d in dealers:
         did = str(d["_id"])
         agg = await db.orders.aggregate([
-            {"$match": {"dealer_id": did, "status": {"$in": ["delivered", "shipped", "approved"]}}},
+            {"$match": {
+                "dealer_id": did,
+                "status": {"$in": ["delivered", "shipped", "approved"]},
+                "tally_voucher_no": {"$exists": True, "$ne": None}
+            }},
             {"$group": {"_id": None, "revenue": {"$sum": "$total"}, "orders": {"$sum": 1}}}
         ]).to_list(1)
         rev = agg[0]["revenue"] if agg else 0

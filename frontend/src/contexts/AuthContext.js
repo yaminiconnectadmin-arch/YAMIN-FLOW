@@ -11,8 +11,8 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await api.get("/auth/me");
       // Ensure RBAC fields default correctly for non-admin roles
-      if (data.role === "admin") {
-        data.admin_role = data.admin_role || "super_admin";
+      if (["admin", "staff", "employee"].includes(data.role)) {
+        data.admin_role = data.admin_role || (data.role === "admin" ? "super_admin" : "staff");
         data.allowed_tabs = data.allowed_tabs || ["all"];
         data.must_change_password = data.must_change_password ?? false;
       }
@@ -36,17 +36,21 @@ export function AuthProvider({ children }) {
       });
       if (data.access_token) localStorage.setItem("yf_token", data.access_token);
       const u = data.user;
-      if (u.role === "admin") {
-        u.admin_role = u.admin_role || "super_admin";
+      if (["admin", "staff", "employee"].includes(u.role)) {
+        u.admin_role = u.admin_role || (u.role === "admin" ? "super_admin" : "staff");
         u.allowed_tabs = u.allowed_tabs || ["all"];
         u.must_change_password = u.must_change_password ?? false;
       }
       setUser(u);
       return { ok: true, user: u };
+
     } catch (e) {
-      return { ok: false, error: formatApiErrorDetail(e.response?.data?.detail) || e.message };
+      const detailMsg = formatApiErrorDetail(e.response?.data?.detail);
+      const errorMsg = detailMsg || e.response?.data?.message || (e.message?.includes("Network") ? "Network connection error. Please try again." : e.message) || "Authentication failed. Please check credentials.";
+      return { ok: false, error: errorMsg };
     }
   };
+
 
   const logout = async () => {
     try { await api.post("/auth/logout"); } catch (e) { /* ignore */ }

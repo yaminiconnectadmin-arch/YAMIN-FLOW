@@ -6,7 +6,9 @@ import requests
 from pathlib import Path
 
 # Load frontend .env to pick REACT_APP_BACKEND_URL
-FRONTEND_ENV = Path("/app/frontend/.env")
+FRONTEND_ENV = Path(__file__).resolve().parents[2] / "frontend" / ".env"
+if not FRONTEND_ENV.exists():
+    FRONTEND_ENV = Path("/app/frontend/.env")
 BASE_URL = None
 for line in FRONTEND_ENV.read_text().splitlines():
     if line.startswith("REACT_APP_BACKEND_URL"):
@@ -16,10 +18,11 @@ assert BASE_URL, "REACT_APP_BACKEND_URL missing"
 API = f"{BASE_URL}/api"
 
 CREDS = {
-    "admin": ("admin@yaminiflow.com", "Admin@123"),
-    "dealer": ("dealer@yaminiflow.com", "Dealer@123"),
-    "mnp": ("mnp@yaminiflow.com", "Mnp@123"),
-    "supplier": ("supplier@yaminiflow.com", "Supplier@123"),
+    "admin": ("admin@yaminiconnect.com", "Admin@yamini12"),
+    "dealer": ("dealer@yaminiflow.com", "Dealer12"),
+    "mnp": ("mnp@yaminiflow.com", "Mnp@1234"),
+    "supplier": ("supplier@yaminiflow.com", "Supp1234"),
+    "employee": ("EMP-101", "Emp@1234"),
 }
 
 
@@ -27,7 +30,7 @@ CREDS = {
 def _login(role: str):
     email, pwd = CREDS[role]
     s = requests.Session()
-    r = s.post(f"{API}/auth/login", json={"email": email, "password": pwd}, timeout=30)
+    r = s.post(f"{API}/auth/login", json={"login_id": email, "password": pwd}, timeout=30)
     assert r.status_code == 200, f"{role} login failed: {r.status_code} {r.text}"
     data = r.json()
     token = data.get("access_token")
@@ -56,6 +59,11 @@ def supplier():
     return _login("supplier")
 
 
+@pytest.fixture(scope="session")
+def employee():
+    return _login("employee")
+
+
 # ---------------- Health ----------------
 def test_health():
     r = requests.get(f"{API}/health", timeout=15)
@@ -68,7 +76,7 @@ def test_health():
 class TestAuth:
     def test_login_admin(self, admin):
         s, user = admin
-        assert user["email"] == "admin@yaminiflow.com"
+        assert user["email"] == "admin@yaminiconnect.com"
         assert user["role"] == "admin"
 
     def test_me_admin(self, admin):
@@ -79,7 +87,7 @@ class TestAuth:
 
     def test_login_invalid(self):
         r = requests.post(f"{API}/auth/login",
-                          json={"email": "admin@yaminiflow.com", "password": "wrong"},
+                          json={"email": "admin@yaminiconnect.com", "password": "wrong"},
                           timeout=15)
         assert r.status_code in (401, 429)
 
@@ -94,6 +102,18 @@ class TestAuth:
     def test_login_supplier(self, supplier):
         _, u = supplier
         assert u["role"] == "supplier"
+
+    def test_login_employee(self, employee):
+        _, u = employee
+        assert u["admin_role"] == "staff" or u["role"] in ["admin", "staff", "employee"]
+
+    def test_password_max_length_exceeded(self):
+        r = requests.post(f"{API}/auth/login",
+                          json={"login_id": "EMP-101", "password": "LongPasswordExceeding8Chars"},
+                          timeout=15)
+        assert r.status_code == 400
+        assert "not exceed 8 characters" in r.text
+
 
 
 # ---------------- RBAC ----------------
@@ -312,6 +332,41 @@ class TestOrders:
         oid = orders[0]["id"]
         r = s_dealer.patch(f"{API}/orders/{oid}/status", json={"status": "cancelled"})
         assert r.status_code == 403
+
+    def test_receipt_voucher_autolink(self, admin, dealer):
+        s_admin, _ = admin
+        s_dealer, _ = dealer
+
+        prods = s_admin.get(f"{API}/products").json()
+        pid = prods[0]["id"]
+        r = s_dealer.post(f"{API}/orders", json={"items": [{"product_id": pid, "quantity": 1000, "rate": 9.99}]})
+        assert r.status_code == 200
+        order = r.json()
+        oid = order["id"]
+        assert order["payment_status"] == "unpaid"
+
+        s_admin.patch(f"{API}/orders/{oid}/status", json={"status": "approved"})
+
+        payload = {
+            "voucher_type": "Receipt",
+            "voucher_no": f"REC-TEST-{int(time.time())}",
+            "date": "2026-07-28",
+            "party": order["dealer_name"],
+            "amount": order["total"],
+            "guid": f"GUID-REC-{int(time.time())}",
+            "action": "create"
+        }
+        # Retrieve tally secret dynamically
+        r_settings = s_admin.get(f"{API}/settings").json()
+        token = r_settings.get("tally_webhook_secret") or "test_secret"
+        r_web = s_admin.post(f"{API}/tally/webhook?token={token}", json=payload)
+        assert r_web.status_code == 200
+
+        # Verify payment status is paid
+        r_verify = s_dealer.get(f"{API}/orders/{oid}")
+        assert r_verify.status_code == 200
+        assert r_verify.json()["payment_status"] == "paid"
+        assert r_verify.json()["tally_receipt_no"] == payload["voucher_no"]
 
     def test_invoices(self, admin):
         s, _ = admin
@@ -968,12 +1023,14 @@ class TestVoucherAutoLink:
     def test_fuzzy_party_matcher(self):
         import sys, os
         # Load backend/.env so voucher_linker → db module can import cleanly
-        env_path = Path("/app/backend/.env")
+        env_path = Path(__file__).resolve().parents[1] / ".env"
+        if not env_path.exists():
+            env_path = Path("/app/backend/.env")
         for line in env_path.read_text().splitlines():
             if "=" in line and not line.strip().startswith("#"):
                 k, v = line.split("=", 1)
                 os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
-        sys.path.insert(0, "/app/backend")
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
         from voucher_linker import _party_matches, _amount_matches
 
         # Should match

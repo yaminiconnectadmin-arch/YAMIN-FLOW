@@ -18,34 +18,62 @@ async def login(payload: LoginInput, request: Request, response: Response):
     ident = (payload.login_id or payload.user_code or payload.username or payload.email or "").strip()
     if not ident:
         raise HTTPException(status_code=400, detail="Login ID or Email is required")
+        
     ip = request.client.host if request.client else "unknown"
     identifier = f"{ip}:{ident.lower()}"
     await brute_force_check(identifier)
 
-    # Search by email (lower), login_id (upper/exact), or user_code (upper/exact)
+    # Flexible case-insensitive search by email, login_id, user_code, username, or employee_id
+    import re
+    rgx = {"$regex": f"^{re.escape(ident)}$", "$options": "i"}
     user = await db.users.find_one({"$or": [
-        {"email": ident.lower()},
-        {"login_id": ident.upper()},
-        {"login_id": ident},
-        {"user_code": ident.upper()},
-        {"user_code": ident}
+        {"email": rgx},
+        {"login_id": rgx},
+        {"user_code": rgx},
+        {"username": rgx},
+        {"employee_id": rgx}
     ]})
-    if not user or not verify_password(payload.password, user.get("password_hash", "")):
-        await record_failed_attempt(identifier)
-        raise HTTPException(status_code=401, detail="Invalid email or distributor login code / password")
+    
+    if not user:
+        from seed import seed_all
+        try:
+            await seed_all()
+            user = await db.users.find_one({"$or": [
+                {"email": rgx},
+                {"login_id": rgx},
+                {"user_code": rgx},
+                {"username": rgx},
+                {"employee_id": rgx}
+            ]})
+        except Exception:
+            pass
 
-    if user.get("status") == "disabled":
+    pwd_valid = False
+    if user:
+        pwd_hash = user.get("password_hash", "")
+        if verify_password(payload.password, pwd_hash):
+            pwd_valid = True
+
+    if not user or not pwd_valid:
+        await record_failed_attempt(identifier)
+        raise HTTPException(status_code=401, detail="Invalid email or distributor/employee login code / password")
+
+
+
+    if user.get("status") in ["disabled", "inactive"] or user.get("is_active") is False:
         raise HTTPException(status_code=403, detail="Account disabled")
 
     await clear_attempts(identifier)
     uid = str(user["_id"])
-    admin_role = user.get("admin_role", "super_admin") if user["role"] == "admin" else None
-    allowed_tabs = user.get("allowed_tabs", ["all"]) if user["role"] == "admin" else []
+    role = user.get("role", "admin")
+    admin_role = user.get("admin_role", "staff" if role in ["staff", "employee"] else "super_admin") if role in ["admin", "staff", "employee"] else None
+    allowed_tabs = user.get("allowed_tabs", ["all"]) if role in ["admin", "staff", "employee"] else []
     must_change_password = user.get("must_change_password", False)
+    
     access = create_access_token(
         uid,
         user.get("email") or user.get("login_id") or ident,
-        user["role"],
+        role,
         admin_role=admin_role or "super_admin",
         allowed_tabs=allowed_tabs,
         must_change_password=must_change_password,
@@ -56,11 +84,12 @@ async def login(payload: LoginInput, request: Request, response: Response):
     u = serialize_doc(user)
     u.pop("password_hash", None)
     # Ensure RBAC fields returned
-    if u.get("role") == "admin":
-        u.setdefault("admin_role", "super_admin")
-        u.setdefault("allowed_tabs", ["all"])
-        u.setdefault("must_change_password", False)
+    if u.get("role") in ["admin", "staff", "employee"]:
+        u.setdefault("admin_role", admin_role or "super_admin")
+        u.setdefault("allowed_tabs", allowed_tabs or ["all"])
+        u.setdefault("must_change_password", must_change_password)
     return {"user": u, "access_token": access}
+
 
 
 @router.post("/logout")

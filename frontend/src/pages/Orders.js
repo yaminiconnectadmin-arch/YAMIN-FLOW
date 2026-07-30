@@ -9,7 +9,8 @@ import { toast } from "@/components/ui/sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Eye, Plus, Stack } from "@phosphor-icons/react";
+import { Eye, Plus, Stack, Printer } from "@phosphor-icons/react";
+import ReceiptModal from "@/components/common/ReceiptModal";
 
 
 const STATUS_OPTIONS = ["pending", "approved", "reserved", "shipped", "delivered", "cancelled"];
@@ -20,6 +21,7 @@ export default function OrdersPage() {
   const [status, setStatus] = useState("");
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [receiptOpen, setReceiptOpen] = useState(false);
 
 
   // Fastener Order Placement Modal State
@@ -276,7 +278,7 @@ export default function OrdersPage() {
           </DialogHeader>
           {selected && (
             <div className="py-2 space-y-4 max-h-[70vh] overflow-y-auto">
-              <div className="grid grid-cols-5 gap-3 text-sm bg-[#F8FAFC] p-3 rounded-lg border border-[#E5E7EB]">
+              <div className="grid grid-cols-6 gap-3 text-sm bg-[#F8FAFC] p-3 rounded-lg border border-[#E5E7EB]">
                 <div>
                   <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Distributor</div>
                   <div className="font-bold mt-0.5 text-[#06182F]">{selected.dealer_name}</div>
@@ -298,7 +300,19 @@ export default function OrdersPage() {
                 </div>
                 <div><div className="text-[11px] uppercase text-[#5C6670] tracking-wider">State</div><div className="font-medium mt-0.5">{selected.dealer_state || "-"}</div></div>
                 <div><div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Placed On</div><div className="font-medium mt-0.5">{fmt.datetime(selected.created_at)}</div></div>
-                <div><div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Status</div><div className="mt-0.5"><StatusBadge status={selected.status} /></div></div>
+                <div><div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Order Status</div><div className="mt-0.5"><StatusBadge status={selected.status} /></div></div>
+                <div>
+                  <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Payment Status</div>
+                  <div className="mt-1">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      selected.payment_status === "paid"
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : "bg-amber-50 text-amber-700 border border-amber-200"
+                    }`}>
+                      {selected.payment_status || "unpaid"}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div className="border border-[#E5E7EB] rounded-lg overflow-hidden">
@@ -347,10 +361,34 @@ export default function OrdersPage() {
                   <div className="flex gap-6 justify-end font-display font-bold text-lg mt-1 pt-1 border-t border-[#334155] text-[#4ADE80]"><span>Value After Tax:</span><span className="tabular font-mono">{fmt.inr(selected.total)}</span></div>
                 </div>
               </div>
+
+              {/* Action Footer */}
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
+                {selected.payment_status === "paid" && (
+                  <button
+                    onClick={() => setReceiptOpen(true)}
+                    className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md gradient-brand-accent text-white text-xs font-semibold shadow-sm"
+                  >
+                    <Printer size={14} weight="bold" /> Download Payment Receipt
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelected(null)}
+                  className="h-9 px-4 rounded-md border border-gray-200 text-xs font-semibold hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
+
+      <ReceiptModal
+        isOpen={receiptOpen}
+        onClose={() => setReceiptOpen(false)}
+        order={selected}
+      />
 
       {/* Place New Fastener Order Modal */}
       <Dialog open={newOrderModalOpen} onOpenChange={setNewOrderModalOpen}>

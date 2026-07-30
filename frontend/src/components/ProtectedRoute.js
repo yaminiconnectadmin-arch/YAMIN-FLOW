@@ -34,15 +34,17 @@ export default function ProtectedRoute({ roles, tabKey, children }) {
   if (user === false) return <Navigate to="/login" replace />;
 
   // Role-level gate
-  if (roles && !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
+  const userRole = user.role;
+  const isStaffRole = userRole === "staff" || userRole === "employee" || user.admin_role === "staff";
+  const effectiveRoles = isStaffRole ? [...(roles || []), "staff", "employee"] : roles;
 
-  // Tab-level gate for staff admins
+  if (roles && !roles.includes(userRole) && !(roles.includes("admin") && isStaffRole)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // Tab-level gate for staff members
   // super_admins and allowed_tabs=["all"] always pass
-  if (
-    tabKey &&
-    user.role === "admin" &&
-    user.admin_role === "staff"
-  ) {
+  if (tabKey && isStaffRole) {
     const tabs = user.allowed_tabs || [];
     if (!tabs.includes("all") && !tabs.includes(tabKey)) {
       // Find the first tab they DO have access to
@@ -63,13 +65,22 @@ export default function ProtectedRoute({ roles, tabKey, children }) {
         audit: "/audit",
         settings: "/settings",
       };
-      const firstAllowedTab = tabs.find((t) => TAB_PATHS[t]);
+      const firstAllowedTab = tabs.find((t) => TAB_PATHS[t] && TAB_PATHS[t] !== location.pathname);
       if (firstAllowedTab) {
         return <Navigate to={TAB_PATHS[firstAllowedTab]} replace />;
       }
-      return <Navigate to="/login" replace />;
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[#F4F5F7] p-6">
+          <div className="bg-white p-8 rounded-2xl shadow-sm border border-[#E5E7EB] text-center max-w-md">
+            <h3 className="font-semibold text-base text-[#1A2233] mb-2">Access Restricted</h3>
+            <p className="text-sm text-[#5C6670]">You do not have access to this section. Please contact your Super Admin to update your tab permissions.</p>
+          </div>
+        </div>
+      );
     }
   }
+
+
 
   // Force password reset overlay — non-dismissible
   if (user.must_change_password) {

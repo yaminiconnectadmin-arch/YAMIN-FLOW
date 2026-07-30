@@ -242,10 +242,10 @@ export default function Dashboard() {
             </PageSection>
           </div>
 
-          {/* Low stock + AI CTA */}
+          {/* Low stock alerts */}
           {(isAdmin || isMnp) && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              <PageSection title="Low Stock Alerts" description="Below safety threshold" className="lg:col-span-7">
+            <div className="grid grid-cols-1 gap-6">
+              <PageSection title="Low Stock Alerts" description="Below safety threshold" className="w-full">
                 <div className="p-0">
                   {data.low_stock_alerts.length === 0 ? (
                     <EmptyState title="All good" description="No products below safety stock." />
@@ -269,29 +269,9 @@ export default function Dashboard() {
                   )}
                 </div>
               </PageSection>
-
-              <div className="lg:col-span-5 bg-gradient-to-br from-[#06182F] to-[#0A2342] text-white rounded-lg p-6 border border-[#0A2342] card-shadow flex flex-col justify-between">
-                <div>
-                  <div className="inline-flex items-center gap-2 text-[10px] uppercase tracking-widest text-[#F28C18] font-semibold mb-3">
-                    <Robot size={14} /> AI Intelligence
-                  </div>
-                  <h3 className="font-display text-2xl font-semibold leading-tight tracking-tight mb-2">
-                    Ask Yamini AI to explain what&apos;s happening in your business.
-                  </h3>
-                  <p className="text-sm text-white/70">
-                    Get instant executive summaries, dealer rankings, demand forecasts and procurement recommendations — powered by Claude.
-                  </p>
-                </div>
-                <Link
-                  to="/ai-insights"
-                  data-testid="dashboard-ai-cta"
-                  className="mt-6 self-start inline-flex items-center gap-2 px-4 py-2.5 rounded-md gradient-brand-accent text-white text-sm font-semibold hover:shadow-lg transition-all"
-                >
-                  Open AI Insights <ArrowRight size={14} weight="bold" />
-                </Link>
-              </div>
             </div>
           )}
+
         </div>
       )}
     </AppShell>

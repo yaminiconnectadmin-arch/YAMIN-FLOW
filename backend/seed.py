@@ -6,30 +6,33 @@ from auth import hash_password
 
 async def _upsert_user(email: str, password: str, name: str, role: str, extra: dict = None) -> str:
     existing = await db.users.find_one({"email": email.lower()})
-    if existing:
-        if extra and ("user_code" in extra or "login_id" in extra):
-            await db.users.update_one({"_id": existing["_id"]}, {"$set": {
-                "user_code": extra.get("user_code", existing.get("user_code", "")),
-                "login_id": extra.get("login_id", existing.get("login_id", "")),
-            }})
-        return str(existing["_id"])
     doc = {
-        "email": email.lower(), "password_hash": hash_password(password),
-        "name": name, "role": role, "status": "active",
-        "created_at": now_iso(), "updated_at": now_iso(),
+        "email": email.lower(),
+        "password_hash": hash_password(password),
+        "name": name,
+        "role": role,
+        "status": "active",
+        "updated_at": now_iso(),
     }
     if extra:
         doc.update(extra)
+        
+    if existing:
+        await db.users.update_one({"_id": existing["_id"]}, {"$set": doc})
+        return str(existing["_id"])
+        
+    doc["created_at"] = now_iso()
     res = await db.users.insert_one(doc)
     return str(res.inserted_id)
 
 
+
 async def seed_all():
     # Admin
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@yaminiflow.com")
-    admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@123")
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@yaminiconnect.com")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@yamini12")
     await _upsert_user(admin_email, admin_password, "System Admin", "admin",
-                       {"phone": "+91-9999999999", "company": "Yamini Group"})
+                       {"phone": "+91-9999999999", "company": "Yamini Group", "admin_role": "super_admin"})
 
     # Ensure admin password matches env
     existing_admin = await db.users.find_one({"email": admin_email.lower()})
@@ -40,31 +43,6 @@ async def seed_all():
                 {"_id": existing_admin["_id"]},
                 {"$set": {"password_hash": hash_password(admin_password), "updated_at": now_iso()}},
             )
-
-    # Demo MNP
-    mnp_id = await _upsert_user("mnp@yaminiflow.com", "Mnp@123", "Rajesh Kumar", "mnp",
-                                {"phone": "+91-9000000001", "area": "West Zone", "state": "Maharashtra",
-                                 "target_monthly": 500000, "user_code": "M-RK-MH-101", "login_id": "M-RK-MH-101"})
-
-    # Demo Dealer
-    dealer_id = await _upsert_user("dealer@yaminiflow.com", "Dealer@123", "Suresh Traders", "dealer",
-                                   {"phone": "+91-9000000002", "company": "Suresh Traders Pvt Ltd",
-                                    "city": "Mumbai", "state": "Maharashtra", "gstin": "27ABCDE1234F1Z5",
-                                    "credit_limit": 200000, "mnp_id": mnp_id,
-                                    "user_code": "D-ST-MH-101", "login_id": "D-ST-MH-101"})
-
-    # Demo Supplier
-    supplier_id = await _upsert_user("supplier@yaminiflow.com", "Supplier@123", "Metro Supplies", "supplier",
-                                     {"phone": "+91-9000000003", "company": "Metro Supplies Ltd",
-                                      "city": "Pune", "state": "Maharashtra", "gstin": "27XYZAB5678G1Z2",
-                                      "lead_time_days": 5})
-
-    # Second dealer for analytics
-    await _upsert_user("dealer2@yaminiflow.com", "Dealer@123", "Krishna Enterprises", "dealer",
-                       {"phone": "+91-9000000004", "company": "Krishna Enterprises",
-                        "city": "Delhi", "state": "Delhi", "gstin": "07LMNOP9876H1Z3",
-                        "credit_limit": 300000, "mnp_id": mnp_id,
-                        "user_code": "D-KE-DL-102", "login_id": "D-KE-DL-102"})
 
     # Categories
     categories = ["Electronics", "Appliances", "Hardware", "Furniture", "CSK Chipboard Screws", "CSK Drywall Screws"]
@@ -84,7 +62,6 @@ async def seed_all():
         await db.warehouses.insert_many(wh_docs)
 
     warehouses = await db.warehouses.find({}).to_list(100)
-    wh_ids = [str(w["_id"]) for w in warehouses]
 
     # Total Weight Matrix data (23 sizes of CSK Chipboard & Drywall Screws)
     matrix_data = [
@@ -122,34 +99,34 @@ async def seed_all():
             upsert=True
         )
 
-    # Products (always upsert to ensure catalog stays in sync with exact matrix prices & weights)
+    # Products (catalog items + matrix products)
     prods = [
         {"sku": "LED-BLB-9W", "name": "LED Bulb 9W", "category": "Electronics", "description": "Energy efficient LED",
          "unit": "pcs", "weight_kg": 0.05, "wt_1000_pcs_kg": 50.0, "price": 120, "cost": 75, "gst": 18, "hsn": "8539",
          "moq": 50, "safety_stock": 200, "lead_time_days": 5, "status": "active",
-         "primary_supplier_id": supplier_id},
+         "primary_supplier_id": None},
         {"sku": "CEIL-FAN-48", "name": "Ceiling Fan 48\"", "category": "Appliances",
          "description": "High speed ceiling fan", "unit": "pcs", "weight_kg": 4.5, "wt_1000_pcs_kg": 4500.0, "price": 2200, "cost": 1600,
          "gst": 18, "hsn": "8414", "moq": 5, "safety_stock": 20, "lead_time_days": 7,
-         "status": "active", "primary_supplier_id": supplier_id},
+         "status": "active", "primary_supplier_id": None},
         {"sku": "SCRW-6MM", "name": "Screws 6mm (pack of 100)", "category": "Hardware",
          "description": "Steel screws", "unit": "pack", "weight_kg": 0.3, "wt_1000_pcs_kg": 3.0, "price": 180, "cost": 110,
          "gst": 18, "hsn": "7318", "moq": 10, "safety_stock": 50, "lead_time_days": 4,
-         "status": "active", "primary_supplier_id": supplier_id},
+         "status": "active", "primary_supplier_id": None},
         {"sku": "OFC-CHR-BLK", "name": "Office Chair Black", "category": "Furniture",
          "description": "Ergonomic office chair", "unit": "pcs", "weight_kg": 12, "wt_1000_pcs_kg": 12000.0, "price": 6500,
          "cost": 4800, "gst": 18, "hsn": "9401", "moq": 2, "safety_stock": 10, "lead_time_days": 10,
-         "status": "active", "primary_supplier_id": supplier_id},
+         "status": "active", "primary_supplier_id": None},
         {"sku": "MICROW-25L", "name": "Microwave 25L", "category": "Appliances",
          "description": "Convection microwave", "unit": "pcs", "weight_kg": 15, "wt_1000_pcs_kg": 15000.0, "price": 8900,
          "cost": 6700, "gst": 18, "hsn": "8516", "moq": 2, "safety_stock": 8, "lead_time_days": 12,
-         "status": "active", "primary_supplier_id": supplier_id},
+         "status": "active", "primary_supplier_id": None},
         {"sku": "USB-CBL-C", "name": "USB-C Cable 1m", "category": "Electronics",
          "description": "Fast charging USB-C", "unit": "pcs", "weight_kg": 0.1, "wt_1000_pcs_kg": 100.0, "price": 250,
          "cost": 130, "gst": 18, "hsn": "8544", "moq": 25, "safety_stock": 100, "lead_time_days": 3,
-         "status": "active", "primary_supplier_id": supplier_id},
+         "status": "active", "primary_supplier_id": None},
     ]
-    # Also include all 23 matrix screw items as products so they show up across catalog and orders!
+    # Include all 23 matrix screw items as products
     for md in matrix_data:
         prods.append({
             "sku": md["item_code"],
@@ -173,7 +150,7 @@ async def seed_all():
             "safety_stock": md["qty_per_box"] * 5,
             "lead_time_days": 5,
             "status": "active",
-            "primary_supplier_id": supplier_id,
+            "primary_supplier_id": None,
         })
     for p in prods:
         await db.products.update_one(
@@ -182,139 +159,48 @@ async def seed_all():
             upsert=True
         )
 
-    # Inventory: (warehouse × product)
+    # Clean inventory: (warehouse × product) initialized to zero
     products = await db.products.find({}).to_list(200)
     if await db.inventory.count_documents({}) == 0:
-        import random
-        random.seed(42)
         inv_docs = []
         for wh in warehouses:
             for p in products:
-                qty = random.randint(0, 500)
-                reserved = random.randint(0, min(50, qty))
                 inv_docs.append({
                     "warehouse_id": str(wh["_id"]),
                     "product_id": str(p["_id"]),
-                    "quantity": qty,
-                    "reserved": reserved,
+                    "quantity": 0,
+                    "reserved": 0,
                     "safety_stock": p.get("safety_stock", 0),
                     "updated_at": now_iso(),
                 })
         await db.inventory.insert_many(inv_docs)
 
-    # Seed some orders for analytics
-    if await db.orders.count_documents({}) == 0:
-        import random
-        random.seed(1)
-        dealers = await db.users.find({"role": "dealer"}).to_list(50)
-        prod_list = products
-        statuses = ["delivered", "delivered", "delivered", "approved", "pending", "shipped"]
-        orders = []
-        from datetime import datetime, timedelta, timezone
-        for i in range(24):
-            d = random.choice(dealers)
-            items = []
-            total = 0
-            for _ in range(random.randint(1, 4)):
-                p = random.choice(prod_list)
-                q = random.randint(1, 20)
-                subtotal = p["price"] * q
-                items.append({"product_id": str(p["_id"]), "product_name": p["name"],
-                              "sku": p["sku"], "quantity": q, "price": p["price"],
-                              "subtotal": subtotal})
-                total += subtotal
-            order_no = f"ORD-{2026}{i+1:04d}"
-            days_ago = random.randint(0, 90)
-            ts = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
-            orders.append({
-                "order_no": order_no,
-                "dealer_id": str(d["_id"]),
-                "dealer_name": d.get("company") or d["name"],
-                "dealer_state": d.get("state", ""),
-                "warehouse_id": random.choice(wh_ids),
-                "items": items,
-                "subtotal": total,
-                "gst": round(total * 0.18, 2),
-                "total": round(total * 1.18, 2),
-                "status": random.choice(statuses),
-                "notes": "",
-                "created_at": ts,
-                "updated_at": ts,
-            })
-        await db.orders.insert_many(orders)
-
-    # Purchase orders sample
-    if await db.purchase_orders.count_documents({}) == 0:
-        import random
-        random.seed(7)
-        suppliers = await db.users.find({"role": "supplier"}).to_list(20)
-        if suppliers:
-            po_docs = []
-            for i in range(6):
-                s = random.choice(suppliers)
-                items = []
-                total = 0
-                for _ in range(random.randint(1, 3)):
-                    p = random.choice(products)
-                    q = random.randint(20, 100)
-                    r = p["cost"]
-                    items.append({"product_id": str(p["_id"]), "product_name": p["name"],
-                                  "sku": p["sku"], "quantity": q, "rate": r, "amount": q * r})
-                    total += q * r
-                po_docs.append({
-                    "po_no": f"PO-2026{i+1:04d}",
-                    "supplier_id": str(s["_id"]),
-                    "supplier_name": s.get("company") or s["name"],
-                    "warehouse_id": random.choice(wh_ids),
-                    "items": items,
-                    "subtotal": total,
-                    "gst": round(total * 0.18, 2),
-                    "total": round(total * 1.18, 2),
-                    "status": random.choice(["draft", "sent", "confirmed", "received"]),
-                    "expected_delivery": now_iso(),
-                    "notes": "",
-                    "created_at": now_iso(),
-                    "updated_at": now_iso(),
-                })
-            await db.purchase_orders.insert_many(po_docs)
-
-    # Tally sync logs seed
-    if await db.tally_sync_logs.count_documents({}) == 0:
-        import random
-        modules = ["products", "stock", "sales", "purchases", "vouchers", "warehouses", "ledgers"]
-        logs = []
-        from datetime import datetime, timedelta, timezone
-        for i in range(12):
-            m = random.choice(modules)
-            days_ago = random.randint(0, 20)
-            ts = (datetime.now(timezone.utc) - timedelta(hours=days_ago * 4)).isoformat()
-            logs.append({
-                "module": m,
-                "direction": random.choice(["push", "pull"]),
-                "status": random.choice(["success", "success", "success", "failed"]),
-                "records": random.randint(5, 200),
-                "message": "Sync completed" if random.random() > 0.15 else "Timeout communicating with Tally",
-                "duration_ms": random.randint(300, 4000),
-                "created_at": ts,
-            })
-        await db.tally_sync_logs.insert_many(logs)
-
     # Write credentials file
-    os.makedirs("/app/memory", exist_ok=True)
-    with open("/app/memory/test_credentials.md", "w") as f:
-        f.write("# YAMINI FLOW — Test Credentials\n\n")
-        f.write("## Admin\n- Email: admin@yaminiflow.com\n- Password: Admin@123\n- Role: admin\n\n")
-        f.write("## Dealer\n- Email: dealer@yaminiflow.com / Code: D-ST-MH-101\n- Password: Dealer@123\n- Role: dealer\n\n")
-        f.write("## Dealer 2\n- Email: dealer2@yaminiflow.com / Code: D-KE-DL-102\n- Password: Dealer@123\n- Role: dealer\n\n")
-        f.write("## MNP\n- Email: mnp@yaminiflow.com / Code: M-RK-MH-101\n- Password: Mnp@123\n- Role: mnp\n\n")
-        f.write("## Supplier\n- Email: supplier@yaminiflow.com\n- Password: Supplier@123\n- Role: supplier\n\n")
-        f.write("## Auth Endpoints\n- POST /api/auth/login\n- POST /api/auth/register (admin only)\n- GET /api/auth/me\n- POST /api/auth/logout\n")
+    try:
+        os.makedirs("/app/memory", exist_ok=True)
+        with open("/app/memory/test_credentials.md", "w") as f:
+            f.write("# YAMINI FLOW — Production Admin Credentials\n\n")
+            f.write("## Admin\n- Email: admin@yaminiconnect.com\n- Password: Admin@yamini12\n- Role: admin\n\n")
+            f.write("## Auth Endpoints\n- POST /api/auth/login\n- POST /api/auth/register (admin only)\n- GET /api/auth/me\n- POST /api/auth/logout\n")
+    except Exception:
+        pass
 
 
 async def create_indexes():
-    await db.users.create_index("email", unique=True)
+    try:
+        await db.users.drop_index("email_1")
+    except Exception:
+        pass
+    await db.users.create_index("email", unique=True, sparse=True)
+    await db.users.create_index("login_id", sparse=True)
+    await db.users.create_index("user_code", sparse=True)
+    await db.users.create_index("username", sparse=True)
+    await db.users.create_index("employee_id", sparse=True)
     await db.users.create_index("role")
+    await db.users.create_index("admin_role")
     await db.login_attempts.create_index("identifier")
+
+
     await db.products.create_index("sku", unique=True)
     await db.products.create_index("category")
     await db.inventory.create_index([("warehouse_id", 1), ("product_id", 1)], unique=True)

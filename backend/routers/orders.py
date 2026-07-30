@@ -170,6 +170,7 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         "total": round(subtotal * 1.18, 2),
         "status": "approved" if reservation_status == "reserved" else "pending",
         "reservation_status": reservation_status,
+        "payment_status": "unpaid",
         "deficits": deficits,
         "notes": payload.notes or "",
         "created_at": now_iso(),

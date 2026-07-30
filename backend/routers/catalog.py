@@ -25,6 +25,54 @@ async def create_category(payload: CategoryIn, admin: dict = Depends(require_adm
     return serialize_doc(doc)
 
 
+@router.put("/categories/{category_id}")
+async def update_category(category_id: str, payload: CategoryIn, admin: dict = Depends(require_admin)):
+    try:
+        oid = ObjectId(category_id)
+        query_ne = {"_id": {"$nin": [oid, category_id]}}
+        query_self = {"_id": {"$in": [oid, category_id]}}
+    except Exception:
+        query_ne = {"_id": {"$ne": category_id}}
+        query_self = {"_id": category_id}
+
+    existing = await db.categories.find_one({"name": payload.name, **query_ne})
+    if existing:
+        raise HTTPException(400, "Category exists")
+    update = {"name": payload.name, "description": payload.description or ""}
+    res = await db.categories.update_one(query_self, {"$set": update})
+    if res.matched_count == 0:
+        raise HTTPException(404, "Not found")
+    doc = await db.categories.find_one(query_self)
+    return serialize_doc(doc)
+
+
+@router.delete("/categories/{category_id}")
+async def delete_category(category_id: str, admin: dict = Depends(require_admin)):
+    try:
+        oid = ObjectId(category_id)
+        query = {"_id": {"$in": [oid, category_id]}}
+    except Exception:
+        query = {"_id": category_id}
+
+    # Retrieve category info first to cascade delete products under this category
+    cat_doc = await db.categories.find_one(query)
+    if cat_doc:
+        category_name = cat_doc.get("name")
+        if category_name:
+            # Find and delete all corresponding inventory records for products in this category
+            prods = await db.products.find({"category": category_name}).to_list(1000)
+            prod_ids = [str(p["_id"]) for p in prods]
+            if prod_ids:
+                await db.inventory.delete_many({"product_id": {"$in": prod_ids}})
+            # Delete products in this category
+            await db.products.delete_many({"category": category_name})
+
+    res = await db.categories.delete_one(query)
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Not found")
+    return {"ok": True}
+
+
 # --- Products ---
 @router.get("/products")
 async def list_products(q: str = "", category: str = "", status: str = "",

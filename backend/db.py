@@ -24,9 +24,23 @@ def _validate_object_id(v: Any) -> str:
 PyObjectId = Annotated[str, BeforeValidator(_validate_object_id)]
 
 
-mongo_url = os.environ["MONGO_URL"]
-_client = AsyncIOMotorClient(mongo_url)
-db = _client[os.environ["DB_NAME"]]
+DEFAULT_MONGO_URL = "mongodb+srv://yaminiconnectadmin_db_user:yaminiconnect111@cluster0.1ri5dnj.mongodb.net/yamini_flow?appName=Cluster0"
+mongo_url = os.environ.get("MONGO_URL", DEFAULT_MONGO_URL)
+db_name = os.environ.get("DB_NAME", "yamini_flow")
+
+try:
+    import certifi
+    ca = certifi.where()
+    _client = AsyncIOMotorClient(mongo_url, tlsCAFile=ca, serverSelectionTimeoutMS=15000)
+except Exception:
+    try:
+        _client = AsyncIOMotorClient(mongo_url, tlsAllowInvalidCertificates=True, serverSelectionTimeoutMS=15000)
+    except Exception:
+        _client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=15000)
+
+db = _client[db_name]
+
+
 
 
 def now_utc() -> datetime:

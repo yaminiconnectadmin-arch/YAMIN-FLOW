@@ -111,16 +111,16 @@ export default function ForcePasswordReset() {
                 {/* New password */}
                 <div>
                   <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/40 mb-1.5">
-                    New Password <span className="normal-case font-normal">(min. 6 chars)</span>
+                    New Password <span className="normal-case font-normal">(max 8 chars)</span>
                   </label>
                   <div className="relative">
                     <input
                       type={showNext ? "text" : "password"}
                       value={next}
                       onChange={(e) => setNext(e.target.value)}
-                      placeholder="Choose a strong password"
+                      placeholder="Choose a password (max 8 chars)"
                       required
-                      minLength={6}
+                      maxLength={8}
                       className="w-full h-11 px-4 pr-10 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder-white/20 focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none transition"
                     />
                     <button
@@ -132,6 +132,7 @@ export default function ForcePasswordReset() {
                     </button>
                   </div>
                 </div>
+
 
                 {/* Confirm */}
                 <div>
