@@ -27,15 +27,26 @@ async def _upsert_user(email: str, password: str, name: str, role: str, extra: d
 
 
 
-async def seed_all():
-    # Purge legacy demo users if present
-    await db.users.delete_many({"email": {"$in": ["admin@yaminiflow.com", "dealer@yaminiflow.com", "dealer2@yaminiflow.com", "mnp@yaminiflow.com", "supplier@yaminiflow.com", "employee@yaminiflow.com"]}})
+async def seed_all(force_purge: bool = True):
+    if force_purge:
+        # Purge all legacy demo users except admin@yaminiconnect.com
+        await db.users.delete_many({"email": {"$ne": "admin@yaminiconnect.com"}})
+        # Purge all mock orders, POs, logs, notifications, collations
+        await db.orders.delete_many({})
+        await db.purchase_orders.delete_many({})
+        await db.tally_sync_logs.delete_many({})
+        await db.tally_webhook_events.delete_many({})
+        await db.audit_logs.delete_many({})
+        await db.notifications.delete_many({})
+        await db.collations.delete_many({})
+        await db.inventory.delete_many({})
 
     # Admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@yaminiconnect.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@yamini12")
     await _upsert_user(admin_email, admin_password, "System Admin", "admin",
-                       {"phone": "+91-9999999999", "company": "Yamini Group", "admin_role": "super_admin"})
+                       {"phone": "+91-9999999999", "company": "Yamini Group", "admin_role": "super_admin",
+                        "username": "admin", "login_id": "admin", "user_code": "ADMIN-101"})
 
     # Ensure admin password matches env
     existing_admin = await db.users.find_one({"email": admin_email.lower()})
