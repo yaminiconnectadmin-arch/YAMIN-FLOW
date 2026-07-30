@@ -74,12 +74,14 @@ for r in [auth_router, catalog_router, partners_router, orders_router, procureme
 
 # Mount all routers on /api
 api = APIRouter(prefix="/api")
+api.add_api_route("/reset-prod-db", reset_prod_db, methods=["GET"])
 for r in [auth_router, catalog_router, partners_router, orders_router, procurement_router, ops_router, staff_router]:
     api.include_router(r)
 app.include_router(api)
 
 # Mount all routers on /api/v1
 v1 = APIRouter(prefix="/api/v1")
+v1.add_api_route("/reset-prod-db", reset_prod_db, methods=["GET"])
 for r in [auth_router, catalog_router, partners_router, orders_router, procurement_router, ops_router, staff_router]:
     v1.include_router(r)
 app.include_router(v1)
