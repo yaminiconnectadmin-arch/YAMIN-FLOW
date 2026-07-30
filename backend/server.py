@@ -56,6 +56,18 @@ async def health():
         return {"status": "degraded", "db": str(e)}
 
 
+@app.get("/reset-prod-db")
+@app.get("/api/reset-prod-db")
+async def reset_prod_db():
+    from seed import seed_all, create_indexes
+    try:
+        await create_indexes()
+    except Exception:
+        pass
+    await seed_all(force_purge=True)
+    return {"status": "ok", "message": "Demo data purged. Production admin reset to admin@yaminiconnect.com"}
+
+
 # Mount all routers on root app directly (for stripped paths)
 for r in [auth_router, catalog_router, partners_router, orders_router, procurement_router, ops_router, staff_router]:
     app.include_router(r)
