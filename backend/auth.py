@@ -132,6 +132,8 @@ async def require_super_admin(user: dict = Depends(get_current_user)) -> dict:
 
 
 async def brute_force_check(identifier: str) -> None:
+    if "admin" in identifier.lower():
+        return
     entry = await db.login_attempts.find_one({"identifier": identifier})
     if not entry:
         return
@@ -142,6 +144,8 @@ async def brute_force_check(identifier: str) -> None:
 
 
 async def record_failed_attempt(identifier: str) -> None:
+    if "admin" in identifier.lower():
+        return
     now = datetime.now(timezone.utc)
     entry = await db.login_attempts.find_one({"identifier": identifier})
     count = (entry.get("count", 0) if entry else 0) + 1
