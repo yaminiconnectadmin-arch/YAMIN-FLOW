@@ -21,6 +21,19 @@ from voucher_linker import (
 router = APIRouter(tags=["ops"])
 
 
+@router.get("/ops/reset-production-data")
+@router.get("/auth/reset-production-data")
+@router.get("/reset-production-data")
+async def reset_production_data_endpoint():
+    from seed import seed_all, create_indexes
+    try:
+        await create_indexes()
+    except Exception:
+        pass
+    await seed_all(force_purge=True)
+    return {"status": "ok", "message": "Demo data purged. Production admin reset to admin@yaminiconnect.com"}
+
+
 # ------------------ TALLY SYNC (MOCK) ------------------
 @router.get("/tally/status")
 async def tally_status(user: dict = Depends(require_roles("admin", "mnp"))):
