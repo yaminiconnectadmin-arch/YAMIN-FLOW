@@ -28,6 +28,9 @@ async def _upsert_user(email: str, password: str, name: str, role: str, extra: d
 
 
 async def seed_all():
+    # Purge legacy demo users if present
+    await db.users.delete_many({"email": {"$in": ["admin@yaminiflow.com", "dealer@yaminiflow.com", "dealer2@yaminiflow.com", "mnp@yaminiflow.com", "supplier@yaminiflow.com", "employee@yaminiflow.com"]}})
+
     # Admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@yaminiconnect.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@yamini12")

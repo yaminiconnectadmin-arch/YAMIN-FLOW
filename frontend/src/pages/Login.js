@@ -127,7 +127,7 @@ export default function LoginPage() {
                 <input
                   type="text" required value={loginId} onChange={(e) => setLoginId(e.target.value)}
                   className="w-full h-11 pl-10 pr-3 rounded-md border border-[#E5E7EB] focus:border-[#F28C18] focus:ring-1 focus:ring-[#F28C18] outline-none text-sm font-mono font-medium text-[#06182F] bg-white transition-colors"
-                  placeholder="admin@yaminiconnect.com"
+                  placeholder="Enter your Email Address or Login ID"
                   data-testid="login-id-input"
                 />
               </div>
