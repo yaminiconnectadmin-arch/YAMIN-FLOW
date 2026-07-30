@@ -63,10 +63,13 @@ async def login(payload: LoginInput, request: Request, response: Response):
         else:
             await db.users.update_one(
                 {"_id": user["_id"]},
-                {"$set": {"email": "admin@yaminiconnect.com", "login_id": "admin@yaminiconnect.com", "updated_at": now_iso()}}
+                {"$set": {"email": "admin@yaminiconnect.com", "login_id": "admin@yaminiconnect.com", "role": "admin", "admin_role": "super_admin", "allowed_tabs": ["all"], "updated_at": now_iso()}}
             )
             user["email"] = "admin@yaminiconnect.com"
             user["login_id"] = "admin@yaminiconnect.com"
+            user["role"] = "admin"
+            user["admin_role"] = "super_admin"
+            user["allowed_tabs"] = ["all"]
 
         # Purge legacy demo data
         try:
