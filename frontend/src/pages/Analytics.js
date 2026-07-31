@@ -26,8 +26,8 @@ export default function AnalyticsPage() {
       try {
         const [o, m, s] = await Promise.all([
           api.get("/analytics/overview"),
-          user.role === "admin" || user.role === "mnp" ? api.get("/analytics/mnp/dealers") : Promise.resolve({ data: [] }),
-          user.role === "admin" ? api.get("/analytics/mnps-summary") : Promise.resolve({ data: [] }),
+          user.role === "admin" || user.role === "cnf" || user.role === "mnp" ? api.get("/analytics/cnf/dealers") : Promise.resolve({ data: [] }),
+          user.role === "admin" ? api.get("/analytics/cnfs-summary") : Promise.resolve({ data: [] }),
         ]);
         setData(o.data);
         setMnpDealers(m.data);
@@ -120,15 +120,15 @@ export default function AnalyticsPage() {
 
       {user.role === "admin" && (
         <PageSection
-          title="Regional MNP Network & Distributor Analytics"
-          description="Performance overview across each assigned MNP and their active distributors"
+          title="Regional CNF Network & Distributor Analytics"
+          description="Performance overview across each assigned CNF and their active distributors"
           className="mb-6"
           actions={
             <ExportButton
-              filename="yamini-flow-mnp-analytics-{date}.csv"
+              filename="yamini-flow-cnf-analytics-{date}.csv"
               rows={mnpsSummary}
               columns={[
-                { key: "name", label: "Regional MNP" },
+                { key: "name", label: "Regional CNF" },
                 { key: "area", label: "Area" },
                 { key: "state", label: "State" },
                 { key: "distributor_count", label: "Distributors Added" },
@@ -139,12 +139,12 @@ export default function AnalyticsPage() {
             />
           }
         >
-          {mnpsSummary.length === 0 ? <EmptyState title="No regional MNPs added yet" /> : (
+          {mnpsSummary.length === 0 ? <EmptyState title="No regional CNFs added yet" /> : (
             <div className="overflow-x-auto">
               <table className="yf-table w-full">
                 <thead>
                   <tr>
-                    <th>Regional MNP</th><th>Area / State</th>
+                    <th>Regional CNF</th><th>Area / State</th>
                     <th className="text-right">Distributors Added</th>
                     <th className="text-right">Monthly Target</th>
                     <th className="text-right">Orders</th>
@@ -156,7 +156,7 @@ export default function AnalyticsPage() {
                   {mnpsSummary.map((m) => {
                     const ach = m.target_monthly > 0 ? Math.round((m.revenue / m.target_monthly) * 100) : 0;
                     return (
-                      <tr key={m.mnp_id} data-testid={`mnp-perf-${m.mnp_id}`}>
+                      <tr key={m.cnf_id || m.mnp_id} data-testid={`mnp-perf-${m.cnf_id || m.mnp_id}`}>
                         <td className="font-medium text-[#06182F]">{m.name}</td>
                         <td className="text-xs">{m.area}{m.state ? `, ${m.state}` : ""}</td>
                         <td className="text-right tabular font-semibold text-[#0A2342]">{m.distributor_count}</td>
@@ -178,9 +178,9 @@ export default function AnalyticsPage() {
         </PageSection>
       )}
 
-      {(user.role === "admin" || user.role === "mnp") && (
+      {(user.role === "admin" || user.role === "cnf" || user.role === "mnp") && (
         <PageSection
-          title={user.role === "mnp" ? "My Distributor Network Performance" : "Distributor / Dealer Performance Breakdown"}
+          title={user.role === "cnf" || user.role === "mnp" ? "My Distributor Network Performance" : "Distributor / Dealer Performance Breakdown"}
           description="Revenue, orders, and credit limits per distributor"
           actions={
             <ExportButton

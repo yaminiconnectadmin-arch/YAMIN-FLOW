@@ -1,21 +1,21 @@
 # YAMINI FLOW — Product Requirements Document
 
 ## Overview
-YAMINI FLOW is an enterprise-grade Distribution Intelligence Platform (ERP) that connects Admins, Dealers, MNP Personnel, and Suppliers through one intelligent ecosystem. The platform automates the full distribution cycle — inventory, procurement, orders, and reporting — while treating Tally as the master accounting source of truth.
+YAMINI FLOW is an enterprise-grade Distribution Intelligence Platform (ERP) that connects Super Admin (Arpan), Dealers, CNF Personnel, and Suppliers through one intelligent ecosystem. The platform automates the full distribution cycle — inventory, procurement, orders, and reporting — while treating Tally as the master accounting source of truth.
 
 ## Original Problem Statement
-YAMINI FLOW V2 — enterprise ERP with modules: Authentication, RBAC, Dealer/MNP/Supplier/Admin portals, Inventory Engine, Procurement Engine, Tally Sync Engine, Analytics, AI Insights, Notifications, Audit Logs, Settings. Brand: Deep Navy / Yamini Orange. Stack (adapted to Emergent): React + FastAPI + MongoDB (originally spec'd Next.js/Node).
+YAMINI FLOW V2 — enterprise ERP with modules: Authentication, RBAC, Dealer/CNF/Supplier/Admin portals, Inventory Engine, Procurement Engine, Tally Sync Engine, Analytics, AI Insights, Notifications, Audit Logs, Settings. Brand: Deep Navy / Yamini Orange. Stack (adapted to Emergent): React + FastAPI + MongoDB (originally spec'd Next.js/Node).
 
 ## User Choices
 - Stack: React + FastAPI + MongoDB (Emergent default)
-- Scope for MVP: All four portals (Admin, Dealer, MNP, Supplier)
+- Scope for MVP: All four portals (Admin, Dealer, CNF, Supplier)
 - Auth: JWT email+password
 - AI: Emergent Universal LLM Key (Claude Sonnet 4.6)
 - Tally: Mock architecture with sync-log endpoints (real integration deferred)
 
 ## Personas
-1. **Admin** — Full control, sees all modules
-2. **MNP Personnel** — Field ops manager over multiple dealers, sees analytics + AI
+1. **Super Admin (Arpan)** — Full control, sees all modules
+2. **CNF Personnel** — Field ops manager over multiple dealers, sees analytics + AI
 3. **Dealer** — Places orders, tracks fulfilment, downloads invoices
 4. **Supplier** — Receives POs, updates delivery status
 

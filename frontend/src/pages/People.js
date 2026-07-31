@@ -15,7 +15,7 @@ import {
 export function PeoplePage({ role, title, fields, endpoint }) {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
-  const isMnp = user?.role === "mnp";
+  const isMnp = user?.role === "mnp" || user?.role === "cnf";
   const canManage = isAdmin || (role === "dealer" && isMnp);
 
   const [items, setItems] = useState([]);
@@ -40,15 +40,16 @@ export function PeoplePage({ role, title, fields, endpoint }) {
   useEffect(() => {
     load();
     if (role === "dealer") {
-      api.get("/mnp").then((res) => setMnpList(res.data || [])).catch(() => {});
+      api.get("/cnf").then((res) => setMnpList(res.data || [])).catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
 
   const openNew = () => {
     const defaultForm = { ...empty };
-    // If the logged-in user is an MNP, auto-assign themselves as the MNP
+    // If the logged-in user is a CNF/MNP, auto-assign themselves
     if (isMnp && role === "dealer") {
+      defaultForm.cnf_id = user.id;
       defaultForm.mnp_id = user.id;
     }
     setEditing(null);
@@ -58,7 +59,7 @@ export function PeoplePage({ role, title, fields, endpoint }) {
   const openEdit = (i) => { setEditing(i); setForm({ ...empty, ...i }); setDialogOpen(true); };
   
   const autoGenPassword = () => {
-    const prefix = role === "dealer" ? "Dist" : role === "mnp" ? "Mnp" : "Sup";
+    const prefix = role === "dealer" ? "Dist" : (role === "cnf" || role === "mnp") ? "Cnf" : "Sup";
     const rand = Math.floor(1000 + Math.random() * 9000);
     setForm((prev) => ({ ...prev, password: `${prefix}@${rand}` }));
     toast.info(`Generated: ${prefix}@${rand}`);
@@ -440,7 +441,7 @@ const SUPPLIER_FIELDS = [
 ];
 
 const MNP_FIELDS = [
-  { key: "name", label: "Regional MNP Name", strong: true },
+  { key: "name", label: "Regional CNF Name", strong: true },
   { key: "login_id", label: "Unique Code (Login ID)", mono: true, hideInForm: true, format: (v, item) => (
     v || item?.user_code ? (
       <span className="bg-[#BAE6FD] text-[#0369A1] px-2 py-0.5 rounded font-mono font-bold text-xs shadow-sm">
@@ -460,5 +461,6 @@ const MNP_FIELDS = [
 
 export const DealersPage = () => <PeoplePage role="dealer" title="Distributors / Dealers" fields={DEALER_FIELDS} endpoint="/dealers" />;
 export const SuppliersPage = () => <PeoplePage role="supplier" title="Suppliers" fields={SUPPLIER_FIELDS} endpoint="/suppliers" />;
-export const MnpPage = () => <PeoplePage role="mnp" title="Regional MNPs" fields={MNP_FIELDS} endpoint="/mnp" />;
+export const MnpPage = () => <PeoplePage role="cnf" title="Regional CNFs" fields={MNP_FIELDS} endpoint="/cnf" />;
+export const CnfPage = MnpPage;
 

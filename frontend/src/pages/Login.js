@@ -25,7 +25,8 @@ export default function LoginPage() {
         procurement: "/procurement",
         "purchase-orders": "/purchase-orders",
         dealers: "/dealers",
-        mnp: "/mnp",
+        cnf: "/cnf",
+        mnp: "/cnf",
         suppliers: "/suppliers",
         warehouses: "/warehouses",
         tally: "/tally",
@@ -77,10 +78,10 @@ export default function LoginPage() {
             <span className="w-8 h-px bg-[#F28C18]"></span> Fastener Matrix & Unique Login Codes
           </div>
           <h1 className="font-display text-4xl lg:text-5xl font-semibold leading-[1.05] tracking-tight">
-            One ecosystem. <br /> Every distributor, MNP & supplier — <span className="text-[#F28C18]">in flow.</span>
+            One ecosystem. <br /> Every distributor, CNF & supplier — <span className="text-[#F28C18]">in flow.</span>
           </h1>
           <p className="mt-5 text-white/70 text-[15px] leading-relaxed max-w-md">
-            Intelligent weight-matrix conversions, automated 12 AM / single-click collation, and real-time distributor, employee & MNP code tracking across all regions.
+            Intelligent weight-matrix conversions, automated 12 AM / single-click collation, and real-time distributor, employee & CNF code tracking across all regions.
           </p>
           <div className="grid grid-cols-2 gap-4 pt-6 mt-6 border-t border-white/10 text-xs">
             <div>

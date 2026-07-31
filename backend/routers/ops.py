@@ -419,13 +419,14 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
     }
 
 
+@router.get("/analytics/cnfs-summary")
 @router.get("/analytics/mnps-summary")
-async def mnps_summary(admin: dict = Depends(require_admin)):
-    mnps = await db.users.find({"role": "mnp"}).to_list(200)
+async def cnfs_summary(admin: dict = Depends(require_admin)):
+    cnfs = await db.users.find({"role": {"$in": ["cnf", "mnp"]}}).to_list(200)
     rows = []
-    for m in mnps:
-        mid = str(m["_id"])
-        dealers = await db.users.find({"role": "dealer", "mnp_id": mid}).to_list(500)
+    for m in cnfs:
+        cid = str(m["_id"])
+        dealers = await db.users.find({"role": "dealer", "$or": [{"cnf_id": cid}, {"mnp_id": cid}]}).to_list(500)
         dealer_ids = [str(d["_id"]) for d in dealers]
         
         rev, orders = 0, 0
@@ -443,7 +444,8 @@ async def mnps_summary(admin: dict = Depends(require_admin)):
                 orders = agg[0]["orders"]
                 
         rows.append({
-            "mnp_id": mid,
+            "cnf_id": cid,
+            "mnp_id": cid,
             "name": m.get("name", ""),
             "area": m.get("area", ""),
             "state": m.get("state", ""),
@@ -458,10 +460,11 @@ async def mnps_summary(admin: dict = Depends(require_admin)):
     return rows
 
 
+@router.get("/analytics/cnf/dealers")
 @router.get("/analytics/mnp/dealers")
-async def mnp_dealer_analytics(user: dict = Depends(require_roles("admin", "mnp"))):
-    if user["role"] == "mnp":
-        dealers = await db.users.find({"role": "dealer", "mnp_id": user["id"]}).to_list(500)
+async def cnf_dealer_analytics(user: dict = Depends(require_roles("admin", "cnf", "mnp"))):
+    if user["role"] in ["cnf", "mnp"]:
+        dealers = await db.users.find({"role": "dealer", "$or": [{"cnf_id": user["id"]}, {"mnp_id": user["id"]}]}).to_list(500)
     else:
         dealers = await db.users.find({"role": "dealer"}).to_list(500)
 

@@ -3,7 +3,7 @@ from typing import Optional, List, Literal
 from pydantic import BaseModel, EmailStr, Field
 
 
-Role = Literal["admin", "dealer", "mnp", "supplier"]
+Role = Literal["admin", "dealer", "cnf", "mnp", "supplier"]
 AdminRole = Literal["super_admin", "staff"]
 
 
@@ -105,7 +105,7 @@ class InventoryAdjustIn(BaseModel):
     reason: Optional[str] = "manual_adjust"
 
 
-# ---- Dealer / Supplier / MNP ----
+# ---- Dealer / Supplier / CNF ----
 class DealerIn(BaseModel):
     name: str
     email: Optional[str] = ""
@@ -117,6 +117,7 @@ class DealerIn(BaseModel):
     credit_limit: float = 0
     target_monthly: float = 0
     target_quarterly: float = 0
+    cnf_id: Optional[str] = None
     mnp_id: Optional[str] = None
     password: Optional[str] = "Dealer@123"
     user_code: Optional[str] = ""
@@ -135,7 +136,7 @@ class SupplierIn(BaseModel):
     password: Optional[str] = "Supplier@123"
 
 
-class MnpIn(BaseModel):
+class CnfIn(BaseModel):
     name: str
     email: Optional[str] = ""
     phone: str
@@ -144,9 +145,12 @@ class MnpIn(BaseModel):
     company: Optional[str] = ""
     target_monthly: float = 0
     target_quarterly: float = 0
-    password: Optional[str] = "Mnp@123"
+    password: Optional[str] = "Cnf@123"
     user_code: Optional[str] = ""
     login_id: Optional[str] = ""
+
+
+MnpIn = CnfIn
 
 
 # ---- Order ----

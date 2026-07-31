@@ -10,7 +10,7 @@ router = APIRouter(prefix="/staff", tags=["staff"])
 # All valid tab keys in the admin panel
 ALL_TAB_KEYS = [
     "all", "dashboard", "analytics", "products", "inventory", "orders",
-    "procurement", "purchase-orders", "dealers", "mnp", "suppliers",
+    "procurement", "purchase-orders", "dealers", "cnf", "mnp", "suppliers",
     "warehouses", "tally", "notifications", "audit", "settings",
 ]
 

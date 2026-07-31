@@ -26,7 +26,7 @@ async def login(payload: LoginInput, request: Request, response: Response):
     import re
     rgx = {"$regex": f"^{re.escape(ident)}$", "$options": "i"}
     ident_lower = ident.lower()
-    is_admin_ident = ident_lower in ["admin", "admin@yaminiconnect.com", "admin@yaminiflow.com", "admin-101", "system admin"]
+    is_admin_ident = ident_lower in ["admin", "admin@yaminiconnect.com", "admin@yaminiflow.com", "admin-101", "system admin", "arpan"]
 
     try:
         await db.login_attempts.delete_many({})
@@ -47,7 +47,7 @@ async def login(payload: LoginInput, request: Request, response: Response):
             admin_doc = {
                 "email": "admin@yaminiconnect.com",
                 "password_hash": hash_password("Admin@yamini12"),
-                "name": "System Admin",
+                "name": "Arpan",
                 "role": "admin",
                 "admin_role": "super_admin",
                 "username": "admin",
@@ -63,9 +63,10 @@ async def login(payload: LoginInput, request: Request, response: Response):
         else:
             await db.users.update_one(
                 {"_id": user["_id"]},
-                {"$set": {"email": "admin@yaminiconnect.com", "login_id": "admin@yaminiconnect.com", "role": "admin", "admin_role": "super_admin", "allowed_tabs": ["all"], "updated_at": now_iso()}}
+                {"$set": {"email": "admin@yaminiconnect.com", "name": "Arpan", "login_id": "admin@yaminiconnect.com", "role": "admin", "admin_role": "super_admin", "allowed_tabs": ["all"], "updated_at": now_iso()}}
             )
             user["email"] = "admin@yaminiconnect.com"
+            user["name"] = "Arpan"
             user["login_id"] = "admin@yaminiconnect.com"
             user["role"] = "admin"
             user["admin_role"] = "super_admin"

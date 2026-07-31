@@ -78,18 +78,21 @@ class TestAuth:
         s, user = admin
         assert user["email"] == "admin@yaminiconnect.com"
         assert user["role"] == "admin"
+        assert user["name"] == "Arpan"
 
     def test_me_admin(self, admin):
         s, _ = admin
         r = s.get(f"{API}/auth/me")
         assert r.status_code == 200
         assert r.json()["role"] == "admin"
+        assert r.json()["name"] == "Arpan"
 
     def test_login_invalid(self):
-        r = requests.post(f"{API}/auth/login",
+        s = requests.Session()
+        r = s.post(f"{API}/auth/login",
                           json={"email": "admin@yaminiconnect.com", "password": "wrong"},
-                          timeout=15)
-        assert r.status_code in (401, 429)
+                          headers={"Content-Type": "application/json"})
+        assert r.status_code == 401
 
     def test_login_dealer(self, dealer):
         _, u = dealer

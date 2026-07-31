@@ -158,8 +158,10 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
             "supplier_name": (sup.get("company") or sup.get("name")) if sup else "Unassigned Supplier",
             "rate": p.get("cost", 0) or p.get("price", 0),
             "dealer_codes": sorted(list(dealer_codes_map.get(pid, []))),
+            "cnf_codes": sorted(list(mnp_codes_map.get(pid, []))),
             "mnp_codes": sorted(list(mnp_codes_map.get(pid, []))),
             "dealer_summary": ", ".join(sorted(list(dealer_codes_map.get(pid, [])))),
+            "cnf_summary": ", ".join(sorted(list(mnp_codes_map.get(pid, [])))),
             "mnp_summary": ", ".join(sorted(list(mnp_codes_map.get(pid, [])))),
         })
         total_pcs += dem_qty

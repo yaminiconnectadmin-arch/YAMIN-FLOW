@@ -119,7 +119,8 @@ def require_roles(*roles: str):
 
 
 require_admin = require_roles("admin")
-require_admin_or_mnp = require_roles("admin", "mnp")
+require_admin_or_cnf = require_roles("admin", "cnf", "mnp")
+require_admin_or_mnp = require_admin_or_cnf
 
 
 async def require_super_admin(user: dict = Depends(get_current_user)) -> dict:

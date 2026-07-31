@@ -32,12 +32,13 @@ export default function Dashboard() {
 
   const isAdmin = user?.role === "admin";
   const isDealer = user?.role === "dealer";
-  const isMnp = user?.role === "mnp";
+  const isMnp = user?.role === "mnp" || user?.role === "cnf";
   const isSupplier = user?.role === "supplier";
 
   const roleGreeting = {
     admin: "Executive overview across the entire distribution network.",
     dealer: "Your orders, invoices, and offers at a glance.",
+    cnf: "Track your dealers and territory performance.",
     mnp: "Track your dealers and territory performance.",
     supplier: "Manage your purchase orders and deliveries.",
   }[user?.role];

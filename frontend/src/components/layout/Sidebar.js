@@ -22,7 +22,7 @@ const NAV = {
     { to: "/purchase-orders", label: "Purchase Orders", icon: Receipt,        tabKey: "purchase-orders" },
     { section: "Network" },
     { to: "/dealers",         label: "Dealers",         icon: Storefront,     tabKey: "dealers" },
-    { to: "/mnp",             label: "MNP Personnel",   icon: MapTrifold,     tabKey: "mnp" },
+    { to: "/cnf",             label: "CNF Personnel",   icon: MapTrifold,     tabKey: "cnf" },
     { to: "/suppliers",       label: "Suppliers",       icon: Handshake,      tabKey: "suppliers" },
     { to: "/warehouses",      label: "Warehouses",      icon: Warehouse,      tabKey: "warehouses" },
     { section: "System" },
@@ -37,6 +37,14 @@ const NAV = {
     { to: "/browse",    label: "Browse Products",  icon: Package },
     { to: "/orders",    label: "My Orders",        icon: ShoppingCart },
     { to: "/invoices",  label: "Invoices",         icon: FileText },
+    { to: "/notifications", label: "Notifications", icon: Bell },
+  ],
+  cnf: [
+    { section: "Field Operations" },
+    { to: "/dashboard",     label: "Dashboard",    icon: ChartBar },
+    { to: "/analytics",     label: "Analytics",    icon: TrendUp },
+    { to: "/dealers",       label: "My Dealers",   icon: Storefront },
+    { to: "/orders",        label: "Orders",        icon: ShoppingCart },
     { to: "/notifications", label: "Notifications", icon: Bell },
   ],
   mnp: [

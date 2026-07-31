@@ -13,6 +13,7 @@ def test_rbac_admin_has_full_permissions():
     assert has_role_permission("dealer", allowed_roles) is False
 
 def test_rbac_multi_role_endpoint():
-    allowed_roles = ["admin", "mnp"]
+    allowed_roles = ["admin", "cnf", "mnp"]
+    assert has_role_permission("cnf", allowed_roles) is True
     assert has_role_permission("mnp", allowed_roles) is True
     assert has_role_permission("dealer", allowed_roles) is False

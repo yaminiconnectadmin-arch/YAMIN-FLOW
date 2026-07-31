@@ -291,9 +291,9 @@ export default function ProcurementPage() {
                           </td>
                           <td>
                             <div className="flex flex-wrap gap-1 max-w-[160px]">
-                              {it.mnp_codes && it.mnp_codes.length > 0 ? (
-                                it.mnp_codes.map((c, idx) => c !== "DIRECT" ? (
-                                  <span key={idx} className="bg-[#BAE6FD] text-[#0369A1] font-mono text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm" title="Assigned MNP">🏷️ {c}</span>
+                              {(it.cnf_codes || it.mnp_codes) && (it.cnf_codes || it.mnp_codes).length > 0 ? (
+                                (it.cnf_codes || it.mnp_codes).map((c, idx) => c !== "DIRECT" ? (
+                                  <span key={idx} className="bg-[#BAE6FD] text-[#0369A1] font-mono text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm" title="Assigned CNF">🏷️ {c}</span>
                                 ) : (
                                   <span key={idx} className="bg-[#E6F4EA] text-[#137333] font-medium text-[11px] px-1.5 py-0.5 rounded border border-[#CEEAD6]">⚡ Direct</span>
                                 ))

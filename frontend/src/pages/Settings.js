@@ -20,7 +20,7 @@ const ALL_TABS = [
   { key: "procurement",     label: "Procurement" },
   { key: "purchase-orders", label: "Purchase Orders" },
   { key: "dealers",         label: "Dealers" },
-  { key: "mnp",             label: "MNP Personnel" },
+  { key: "cnf",             label: "CNF Personnel" },
   { key: "suppliers",       label: "Suppliers" },
   { key: "warehouses",      label: "Warehouses" },
   { key: "tally",           label: "Tally Sync" },

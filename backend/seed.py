@@ -44,7 +44,7 @@ async def seed_all(force_purge: bool = True):
     # Admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@yaminiconnect.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@yamini12")
-    await _upsert_user(admin_email, admin_password, "System Admin", "admin",
+    await _upsert_user(admin_email, admin_password, "Arpan", "admin",
                        {"phone": "+91-9999999999", "company": "Yamini Group", "admin_role": "super_admin",
                         "username": "admin", "login_id": "admin", "user_code": "ADMIN-101"})
 

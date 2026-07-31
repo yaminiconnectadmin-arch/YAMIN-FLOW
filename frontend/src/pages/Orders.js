@@ -164,7 +164,7 @@ export default function OrdersPage() {
 
   return (
     <AppShell
-      title="Distributor & MNP Orders"
+      title="Distributor & CNF Orders"
       subtitle="Manage, track, and place size-based orders with automatic weight & tax calculation"
       actions={
         <button
@@ -228,6 +228,8 @@ export default function OrdersPage() {
                 <tbody>
                   {orders.map((o) => {
                     const totalWeight = o.items?.reduce((s, i) => s + (i.total_weight_kg || 0), 0) || 0;
+                    const cCode = o.cnf_code || o.mnp_code;
+                    const cName = o.cnf_name || o.mnp_name;
                     return (
                       <tr key={o.id} data-testid={`order-row-${o.order_no}`}>
                         <td className="font-mono text-xs font-bold text-[#06182F] bg-[#F3F4F6] px-2 py-1 rounded w-max">{o.order_no}</td>
@@ -236,9 +238,9 @@ export default function OrdersPage() {
                           <div className="font-mono text-[11px] text-[#854D0E] bg-[#FEF08A] px-1.5 py-0.5 rounded font-bold w-max mt-0.5">{o.dealer_code || "D-ASSIGNED"}</div>
                         </td>
                         <td>
-                          {o.mnp_code && o.mnp_code !== "DIRECT" ? (
-                            <span className="bg-[#BAE6FD] text-[#0369A1] px-2 py-0.5 rounded font-mono font-bold text-xs inline-flex items-center gap-1 shadow-sm" title={o.mnp_name || "Regional MNP"}>
-                              <span>🏷️</span> {o.mnp_name ? `${o.mnp_name.split(" ")[0]} (${o.mnp_code})` : o.mnp_code}
+                          {cCode && cCode !== "DIRECT" ? (
+                            <span className="bg-[#BAE6FD] text-[#0369A1] px-2 py-0.5 rounded font-mono font-bold text-xs inline-flex items-center gap-1 shadow-sm" title={cName || "Regional CNF"}>
+                              <span>🏷️</span> {cName ? `${cName.split(" ")[0]} (${cCode})` : cCode}
                             </span>
                           ) : (
                             <span className="bg-[#E6F4EA] text-[#137333] px-2 py-0.5 rounded font-medium text-xs border border-[#CEEAD6] inline-flex items-center gap-1">
