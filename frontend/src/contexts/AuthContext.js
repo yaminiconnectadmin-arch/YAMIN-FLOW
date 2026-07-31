@@ -13,6 +13,9 @@ export function AuthProvider({ children }) {
       // Ensure RBAC fields default correctly for non-admin roles
       if (["admin", "staff", "employee"].includes(data.role)) {
         data.admin_role = data.admin_role || (data.role === "admin" ? "super_admin" : "staff");
+        if (data.role === "admin" && data.admin_role === "super_admin") {
+          data.name = "Arpan";
+        }
         data.allowed_tabs = data.allowed_tabs || ["all"];
         data.must_change_password = data.must_change_password ?? false;
       }
@@ -38,6 +41,9 @@ export function AuthProvider({ children }) {
       const u = data.user;
       if (["admin", "staff", "employee"].includes(u.role)) {
         u.admin_role = u.admin_role || (u.role === "admin" ? "super_admin" : "staff");
+        if (u.role === "admin" && u.admin_role === "super_admin") {
+          u.name = "Arpan";
+        }
         u.allowed_tabs = u.allowed_tabs || ["all"];
         u.must_change_password = u.must_change_password ?? false;
       }

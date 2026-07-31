@@ -48,7 +48,11 @@ async def seed_all(force_purge: bool = True):
                        {"phone": "+91-9999999999", "company": "Yamini Group", "admin_role": "super_admin",
                         "username": "admin", "login_id": "admin", "user_code": "ADMIN-101"})
 
-    # Ensure admin password matches env
+    # Ensure admin name and password match env
+    await db.users.update_many(
+        {"$or": [{"email": admin_email.lower()}, {"role": "admin", "admin_role": "super_admin"}, {"login_id": "admin"}, {"username": "admin"}]},
+        {"$set": {"name": "Arpan", "updated_at": now_iso()}}
+    )
     existing_admin = await db.users.find_one({"email": admin_email.lower()})
     if existing_admin:
         from auth import verify_password

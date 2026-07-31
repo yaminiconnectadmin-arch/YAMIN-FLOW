@@ -96,6 +96,8 @@ async def get_current_user(request: Request) -> dict:
                 u.setdefault("admin_role", "staff")
             else:
                 u.setdefault("admin_role", "super_admin")
+                if u.get("admin_role") == "super_admin":
+                    u["name"] = "Arpan"
             u.setdefault("allowed_tabs", ["all"])
             u.setdefault("must_change_password", False)
         return u
