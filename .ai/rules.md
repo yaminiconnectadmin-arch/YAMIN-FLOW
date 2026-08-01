@@ -16,3 +16,8 @@ Before declaring any task complete, an AI Agent must pass the following validati
 ## 3. Production Quality Standard
 - Code must be production-ready: typed, error-handled, logged, structured, and resilient.
 - Never leave `TODO` stubs or half-implemented endpoints.
+
+## 4. Ponytail Minimalist Code Guard (YAGNI & Zero Over-Engineering)
+- **Zero Over-Engineering**: Never write speculative abstractions, complex design patterns, or factory wrappers for single-use logic.
+- **Native Standard Libraries First**: Prefer built-in Python standard libraries (`pathlib`, `json`, `datetime`, `asyncio`, `re`) and native ES6+/React utilities over introducing new 3rd-party dependencies.
+- **Zero Dead Code**: Always remove unused imports, dead variables, and orphaned code paths. Keep modules focused and concise.
