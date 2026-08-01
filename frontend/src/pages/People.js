@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, fmt } from "@/lib/api";
+import { api, fmt, formatApiErrorDetail } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
 import { ExportButton } from "@/lib/csv";
@@ -80,14 +80,14 @@ export function PeoplePage({ role, title, fields, endpoint }) {
             email: res.data.email || form.email,
             loginCode: res.data.login_id || res.data.user_code || res.data.email || form.email,
             phone: res.data.phone || form.phone,
-            password: res.data.raw_password || form.password || "Dist@1234",
-            roleName: title.includes("/") ? "Distributor" : title.replace("s", ""),
+            password: res.data.raw_password || form.password || "Cnf@1234",
+            roleName: title.includes("/") ? "Distributor" : title.endsWith("s") ? title.slice(0, -1) : title,
           });
         }
       }
       setDialogOpen(false);
       load();
-    } catch (e) { toast.error(e.response?.data?.detail || "Failed to save"); }
+    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Failed to save"); }
   };
 
   const del = async (i) => {
@@ -96,7 +96,7 @@ export function PeoplePage({ role, title, fields, endpoint }) {
       await api.delete(`${endpoint}/${i.id}`);
       load();
       toast.success("Deleted successfully");
-    } catch (e) { toast.error(e.response?.data?.detail || "Failed to delete"); }
+    } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Failed to delete"); }
   };
 
   const sendWhatsApp = (item, pwd = null) => {

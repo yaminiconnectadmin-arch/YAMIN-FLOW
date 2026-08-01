@@ -139,9 +139,9 @@ class SupplierIn(BaseModel):
 class CnfIn(BaseModel):
     name: str
     email: Optional[str] = ""
-    phone: str
-    area: str
-    state: str
+    phone: Optional[str] = ""
+    area: Optional[str] = ""
+    state: Optional[str] = ""
     company: Optional[str] = ""
     target_monthly: float = 0
     target_quarterly: float = 0
