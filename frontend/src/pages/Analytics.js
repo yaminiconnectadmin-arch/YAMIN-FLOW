@@ -24,18 +24,29 @@ export default function AnalyticsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [o, m, s] = await Promise.all([
+        const results = await Promise.allSettled([
           api.get("/analytics/overview"),
-          user.role === "admin" || user.role === "cnf" || user.role === "mnp" ? api.get("/analytics/cnf/dealers") : Promise.resolve({ data: [] }),
-          user.role === "admin" ? api.get("/analytics/cnfs-summary") : Promise.resolve({ data: [] }),
+          user?.role === "admin" || user?.role === "cnf" || user?.role === "mnp" ? api.get("/analytics/cnf/dealers") : Promise.resolve({ data: [] }),
+          user?.role === "admin" ? api.get("/analytics/cnfs-summary") : Promise.resolve({ data: [] }),
         ]);
-        setData(o.data);
-        setMnpDealers(m.data);
-        setMnpsSummary(s.data);
+
+        if (results[0].status === "fulfilled" && results[0].value?.data) {
+          setData(results[0].value.data);
+        } else {
+          toast.error("Failed to load overview analytics");
+        }
+
+        if (results[1].status === "fulfilled" && results[1].value?.data) {
+          setMnpDealers(results[1].value.data);
+        }
+
+        if (results[2].status === "fulfilled" && results[2].value?.data) {
+          setMnpsSummary(results[2].value.data);
+        }
       } catch { toast.error("Failed to load analytics"); }
       finally { setLoading(false); }
     })();
-  }, [user.role]);
+  }, [user?.role]);
 
   const openDrill = async (state) => {
     setDrillState(state);

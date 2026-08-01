@@ -6,10 +6,11 @@ from auth import hash_password
 
 async def _upsert_user(email: str, password: str, name: str, role: str, extra: dict = None) -> str:
     existing = await db.users.find_one({"email": email.lower()})
+    user_name = existing.get("name") if (existing and existing.get("name")) else name
     doc = {
         "email": email.lower(),
         "password_hash": hash_password(password),
-        "name": name,
+        "name": user_name,
         "role": role,
         "status": "active",
         "updated_at": now_iso(),
@@ -44,15 +45,11 @@ async def seed_all(force_purge: bool = True):
     # Admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@yaminiconnect.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@yamini12")
-    await _upsert_user(admin_email, admin_password, "Arpan", "admin",
+    existing_admin = await db.users.find_one({"email": admin_email.lower()})
+    admin_name = existing_admin.get("name") if (existing_admin and existing_admin.get("name")) else "Arpan"
+    await _upsert_user(admin_email, admin_password, admin_name, "admin",
                        {"phone": "+91-9999999999", "company": "Yamini Group", "admin_role": "super_admin",
                         "username": "admin", "login_id": "admin", "user_code": "ADMIN-101"})
-
-    # Ensure admin name and password match env
-    await db.users.update_many(
-        {"$or": [{"email": admin_email.lower()}, {"role": "admin", "admin_role": "super_admin"}, {"login_id": "admin"}, {"username": "admin"}]},
-        {"$set": {"name": "Arpan", "updated_at": now_iso()}}
-    )
     existing_admin = await db.users.find_one({"email": admin_email.lower()})
     if existing_admin:
         from auth import verify_password

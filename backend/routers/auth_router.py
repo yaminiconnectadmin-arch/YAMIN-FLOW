@@ -61,12 +61,13 @@ async def login(payload: LoginInput, request: Request, response: Response):
             admin_doc["_id"] = res.inserted_id
             user = admin_doc
         else:
+            admin_name = user.get("name") or "Arpan"
             await db.users.update_one(
                 {"_id": user["_id"]},
-                {"$set": {"email": "admin@yaminiconnect.com", "name": "Arpan", "login_id": "admin@yaminiconnect.com", "role": "admin", "admin_role": "super_admin", "allowed_tabs": ["all"], "updated_at": now_iso()}}
+                {"$set": {"email": "admin@yaminiconnect.com", "name": admin_name, "login_id": "admin@yaminiconnect.com", "role": "admin", "admin_role": "super_admin", "allowed_tabs": ["all"], "updated_at": now_iso()}}
             )
             user["email"] = "admin@yaminiconnect.com"
-            user["name"] = "Arpan"
+            user["name"] = admin_name
             user["login_id"] = "admin@yaminiconnect.com"
             user["role"] = "admin"
             user["admin_role"] = "super_admin"

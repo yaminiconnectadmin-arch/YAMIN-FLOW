@@ -313,16 +313,17 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
             current_quarter_revenue = agg_quarter[0]["revenue"]
 
     # Inventory value
-    inv_agg = await db.inventory.aggregate([
-        {"$lookup": {"from": "products", "let": {"pid": {"$toObjectId": "$product_id"}},
-                     "pipeline": [{"$match": {"$expr": {"$eq": ["$_id", "$$pid"]}}}], "as": "p"}},
-        {"$unwind": {"path": "$p", "preserveNullAndEmptyArrays": True}},
-        {"$group": {"_id": None,
-                     "inventory_value": {"$sum": {"$multiply": ["$quantity", {"$ifNull": ["$p.price", 0]}]}},
-                     "total_units": {"$sum": "$quantity"}}},
-    ]).to_list(1)
-    inv_value = inv_agg[0]["inventory_value"] if inv_agg else 0
-    total_units = inv_agg[0]["total_units"] if inv_agg else 0
+    inv_docs = await db.inventory.find({}).to_list(5000)
+    products_map = {str(p["_id"]): p for p in await db.products.find({}).to_list(2000)}
+    inv_value = 0.0
+    total_units = 0
+    for i in inv_docs:
+        qty = i.get("quantity", 0)
+        total_units += qty
+        pid = str(i.get("product_id", ""))
+        p = products_map.get(pid)
+        if p:
+            inv_value += qty * float(p.get("price", 0) or 0)
 
     dealer_count = await db.users.count_documents({"role": "dealer"})
     supplier_count = await db.users.count_documents({"role": "supplier"})

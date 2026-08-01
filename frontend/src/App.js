@@ -74,8 +74,8 @@ export default function App() {
               <Route path="/warehouses"      element={<ProtectedRoute roles={["admin"]}               tabKey="warehouses"     ><WarehousesPage /></ProtectedRoute>} />
               <Route path="/dealers"         element={<ProtectedRoute roles={["admin", "cnf", "mnp"]} tabKey="dealers"        ><DealersPage /></ProtectedRoute>} />
               <Route path="/suppliers"       element={<ProtectedRoute roles={["admin"]}               tabKey="suppliers"      ><SuppliersPage /></ProtectedRoute>} />
-              <Route path="/cnf"             element={<ProtectedRoute roles={["admin"]}               tabKey="cnf"            ><MnpPage /></ProtectedRoute>} />
-              <Route path="/mnp"             element={<ProtectedRoute roles={["admin"]}               tabKey="cnf"            ><MnpPage /></ProtectedRoute>} />
+              <Route path="/cnf"             element={<ProtectedRoute roles={["admin", "cnf", "mnp"]} tabKey="cnf"            ><MnpPage /></ProtectedRoute>} />
+              <Route path="/mnp"             element={<ProtectedRoute roles={["admin", "cnf", "mnp"]} tabKey="cnf"            ><MnpPage /></ProtectedRoute>} />
               <Route path="/procurement"     element={<ProtectedRoute roles={["admin", "cnf", "mnp"]} tabKey="procurement"    ><ProcurementPage /></ProtectedRoute>} />
               <Route path="/purchase-orders" element={<ProtectedRoute roles={["admin", "supplier"]}   tabKey="purchase-orders"><PurchaseOrdersPage /></ProtectedRoute>} />
               <Route path="/tally"           element={<ProtectedRoute roles={["admin", "cnf", "mnp"]} tabKey="tally"          ><TallySyncPage /></ProtectedRoute>} />
