@@ -37,16 +37,20 @@ export function StatusBadge({ status }) {
   const map = {
     delivered: "badge-success", approved: "badge-info", pending: "badge-warning",
     shipped: "badge-info", cancelled: "badge-error", reserved: "badge-brand",
+    partially_fulfilled: "bg-amber-100 text-amber-800 border border-amber-300",
+    processing: "badge-warning",
     active: "badge-success", inactive: "badge-neutral",
     success: "badge-success", failed: "badge-error",
     draft: "badge-neutral", sent: "badge-info", confirmed: "badge-brand", received: "badge-success",
     healthy: "badge-success", critical: "badge-error", low: "badge-warning", high: "badge-warning",
     medium: "badge-info", degraded: "badge-warning",
   };
-  const cls = map[status?.toLowerCase()] || "badge-neutral";
+  const s = status?.toLowerCase() || "";
+  const cls = map[s] || "badge-neutral";
+  const label = s === "partially_fulfilled" ? "PARTIALLY FULFILLED" : status;
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${cls}`} data-testid={`status-badge-${status}`}>
-      {status}
+      {label}
     </span>
   );
 }

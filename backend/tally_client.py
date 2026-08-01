@@ -161,14 +161,31 @@ async def _parse_and_persist_xml(xml_text: str, module: str) -> int:
             vch_no = _text(vch, "VOUCHERNUMBER") or _text(vch, "VCHNUMBER")
             party = _text(vch, "PARTYNAME") or _text(vch, "PARTYLEDGERNAME")
             amt = _amount(_text(vch, "AMOUNT"))
+            order_no = _text(vch, "BASICBUYERORDERNO") or _text(vch, "REFERENCE")
             guid = _text(vch, "GUID") or vch.attrib.get("GUID", "")
 
             if not vch_no and not guid:
                 continue
 
+            # Extract itemized inventory entries
+            items = []
+            for inv_entry in vch.iter("ALLINVENTORYENTRIES.LIST"):
+                item_name = _text(inv_entry, "STOCKITEMNAME")
+                billed_qty = _qty(_text(inv_entry, "BILLEDQTY") or _text(inv_entry, "ACTUALQTY"))
+                rate = _amount(_text(inv_entry, "RATE"))
+                inv_amt = _amount(_text(inv_entry, "AMOUNT"))
+                if item_name:
+                    items.append({
+                        "name": item_name,
+                        "billed_qty": int(billed_qty),
+                        "rate": rate,
+                        "amount": inv_amt
+                    })
+
             event = {
                 "voucher_type": vch_type, "voucher_no": vch_no,
                 "party": party, "amount": amt, "guid": guid,
+                "order_no": order_no, "items": items,
                 "action": "create", "received_at": now_iso()
             }
 

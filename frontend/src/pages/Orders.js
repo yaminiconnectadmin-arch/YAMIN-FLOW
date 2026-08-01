@@ -317,14 +317,15 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              <div className="border border-[#E5E7EB] rounded-lg overflow-hidden">
+                <div className="border border-[#E5E7EB] rounded-lg overflow-hidden">
                 <table className="yf-table w-full">
                   <thead>
                     <tr>
                       <th>Product / Fastener Description</th>
                       <th>Size</th>
-                      <th className="text-right">Boxes</th>
-                      <th className="text-right">Total Pcs</th>
+                      <th className="text-right">Ordered</th>
+                      <th className="text-right">Billed</th>
+                      <th className="text-right text-amber-700">Under Processing</th>
                       <th className="text-right">Weight (KG)</th>
                       <th className="text-right">Before Tax</th>
                       <th className="text-right">GST (18%)</th>
@@ -332,23 +333,63 @@ export default function OrdersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {selected.items?.map((it, i) => (
-                      <tr key={i}>
-                        <td className="font-medium text-[#06182F]">{it.product_name}</td>
-                        <td className="font-mono font-bold text-xs text-[#4B5563]">{it.size || it.sku}</td>
-                        <td className="text-right tabular font-mono font-semibold">{it.boxes || Math.ceil((it.quantity || 1000) / (it.qty_per_box || 1000))} Box</td>
-                        <td className="text-right tabular font-mono text-xs">{it.quantity?.toLocaleString()} pcs</td>
-                        <td className="text-right tabular font-mono font-bold text-[#D96B0B]">
-                          {it.total_weight_kg ? `${it.total_weight_kg} kg` : "—"}
-                        </td>
-                        <td className="text-right tabular font-mono">{fmt.inr(it.value_before_tax || it.subtotal)}</td>
-                        <td className="text-right tabular font-mono text-[#3B82F6]">{fmt.inr(it.gst_amount || (it.subtotal * 0.18))}</td>
-                        <td className="text-right tabular font-mono font-bold text-[#16A34A]">{fmt.inr(it.value_after_tax || (it.subtotal * 1.18))}</td>
-                      </tr>
-                    ))}
+                    {selected.items?.map((it, i) => {
+                      const qOrd = it.quantity_ordered ?? it.quantity ?? 0;
+                      const qInv = it.quantity_invoiced ?? 0;
+                      const qPend = it.quantity_pending ?? Math.max(0, qOrd - qInv);
+                      return (
+                        <tr key={i}>
+                          <td className="font-medium text-[#06182F]">{it.product_name}</td>
+                          <td className="font-mono font-bold text-xs text-[#4B5563]">{it.size || it.sku}</td>
+                          <td className="text-right tabular font-mono font-semibold">{qOrd} pcs</td>
+                          <td className="text-right tabular font-mono font-bold text-emerald-600">{qInv} pcs</td>
+                          <td className="text-right tabular font-mono font-bold">
+                            {qPend > 0 ? (
+                              <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-xs">
+                                ⏳ {qPend} pcs
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">0 pcs</span>
+                            )}
+                          </td>
+                          <td className="text-right tabular font-mono font-bold text-[#D96B0B]">
+                            {it.total_weight_kg ? `${it.total_weight_kg} kg` : "—"}
+                          </td>
+                          <td className="text-right tabular font-mono">{fmt.inr(it.value_before_tax || it.subtotal)}</td>
+                          <td className="text-right tabular font-mono text-[#3B82F6]">{fmt.inr(it.gst_amount || (it.subtotal * 0.18))}</td>
+                          <td className="text-right tabular font-mono font-bold text-[#16A34A]">{fmt.inr(it.value_after_tax || (it.subtotal * 1.18))}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
+
+              {/* Tally Invoices & Partial Billing History Card */}
+              {selected.invoices && selected.invoices.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 p-4 rounded-lg space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <span>🧾</span> Linked Tally Tax Invoices ({selected.invoices.length})
+                    </h4>
+                    <span className="text-xs text-slate-500 font-mono">Synced from Tally ERP</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {selected.invoices.map((inv, idx) => (
+                      <div key={idx} className="bg-white p-3 rounded border border-slate-200 flex items-center justify-between text-xs">
+                        <div>
+                          <div className="font-bold font-mono text-slate-900">Invoice #{inv.invoice_no || "TALLY-INV"}</div>
+                          <div className="text-slate-500 text-[11px] mt-0.5">Date: {inv.date || "Today"} • Billed Items: {inv.items_billed?.length || 1}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono font-bold text-emerald-700 text-sm">{fmt.inr(inv.amount)}</div>
+                          <div className="text-[10px] text-slate-400">Linked via {inv.linked_by || "auto"}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-between items-center bg-[#1D242B] text-white p-4 rounded-lg">
                 <div>

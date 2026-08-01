@@ -157,6 +157,9 @@ MnpIn = CnfIn
 class OrderItemIn(BaseModel):
     product_id: str
     quantity: int
+    quantity_ordered: Optional[int] = None
+    quantity_invoiced: Optional[int] = 0
+    quantity_pending: Optional[int] = None
     boxes: Optional[int] = None
     size: Optional[str] = ""
     qty_per_box: Optional[int] = 1000
@@ -177,7 +180,7 @@ class OrderIn(BaseModel):
 
 
 class OrderStatusUpdate(BaseModel):
-    status: Literal["pending", "approved", "reserved", "shipped", "delivered", "cancelled", "processing"]
+    status: Literal["pending", "approved", "reserved", "shipped", "delivered", "cancelled", "processing", "partially_fulfilled"]
 
 
 # ---- Purchase Order ----

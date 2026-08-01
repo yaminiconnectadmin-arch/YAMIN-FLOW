@@ -51,19 +51,32 @@ def _amount_matches(a: float, b: float) -> bool:
     return abs(a - b) / max(a, b) <= AMOUNT_TOLERANCE
 
 
-async def find_candidate_orders(party: str, amount: float, limit: int = 5) -> list[dict]:
-    """Return up to `limit` orders that could match this voucher."""
+async def find_candidate_orders(party: str, amount: float, limit: int = 5, order_no: str | None = None) -> list[dict]:
+    """Return up to `limit` orders that could match this voucher.
+
+    Matches either by explicit order_no reference or (dealer party name, amount).
+    """
+    if order_no:
+        direct = await db.orders.find_one({
+            "order_no": order_no,
+            "status": {"$nin": ["cancelled", "delivered"]},
+        })
+        if direct:
+            return [direct]
+
     if not party or amount <= 0:
         return []
-    # Fetch open orders (broadly), filter in-memory (dataset is small per company)
+
+    # Fetch open orders (broadly), filter in-memory
     orders = await db.orders.find({
-        "status": {"$in": ["pending", "approved", "shipped"]},
-        "tally_voucher_no": {"$exists": False},
+        "status": {"$in": ["pending", "approved", "shipped", "partially_fulfilled"]},
     }).sort("created_at", -1).to_list(500)
     candidates = []
     for o in orders:
-        if _party_matches(o.get("dealer_name", ""), party) and _amount_matches(o.get("total", 0), amount):
-            candidates.append(o)
+        if _party_matches(o.get("dealer_name", ""), party):
+            # Matches exact total or partial billing amount
+            if _amount_matches(o.get("total", 0), amount) or amount <= o.get("total", 0):
+                candidates.append(o)
         if len(candidates) >= limit:
             break
     return candidates
@@ -81,12 +94,14 @@ async def auto_link_voucher(event: dict) -> dict:
 
     party = event.get("party") or ""
     amount = float(event.get("amount") or 0)
-    if not party:
+    order_no = event.get("order_no") or event.get("reference")
+
+    if not party and not order_no:
         event["link_status"] = "no_party"
         return event
 
     if vch_type == "sales":
-        candidates = await find_candidate_orders(party, amount, limit=5)
+        candidates = await find_candidate_orders(party, amount, limit=5, order_no=order_no)
         if len(candidates) == 0:
             event["link_status"] = "unmatched"
         elif len(candidates) > 1:
@@ -116,11 +131,11 @@ async def auto_link_voucher(event: dict) -> dict:
 
 
 async def find_candidate_receipt_orders(party: str, amount: float, limit: int = 5) -> list[dict]:
-    """Return candidate orders for Receipt: status in (approved, shipped, delivered) and payment_status != paid."""
+    """Return candidate orders for Receipt: status in (approved, shipped, delivered, partially_fulfilled) and payment_status != paid."""
     if not party or amount <= 0:
         return []
     orders = await db.orders.find({
-        "status": {"$in": ["approved", "shipped", "delivered"]},
+        "status": {"$in": ["approved", "shipped", "delivered", "partially_fulfilled"]},
         "payment_status": {"$ne": "paid"},
     }).sort("created_at", -1).to_list(500)
     candidates = []
@@ -133,23 +148,73 @@ async def find_candidate_receipt_orders(party: str, amount: float, limit: int = 
 
 
 async def _attach(order: dict, event: dict, auto: bool) -> None:
-    """Write bidirectional link + optional status bump."""
-    voucher_meta = {
-        "voucher_no": event.get("voucher_no"),
+    """Write bidirectional link + partial fulfillment status & multi-invoice list."""
+    invoice_entry = {
+        "invoice_no": event.get("voucher_no"),
         "guid": event.get("guid"),
         "date": event.get("date"),
-        "amount": event.get("amount"),
+        "amount": float(event.get("amount") or 0),
+        "items_billed": event.get("items", []),
         "linked_at": now_iso(),
         "linked_by": "auto" if auto else "manual",
     }
+
+    # Calculate item-level quantities
+    order_items = order.get("items", [])
+    vch_items = event.get("items", [])
+    total_ordered = 0
+    total_invoiced = 0
+
+    updated_items = []
+    for item in order_items:
+        q_ordered = int(item.get("quantity_ordered") or item.get("quantity") or 0)
+        q_invoiced = int(item.get("quantity_invoiced") or 0)
+        
+        # Check if this voucher specifies item billed quantity
+        match_vch_qty = 0
+        for vi in vch_items:
+            if (vi.get("sku") and vi["sku"] == item.get("sku")) or (vi.get("name") and vi["name"] == item.get("product_name")):
+                match_vch_qty = int(vi.get("billed_qty") or vi.get("qty") or 0)
+                break
+        
+        if match_vch_qty > 0:
+            q_invoiced += match_vch_qty
+        elif not vch_items and q_invoiced == 0:
+            # Fallback when item breakdown is omitted
+            q_invoiced = q_ordered
+
+        q_pending = max(0, q_ordered - q_invoiced)
+        
+        total_ordered += q_ordered
+        total_invoiced += q_invoiced
+
+        updated_items.append({
+            **item,
+            "quantity_ordered": q_ordered,
+            "quantity_invoiced": q_invoiced,
+            "quantity_pending": q_pending,
+        })
+
+    # Determine status: partially_fulfilled if any items remain pending
+    if total_invoiced < total_ordered and total_invoiced > 0:
+        new_status = "partially_fulfilled"
+    else:
+        new_status = "delivered"
+
+    existing_invoices = order.get("invoices", [])
+    # Deduplicate invoice entries by invoice_no
+    if not any(i.get("invoice_no") == invoice_entry["invoice_no"] for i in existing_invoices):
+        existing_invoices.append(invoice_entry)
+
     update = {
         "tally_voucher_no": event.get("voucher_no"),
-        "tally_voucher": voucher_meta,
+        "tally_voucher": invoice_entry,
+        "items": updated_items if updated_items else order_items,
+        "invoices": existing_invoices,
+        "status": new_status,
         "updated_at": now_iso(),
     }
-    # Auto-transition: pending/approved → shipped when invoice hits Tally
-    if order.get("status") in ("pending", "approved"):
-        update["status"] = "shipped"
+
     await db.orders.update_one({"_id": order["_id"]}, {"$set": update})
     await db.audit_logs.insert_one({
         "actor_id": "system", "actor_email": "tally-webhook",
@@ -157,7 +222,8 @@ async def _attach(order: dict, event: dict, auto: bool) -> None:
         "target": order.get("order_no"),
         "meta": {"voucher_no": event.get("voucher_no"), "auto": auto,
                  "from_status": order.get("status"),
-                 "to_status": update.get("status", order.get("status"))},
+                 "to_status": new_status,
+                 "invoiced_items_count": len(updated_items)},
         "created_at": now_iso(),
     })
 
