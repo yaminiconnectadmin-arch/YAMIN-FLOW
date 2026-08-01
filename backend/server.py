@@ -24,7 +24,12 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("yamini_flow")
 
 
+from fastapi.middleware.gzip import GZipMiddleware
+
 app = FastAPI(title="YAMINI FLOW", version="2.0.1")
+
+# GZip Compression for API response speed optimization
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # CORS — universal cross-origin support for all production & localhost domains
 app.add_middleware(

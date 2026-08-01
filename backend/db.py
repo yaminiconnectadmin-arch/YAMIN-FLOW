@@ -28,15 +28,24 @@ DEFAULT_MONGO_URL = "mongodb+srv://yaminiconnectadmin_db_user:yaminiconnect111@c
 mongo_url = os.environ.get("MONGO_URL", DEFAULT_MONGO_URL)
 db_name = os.environ.get("DB_NAME", "yamini_flow")
 
+MONGO_KWARGS = {
+    "serverSelectionTimeoutMS": 3000,
+    "connectTimeoutMS": 3000,
+    "maxPoolSize": 50,
+    "minPoolSize": 5,
+    "maxIdleTimeMS": 30000,
+    "retryWrites": True,
+}
+
 try:
     import certifi
     ca = certifi.where()
-    _client = AsyncIOMotorClient(mongo_url, tlsCAFile=ca, serverSelectionTimeoutMS=15000)
+    _client = AsyncIOMotorClient(mongo_url, tlsCAFile=ca, **MONGO_KWARGS)
 except Exception:
     try:
-        _client = AsyncIOMotorClient(mongo_url, tlsAllowInvalidCertificates=True, serverSelectionTimeoutMS=15000)
+        _client = AsyncIOMotorClient(mongo_url, tlsAllowInvalidCertificates=True, **MONGO_KWARGS)
     except Exception:
-        _client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=15000)
+        _client = AsyncIOMotorClient(mongo_url, **MONGO_KWARGS)
 
 db = _client[db_name]
 
