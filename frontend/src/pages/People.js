@@ -32,15 +32,22 @@ export function PeoplePage({ role, title, fields, endpoint }) {
   const load = async () => {
     setLoading(true);
     try {
-      const { data } = await api.get(endpoint);
-      setItems(data);
+      let res;
+      try {
+        res = await api.get(endpoint);
+      } catch (err) {
+        if (err.response?.status === 404 && endpoint === "/cnf") {
+          res = await api.get("/mnp");
+        } else throw err;
+      }
+      setItems(res.data);
     } catch { toast.error("Failed to load directory"); }
     finally { setLoading(false); }
   };
   useEffect(() => {
     load();
     if (role === "dealer") {
-      api.get("/cnf").then((res) => setMnpList(res.data || [])).catch(() => {});
+      api.get("/cnf").catch(() => api.get("/mnp")).then((res) => setMnpList(res.data || [])).catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
@@ -69,10 +76,22 @@ export function PeoplePage({ role, title, fields, endpoint }) {
     try {
       let res;
       if (editing) {
-        res = await api.put(`${endpoint}/${editing.id}`, form);
+        try {
+          res = await api.put(`${endpoint}/${editing.id}`, form);
+        } catch (err) {
+          if (err.response?.status === 404 && endpoint === "/cnf") {
+            res = await api.put(`/mnp/${editing.id}`, form);
+          } else throw err;
+        }
         toast.success("Saved successfully");
       } else {
-        res = await api.post(endpoint, form);
+        try {
+          res = await api.post(endpoint, form);
+        } catch (err) {
+          if (err.response?.status === 404 && endpoint === "/cnf") {
+            res = await api.post("/mnp", form);
+          } else throw err;
+        }
         toast.success("Created successfully");
         if (res.data) {
           setCreatedInfo({
@@ -93,7 +112,13 @@ export function PeoplePage({ role, title, fields, endpoint }) {
   const del = async (i) => {
     if (!window.confirm(`Delete ${i.name}?`)) return;
     try {
-      await api.delete(`${endpoint}/${i.id}`);
+      try {
+        await api.delete(`${endpoint}/${i.id}`);
+      } catch (err) {
+        if (err.response?.status === 404 && endpoint === "/cnf") {
+          await api.delete(`/mnp/${i.id}`);
+        } else throw err;
+      }
       load();
       toast.success("Deleted successfully");
     } catch (e) { toast.error(formatApiErrorDetail(e.response?.data?.detail) || "Failed to delete"); }
