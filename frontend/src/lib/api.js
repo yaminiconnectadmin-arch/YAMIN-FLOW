@@ -13,6 +13,22 @@ export const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+const apiCache = new Map();
+
+export const cachedApi = {
+  get: async (url, config = {}, ttlMs = 30000) => {
+    const key = url + JSON.stringify(config.params || {});
+    const cached = apiCache.get(key);
+    if (cached && Date.now() - cached.time < ttlMs) {
+      return cached.res;
+    }
+    const res = await api.get(url, config);
+    apiCache.set(key, { time: Date.now(), res });
+    return res;
+  },
+  clearCache: () => apiCache.clear(),
+};
+
 
 // Attach access token from localStorage as a fallback (bearer)
 api.interceptors.request.use((config) => {

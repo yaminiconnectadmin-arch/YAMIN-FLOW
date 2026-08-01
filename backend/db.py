@@ -60,6 +60,24 @@ def now_iso() -> str:
     return now_utc().isoformat()
 
 
+async def create_db_indexes():
+    """Ensure database indexes are present for high-speed queries."""
+    try:
+        await db.orders.create_index([("created_at", -1)])
+        await db.orders.create_index([("status", 1), ("created_at", -1)])
+        await db.orders.create_index([("dealer_id", 1), ("created_at", -1)])
+        await db.orders.create_index([("order_no", 1)])
+        await db.products.create_index([("sku", 1)])
+        await db.products.create_index([("category", 1)])
+        await db.inventory.create_index([("warehouse_id", 1), ("product_id", 1)], unique=True)
+        await db.users.create_index([("email", 1)])
+        await db.users.create_index([("login_id", 1)])
+        await db.users.create_index([("user_code", 1)])
+        await db.tally_webhook_events.create_index([("voucher_no", 1), ("guid", 1)])
+    except Exception:
+        pass
+
+
 class BaseDocument(BaseModel):
     """Base for all Mongo documents. Maps _id -> id and helpers for round-trip."""
     model_config = ConfigDict(populate_by_name=True, extra="ignore", arbitrary_types_allowed=True)
