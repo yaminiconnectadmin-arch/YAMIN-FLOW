@@ -200,7 +200,7 @@ async def tally_webhook_events(limit: int = 50, admin: dict = Depends(require_ro
 @router.get("/tally/webhook-events/{event_id}/candidates")
 async def event_candidates(event_id: str, admin: dict = Depends(require_admin)):
     """Return possible orders that could match this event (used for manual match UI)."""
-    event = await db.tally_webhook_events.find_one({"_id": ObjectId(event_id)})
+    event = await db.tally_webhook_events.find_one({"_id": ObjectId(event_id)}) if ObjectId.is_valid(event_id) else await db.tally_webhook_events.find_one({"_id": event_id})
     if not event:
         raise HTTPException(404, "Event not found")
     cands = await find_candidate_orders(event.get("party", ""), event.get("amount", 0), limit=10)
@@ -256,7 +256,8 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
         order_q = {}
 
     # Fetch target details for the current user
-    user_doc = await db.users.find_one({"_id": ObjectId(user["id"])})
+    uid = user.get("id", "")
+    user_doc = await db.users.find_one({"_id": ObjectId(uid)}) if ObjectId.is_valid(uid) else await db.users.find_one({"$or": [{"_id": uid}, {"email": user.get("email", "").lower()}]})
     target_monthly = user_doc.get("target_monthly", 0) if user_doc else 0
     target_quarterly = user_doc.get("target_quarterly", 0) if user_doc else 0
 
