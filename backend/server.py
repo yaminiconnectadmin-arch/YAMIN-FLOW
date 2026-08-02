@@ -11,12 +11,6 @@ from starlette.middleware.cors import CORSMiddleware
 from db import db, create_db_indexes
 from seed import seed_all, create_indexes
 
-@app.on_event("startup")
-async def on_startup():
-    try:
-        await create_db_indexes()
-    except Exception:
-        pass
 from routers.auth_router import router as auth_router
 from routers.catalog import router as catalog_router
 from routers.partners import router as partners_router
