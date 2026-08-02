@@ -382,7 +382,9 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
     products = {str(p["_id"]): p for p in await db.products.find({}).to_list(2000)}
     stock_agg = {}
     for i in inv_docs:
-        pid = i["product_id"]
+        pid = i.get("product_id")
+        if not pid:
+            continue
         stock_agg.setdefault(pid, 0)
         stock_agg[pid] += max(0, i.get("quantity", 0) - i.get("reserved", 0))
     for pid, qty in stock_agg.items():
@@ -391,7 +393,7 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
             continue
         ss = p.get("safety_stock", 0)
         if qty < ss:
-            low_stock.append({"product_id": pid, "name": p["name"], "sku": p["sku"],
+            low_stock.append({"product_id": pid, "name": p.get("name", "Unknown"), "sku": p.get("sku", "N/A"),
                               "available": qty, "safety_stock": ss})
     low_stock.sort(key=lambda x: x["available"])
 
