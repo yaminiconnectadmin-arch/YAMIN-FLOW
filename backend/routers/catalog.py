@@ -169,15 +169,15 @@ async def list_inventory(warehouse_id: str = "", product_id: str = "",
         query["product_id"] = product_id
     inv = await db.inventory.find(query).to_list(5000)
     # Enrich with product + warehouse details
-    prod_ids = list({i["product_id"] for i in inv})
-    wh_ids = list({i["warehouse_id"] for i in inv})
+    prod_ids = list({str(i["product_id"]) for i in inv if i.get("product_id") and ObjectId.is_valid(str(i["product_id"]))})
+    wh_ids = list({str(i["warehouse_id"]) for i in inv if i.get("warehouse_id") and ObjectId.is_valid(str(i["warehouse_id"]))})
     products = {str(p["_id"]): p for p in await db.products.find({"_id": {"$in": [ObjectId(x) for x in prod_ids]}}).to_list(2000)}
     whs = {str(w["_id"]): w for w in await db.warehouses.find({"_id": {"$in": [ObjectId(x) for x in wh_ids]}}).to_list(200)}
     out = []
     for i in inv:
         s = serialize_doc(i)
-        p = products.get(i["product_id"])
-        w = whs.get(i["warehouse_id"])
+        p = products.get(str(i.get("product_id", "")))
+        w = whs.get(str(i.get("warehouse_id", "")))
         s["product_name"] = p.get("name") if p else "-"
         s["product_sku"] = p.get("sku") if p else "-"
         s["category"] = p.get("category") if p else "-"
