@@ -3,7 +3,7 @@ import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
 import { toast } from "@/components/ui/sonner";
-import { Printer, FileText, DownloadSimple } from "@phosphor-icons/react";
+import { Printer, FileText } from "@phosphor-icons/react";
 import ReceiptModal from "@/components/common/ReceiptModal";
 import TaxInvoiceModal from "@/components/common/TaxInvoiceModal";
 

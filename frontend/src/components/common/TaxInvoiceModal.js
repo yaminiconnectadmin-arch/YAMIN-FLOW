@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Printer, DownloadSimple, CheckCircle, FileText } from "@phosphor-icons/react";
+import { Printer } from "@phosphor-icons/react";
 import { fmt } from "@/lib/api";
 
 function numberToWords(num) {

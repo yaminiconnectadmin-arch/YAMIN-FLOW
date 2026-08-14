@@ -9,7 +9,7 @@ import { toast } from "@/components/ui/sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Eye, Plus, Stack, Printer, FileText, CheckCircle, Clock, Truck, Package, Buildings } from "@phosphor-icons/react";
+import { Eye, Plus, Stack, Printer, FileText, CheckCircle, Clock, Truck, Package } from "@phosphor-icons/react";
 import ReceiptModal from "@/components/common/ReceiptModal";
 import TaxInvoiceModal from "@/components/common/TaxInvoiceModal";
 
@@ -64,6 +64,7 @@ export default function OrdersPage() {
   useEffect(() => { load(); }, [status]);
 
   // Load parties and warehouses when order placement modal opens
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (newOrderModalOpen) {
       (async () => {
