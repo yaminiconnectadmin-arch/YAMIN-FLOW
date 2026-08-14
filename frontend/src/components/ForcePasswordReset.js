@@ -3,7 +3,6 @@ import { LockKey, Eye, EyeSlash, CheckCircle } from "@phosphor-icons/react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/sonner";
-
 /**
  * Non-dismissible modal shown when user.must_change_password === true.
  * Staff members must set a new password before accessing the console.

@@ -158,6 +158,7 @@ class OrderItemIn(BaseModel):
     product_id: str
     quantity: int
     quantity_ordered: Optional[int] = None
+    quantity_allocated: Optional[int] = None
     quantity_invoiced: Optional[int] = 0
     quantity_pending: Optional[int] = None
     boxes: Optional[int] = None
@@ -176,11 +177,28 @@ class OrderIn(BaseModel):
     items: List[OrderItemIn]
     warehouse_id: Optional[str] = None
     dealer_id: Optional[str] = None
+    cnf_id: Optional[str] = None
+    order_type: Optional[Literal["dealer_order", "cnf_stock"]] = "dealer_order"
+    billing_type: Optional[Literal["direct", "cnf_consignment"]] = "direct"
     notes: Optional[str] = ""
 
 
 class OrderStatusUpdate(BaseModel):
     status: Literal["pending", "approved", "reserved", "shipped", "delivered", "cancelled", "processing", "partially_fulfilled"]
+    notes: Optional[str] = ""
+
+
+class PartialBillingItem(BaseModel):
+    product_id: str
+    quantity_to_bill: int
+    boxes_to_bill: Optional[int] = None
+    rate: Optional[float] = None
+
+
+class OrderPartialBillingIn(BaseModel):
+    invoice_no: Optional[str] = None
+    items: List[PartialBillingItem]
+    notes: Optional[str] = ""
 
 
 # ---- Purchase Order ----
