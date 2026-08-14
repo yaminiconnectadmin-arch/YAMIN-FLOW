@@ -246,10 +246,19 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
     # Base filters
     if role == "dealer":
         order_q = {"dealer_id": user["id"]}
-    elif role == "mnp":
-        dealers = await db.users.find({"role": "dealer", "mnp_id": user["id"]}).to_list(500)
-        did = [str(d["_id"]) for d in dealers]
-        order_q = {"dealer_id": {"$in": did}}
+    elif role in ("cnf", "mnp"):
+        dealers = await db.users.find({
+            "role": "dealer",
+            "$or": [{"cnf_id": user["id"]}, {"mnp_id": user["id"]}]
+        }).to_list(500)
+        did = [str(d["_id"]) for d in dealers] + [user["id"]]
+        order_q = {
+            "$or": [
+                {"dealer_id": {"$in": did}},
+                {"cnf_id": user["id"]},
+                {"mnp_id": user["id"]}
+            ]
+        }
     elif role == "supplier":
         order_q = None  # suppliers see PO stats
     else:

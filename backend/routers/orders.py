@@ -99,10 +99,11 @@ async def _enrich_orders(docs: list) -> list:
 
         # Invoice number generation/alias
         if not d.get("invoice_no"):
-            d["invoice_no"] = d.get("tally_voucher_no") or ("INV-" + d["order_no"].replace("ORD-", ""))
+            ord_no = str(d.get("order_no", "ORD-PENDING"))
+            d["invoice_no"] = d.get("tally_voucher_no") or ("INV-" + ord_no.replace("ORD-", ""))
 
         # Ensure order items have proper quantity keys
-        items = d.get("items", [])
+        items = d.get("items") or []
         for item in items:
             q_ord = item.get("quantity_ordered") or item.get("quantity") or 0
             q_inv = item.get("quantity_invoiced") or 0
