@@ -64,7 +64,6 @@ export default function OrdersPage() {
   useEffect(() => { load(); }, [status]);
 
   // Load parties and warehouses when order placement modal opens
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (newOrderModalOpen) {
       (async () => {
@@ -82,17 +81,14 @@ export default function OrdersPage() {
           setCnfs(cnfRes.data || []);
           setWarehouses(whRes.data || []);
 
-          if (dlrRes.data && dlrRes.data.length > 0 && !selectedPartyId) {
-            setSelectedPartyId(dlrRes.data[0].id);
-          }
-          if (whRes.data && whRes.data.length > 0 && !selectedWarehouseId) {
-            setSelectedWarehouseId(whRes.data[0].id);
-          }
+          setSelectedPartyId((prev) => (!prev && dlrRes.data?.length > 0 ? dlrRes.data[0].id : prev));
+          setSelectedWarehouseId((prev) => (!prev && whRes.data?.length > 0 ? whRes.data[0].id : prev));
         } catch {
           toast.error("Failed to load catalog or partner details for ordering");
         }
       })();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newOrderModalOpen, cat]);
 
   const updateStatus = async (orderId, newStatus, notes = "") => {
