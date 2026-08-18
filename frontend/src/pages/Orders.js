@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
@@ -48,7 +48,7 @@ export default function OrdersPage() {
   const [billingInvoiceNo, setBillingInvoiceNo] = useState("");
   const [savingBilling, setSavingBilling] = useState(false);
 
-  const load = async (showLoading = true) => {
+  const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
       const { data } = await api.get("/orders", { params: { status } });
@@ -58,16 +58,15 @@ export default function OrdersPage() {
     } finally { 
       if (showLoading) setLoading(false); 
     }
-  };
+  }, [status]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     load();
     const interval = setInterval(() => {
       load(false);
     }, 6000);
     return () => clearInterval(interval);
-  }, [status]);
+  }, [load]);
 
   // Load parties and warehouses when order placement modal opens
   useEffect(() => {
