@@ -139,7 +139,7 @@ async def list_orders(status: str = "", dealer_id: str = "",
             {"cnf_id": user["id"]},
             {"mnp_id": user["id"]}
         ]
-    elif role == "admin":
+    elif role in ("admin", "staff", "employee"):
         if dealer_id:
             query["dealer_id"] = dealer_id
 
@@ -152,7 +152,11 @@ async def list_orders(status: str = "", dealer_id: str = "",
 
 @router.get("/orders/{order_id}")
 async def get_order(order_id: str, user: dict = Depends(get_current_user)):
-    doc = await db.orders.find_one({"_id": ObjectId(order_id)})
+    try:
+        oid = ObjectId(order_id)
+        doc = await db.orders.find_one({"_id": oid})
+    except Exception:
+        doc = await db.orders.find_one({"_id": order_id})
     if not doc:
         raise HTTPException(404, "Order not found")
 
@@ -162,10 +166,9 @@ async def get_order(order_id: str, user: dict = Depends(get_current_user)):
     elif role in ("cnf", "mnp"):
         # Verify order belongs to this CNF network
         if doc.get("dealer_id") != user["id"] and doc.get("cnf_id") != user["id"] and doc.get("mnp_id") != user["id"]:
-            dlr = await db.users.find_one({
-                "_id": ObjectId(doc["dealer_id"]),
-                "$or": [{"cnf_id": user["id"]}, {"mnp_id": user["id"]}]
-            })
+            dlr_q = {"_id": ObjectId(doc["dealer_id"])} if ObjectId.is_valid(doc.get("dealer_id", "")) else {"_id": doc.get("dealer_id")}
+            dlr_q["$or"] = [{"cnf_id": user["id"]}, {"mnp_id": user["id"]}]
+            dlr = await db.users.find_one(dlr_q)
             if not dlr:
                 raise HTTPException(403, "Forbidden")
 
@@ -200,7 +203,7 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
             order_type = "cnf_stock"
 
     # Fetch party details
-    dealer = await db.users.find_one({"_id": ObjectId(dealer_id)})
+    dealer = await db.users.find_one({"_id": ObjectId(dealer_id)}) if ObjectId.is_valid(dealer_id) else await db.users.find_one({"_id": dealer_id})
     if not dealer:
         dealer = user
 
@@ -222,7 +225,7 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         cnf_name = dealer_name
     elif cnf_id_val and str(cnf_id_val).strip().lower() not in ["", "direct", "none", "null"]:
         try:
-            cnf_doc = await db.users.find_one({"_id": ObjectId(cnf_id_val)})
+            cnf_doc = await db.users.find_one({"_id": ObjectId(cnf_id_val)}) if ObjectId.is_valid(str(cnf_id_val)) else await db.users.find_one({"_id": cnf_id_val})
             if cnf_doc:
                 cnf_code = cnf_doc.get("user_code") or cnf_doc.get("login_id") or "C-ASSIGNED"
                 cnf_name = cnf_doc.get("name") or cnf_doc.get("company") or "Regional CNF"
@@ -358,6 +361,14 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
     gst_total = round(subtotal * 0.18, 2)
     grand_total = round(subtotal + gst_total, 2)
 
+    initial_inv = {
+        "invoice_no": invoice_no,
+        "date": now_iso()[:10],
+        "amount": grand_total,
+        "linked_by": "order_creation",
+        "items_billed": items_out
+    }
+
     doc = {
         "order_no": order_no,
         "invoice_no": invoice_no,
@@ -384,7 +395,7 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         "reservation_status": reservation_status,
         "payment_status": "unpaid",
         "deficits": deficits,
-        "invoices": [],  # Multi-invoice tracking synced from Tally or generated on approval
+        "invoices": [initial_inv] if overall_status in ["approved", "processing", "partially_fulfilled"] else [],  # Multi-invoice tracking synced from Tally or generated on approval
         "notes": payload.notes or "",
         "created_at": now_iso(),
         "updated_at": now_iso(),
@@ -434,7 +445,13 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate,
                                user: dict = Depends(get_current_user)):
     if user["role"] not in ("admin", "cnf", "mnp"):
         raise HTTPException(403, "Forbidden")
-    doc = await db.orders.find_one({"_id": ObjectId(order_id)})
+    try:
+        oid = ObjectId(order_id)
+        doc = await db.orders.find_one({"_id": oid})
+    except Exception:
+        doc = await db.orders.find_one({"_id": order_id})
+        oid = order_id
+
     if not doc:
         raise HTTPException(404, "Order not found")
     old_status = doc["status"]
@@ -473,7 +490,7 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate,
         }
         update_fields["invoices"] = [initial_inv]
 
-    await db.orders.update_one({"_id": ObjectId(order_id)}, {"$set": update_fields})
+    await db.orders.update_one({"_id": doc["_id"]}, {"$set": update_fields})
     await db.audit_logs.insert_one({
         "actor_id": user["id"], "actor_email": user.get("email", "system"),
         "action": "order.status", "target": doc["order_no"],
@@ -489,7 +506,13 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate,
 async def record_partial_billing(order_id: str, payload: OrderPartialBillingIn,
                                  admin: dict = Depends(require_admin)):
     """Admin records partial billing / dispatch against an order line by line."""
-    doc = await db.orders.find_one({"_id": ObjectId(order_id)})
+    try:
+        oid = ObjectId(order_id)
+        doc = await db.orders.find_one({"_id": oid})
+    except Exception:
+        doc = await db.orders.find_one({"_id": order_id})
+        oid = order_id
+
     if not doc:
         raise HTTPException(404, "Order not found")
 
@@ -536,7 +559,7 @@ async def record_partial_billing(order_id: str, payload: OrderPartialBillingIn,
     next_status = "delivered" if all_completed else "partially_fulfilled"
 
     await db.orders.update_one(
-        {"_id": ObjectId(order_id)},
+        {"_id": doc["_id"]},
         {"$set": {
             "items": updated_items,
             "invoices": invoices,
@@ -554,7 +577,7 @@ async def record_partial_billing(order_id: str, payload: OrderPartialBillingIn,
 
 @router.get("/invoices")
 async def list_invoices(user: dict = Depends(get_current_user)):
-    query = {"status": {"$in": ["approved", "processing", "partially_fulfilled", "shipped", "delivered"]}}
+    query = {}
     role = user.get("role")
 
     if role == "dealer":

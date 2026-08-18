@@ -28,7 +28,7 @@ async def _upsert_user(email: str, password: str, name: str, role: str, extra: d
 
 
 
-async def seed_all(force_purge: bool = True):
+async def seed_all(force_purge: bool = False):
     if force_purge:
         # Purge all legacy demo users except admin@yaminiconnect.com
         await db.users.delete_many({"email": {"$ne": "admin@yaminiconnect.com"}})

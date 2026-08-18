@@ -4,6 +4,10 @@ from fastapi import HTTPException
 from auth import brute_force_check, record_failed_attempt
 from models import LoginInput
 
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
 def test_password_length_constraint():
     valid = LoginInput(login_id="EMP-101", password="12345678")
     assert len(valid.password) == 8

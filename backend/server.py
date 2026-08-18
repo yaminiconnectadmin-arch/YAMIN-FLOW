@@ -98,7 +98,7 @@ app.include_router(v1)
 async def on_startup():
     try:
         await create_indexes()
-        await seed_all()
+        await seed_all(force_purge=False)
         logger.info("YAMINI FLOW startup complete: indexes + seed done")
     except Exception as e:
         logger.exception(f"Startup error: {e}")

@@ -73,18 +73,6 @@ async def login(payload: LoginInput, request: Request, response: Response):
             user["admin_role"] = "super_admin"
             user["allowed_tabs"] = ["all"]
 
-        # Purge legacy demo data
-        try:
-            await db.users.delete_many({"email": {"$in": ["admin@yaminiflow.com", "dealer@yaminiflow.com", "dealer2@yaminiflow.com", "mnp@yaminiflow.com", "supplier@yaminiflow.com", "employee@yaminiflow.com"]}})
-            await db.orders.delete_many({})
-            await db.purchase_orders.delete_many({})
-            await db.tally_sync_logs.delete_many({})
-            await db.tally_webhook_events.delete_many({})
-            await db.audit_logs.delete_many({})
-            await db.notifications.delete_many({})
-            await db.collations.delete_many({})
-        except Exception:
-            pass
 
     pwd_valid = False
     if user:
