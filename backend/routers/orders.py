@@ -5,7 +5,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 from db import db, serialize_doc, serialize_docs, now_iso
 from auth import get_current_user, require_admin, require_roles
-from models import OrderIn, OrderStatusUpdate, OrderPartialBillingIn
+from models import OrderIn, OrderStatusUpdate, OrderPartialBillingIn, WarehouseAssignmentIn
 
 router = APIRouter(tags=["orders"])
 
@@ -273,10 +273,12 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
     prod_ids = [ObjectId(i.product_id) for i in payload.items if ObjectId.is_valid(i.product_id)]
     products = {str(p["_id"]): p for p in await db.products.find({"_id": {"$in": prod_ids}}).to_list(500)}
 
-    # Resolve Warehouse with Smart Multi-Warehouse Routing from db.warehouses
+    # ------------------ SMART STOCK ALLOCATION ENGINE ------------------
     warehouses = await db.warehouses.find({}).to_list(50)
     wh_id = payload.warehouse_id
     wh_doc = None
+    allocation_method = "admin_selected" if wh_id else "smart_allocated"
+
     if wh_id:
         if ObjectId.is_valid(wh_id):
             wh_doc = await db.warehouses.find_one({"_id": ObjectId(wh_id)})
@@ -285,10 +287,52 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         if not wh_doc:
             wh_doc = await db.warehouses.find_one({"code": wh_id})
 
+    # If no warehouse chosen by admin (e.g. dealer placed order), run Multi-Warehouse Smart Stock Allocation
     if not wh_doc and warehouses:
-        # Match by State proximity
-        matched_wh = next((w for w in warehouses if w.get("state", "").strip().lower() == dealer_state.strip().lower()), None)
-        wh_doc = matched_wh or warehouses[0]
+        allocation_method = "smart_allocated"
+        state_lower = dealer_state.strip().lower()
+        
+        # Regional zone routing
+        north_states = ["delhi", "punjab", "haryana", "uttar pradesh", "rajasthan", "chandigarh", "himachal pradesh", "jammu and kashmir", "uttarakhand"]
+        south_states = ["karnataka", "tamil nadu", "telangana", "andhra pradesh", "kerala", "puducherry"]
+        west_states = ["maharashtra", "gujarat", "goa", "madhya pradesh", "chhattisgarh"]
+        
+        preferred_code = None
+        if state_lower in north_states:
+            preferred_code = "WH-DEL"
+        elif state_lower in south_states:
+            preferred_code = "WH-BLR"
+        elif state_lower in west_states:
+            preferred_code = "WH-MUM"
+            
+        regional_wh = next((w for w in warehouses if w.get("code") == preferred_code), None)
+        if not regional_wh:
+            regional_wh = next((w for w in warehouses if w.get("state", "").strip().lower() == state_lower), warehouses[0])
+            
+        # Check stock availability across candidate warehouses
+        best_wh = regional_wh
+        max_stock_score = -1
+
+        for cand_wh in warehouses:
+            cand_id = str(cand_wh["_id"])
+            stock_score = 0
+            for it in payload.items:
+                inv = await db.inventory.find_one({"warehouse_id": cand_id, "product_id": it.product_id})
+                avail = max(0, (inv.get("quantity", 0) - inv.get("reserved", 0))) if inv else 0
+                if avail >= it.quantity:
+                    stock_score += 2
+                elif avail > 0:
+                    stock_score += 1
+            
+            # Proximity bonus for regional hub
+            if cand_wh.get("code") == regional_wh.get("code"):
+                stock_score += 0.5
+                
+            if stock_score > max_stock_score:
+                max_stock_score = stock_score
+                best_wh = cand_wh
+
+        wh_doc = best_wh
         wh_id = str(wh_doc["_id"])
     elif wh_doc:
         wh_id = str(wh_doc["_id"])
@@ -442,6 +486,7 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         "warehouse_id": wh_id,
         "warehouse_name": warehouse_name,
         "warehouse_code": warehouse_code,
+        "allocation_method": allocation_method,
         "items": items_out,
         "subtotal": round(subtotal, 2),
         "gst": gst_total,
@@ -628,6 +673,75 @@ async def record_partial_billing(order_id: str, payload: OrderPartialBillingIn,
     doc["invoices"] = invoices
     doc["status"] = next_status
     enriched = await _enrich_orders([doc])
+    return enriched[0]
+
+
+@router.put("/orders/{order_id}/warehouse")
+@router.patch("/orders/{order_id}/warehouse")
+async def update_order_warehouse(order_id: str, payload: WarehouseAssignmentIn,
+                                 admin: dict = Depends(require_admin)):
+    """Admin reassigns or manually selects the fulfillment warehouse for an order."""
+    try:
+        oid = ObjectId(order_id)
+        doc = await db.orders.find_one({"_id": oid})
+    except Exception:
+        doc = await db.orders.find_one({"_id": order_id})
+        oid = order_id
+
+    if not doc:
+        raise HTTPException(404, "Order not found")
+
+    wh_id = payload.warehouse_id
+    wh_doc = None
+    if ObjectId.is_valid(wh_id):
+        wh_doc = await db.warehouses.find_one({"_id": ObjectId(wh_id)})
+    if not wh_doc:
+        wh_doc = await db.warehouses.find_one({"_id": wh_id})
+    if not wh_doc:
+        wh_doc = await db.warehouses.find_one({"code": wh_id})
+    if not wh_doc:
+        raise HTTPException(404, "Target warehouse not found")
+
+    old_wh_id = str(doc.get("warehouse_id", ""))
+    new_wh_id = str(wh_doc["_id"])
+
+    # Reconcile inventory reservations across warehouses for active orders
+    if doc.get("status") in ["pending", "approved", "processing", "partially_fulfilled"]:
+        for item in doc.get("items", []):
+            p_id = item.get("product_id")
+            allocated = item.get("quantity_allocated") or item.get("quantity", 0)
+            if allocated > 0:
+                if old_wh_id and old_wh_id != "default":
+                    await db.inventory.update_one(
+                        {"warehouse_id": old_wh_id, "product_id": p_id},
+                        {"$inc": {"reserved": -allocated}}
+                    )
+                await db.inventory.update_one(
+                    {"warehouse_id": new_wh_id, "product_id": p_id},
+                    {"$inc": {"reserved": allocated}, "$set": {"updated_at": now_iso()}},
+                    upsert=True
+                )
+
+    await db.orders.update_one(
+        {"_id": doc["_id"]},
+        {"$set": {
+            "warehouse_id": new_wh_id,
+            "warehouse_name": wh_doc.get("name"),
+            "warehouse_code": wh_doc.get("code"),
+            "allocation_method": "admin_selected",
+            "updated_at": now_iso()
+        }}
+    )
+
+    await db.audit_logs.insert_one({
+        "actor_id": admin["id"], "actor_email": admin.get("email", "admin"),
+        "action": "order.warehouse_reassign", "target": doc["order_no"],
+        "meta": {"from_warehouse": old_wh_id, "to_warehouse": new_wh_id, "warehouse_name": wh_doc.get("name")},
+        "created_at": now_iso(),
+    })
+
+    updated = await db.orders.find_one({"_id": doc["_id"]})
+    enriched = await _enrich_orders([updated])
     return enriched[0]
 
 

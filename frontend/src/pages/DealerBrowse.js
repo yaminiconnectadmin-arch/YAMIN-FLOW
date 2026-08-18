@@ -203,7 +203,6 @@ export default function DealerBrowse() {
     setPlacing(true);
     try {
       const payload = {
-        warehouse_id: selectedWarehouseId || undefined,
         items: cartItems.map((i) => ({
           product_id: i.product.id,
           quantity: i.qty,
@@ -274,7 +273,7 @@ export default function DealerBrowse() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
                 {/* Available Size Dropdown */}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-[#94A3B8] mb-2">
@@ -283,7 +282,7 @@ export default function DealerBrowse() {
                   <select
                     value={selectedProductId}
                     onChange={(e) => setSelectedProductId(e.target.value)}
-                    className="w-full h-11 px-3 rounded-lg bg-[#0F172A] border border-[#475569] text-white text-xs font-medium focus:border-[#F28C18] focus:ring-2 focus:ring-[#F28C18]/30 outline-none"
+                    className="w-full h-11 px-3.5 rounded-lg bg-[#0F172A] border border-[#475569] text-white text-xs font-medium focus:border-[#F28C18] focus:ring-2 focus:ring-[#F28C18]/30 outline-none"
                     data-testid="size-dropdown"
                   >
                     {products.map((p) => (
@@ -299,39 +298,20 @@ export default function DealerBrowse() {
                   <label className="block text-xs font-semibold uppercase tracking-wider text-[#94A3B8] mb-2">
                     2. Box Quantity
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <input
                       type="number"
                       min="1"
                       value={boxCount}
                       onChange={(e) => setBoxCount(parseInt(e.target.value) || 0)}
-                      className="flex-1 h-11 px-3 rounded-lg bg-[#0F172A] border border-[#475569] text-white text-base font-mono font-bold focus:border-[#F28C18] focus:ring-2 focus:ring-[#F28C18]/30 outline-none"
+                      className="flex-1 h-11 px-3.5 rounded-lg bg-[#0F172A] border border-[#475569] text-white text-base font-mono font-bold focus:border-[#F28C18] focus:ring-2 focus:ring-[#F28C18]/30 outline-none"
                       data-testid="box-input"
                     />
-                    <div className="text-right px-1">
-                      <div className="text-[10px] text-[#94A3B8]">Packing</div>
-                      <div className="font-mono text-xs font-semibold text-[#FEF08A]">{qtyPerBox} pcs</div>
+                    <div className="bg-[#0F172A] border border-[#334155] rounded-lg px-3 py-1.5 text-right flex-shrink-0">
+                      <div className="text-[10px] text-[#94A3B8] uppercase tracking-wider">Packing</div>
+                      <div className="font-mono text-xs font-bold text-[#FEF08A]">{qtyPerBox} pcs / box</div>
                     </div>
                   </div>
-                </div>
-
-                {/* Fulfillment Warehouse Hub Dropdown */}
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#94A3B8] mb-2">
-                    3. Fulfillment Hub
-                  </label>
-                  <select
-                    value={selectedWarehouseId}
-                    onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                    className="w-full h-11 px-3 rounded-lg bg-[#0F172A] border border-[#475569] text-white text-xs font-medium focus:border-[#F28C18] focus:ring-2 focus:ring-[#F28C18]/30 outline-none"
-                    data-testid="configurator-warehouse-select"
-                  >
-                    {warehouses.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name} ({w.code}) • {w.city || w.state}
-                      </option>
-                    ))}
-                  </select>
                 </div>
               </div>
 

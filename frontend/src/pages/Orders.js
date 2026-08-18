@@ -9,7 +9,7 @@ import { toast } from "@/components/ui/sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Eye, Plus, Stack, Printer, FileText, CheckCircle, Clock, Truck, Package, ArrowsClockwise } from "@phosphor-icons/react";
+import { Eye, Plus, Stack, Printer, FileText, CheckCircle, Clock, Truck, Package, ArrowsClockwise, Warehouse } from "@phosphor-icons/react";
 import ReceiptModal from "@/components/common/ReceiptModal";
 import TaxInvoiceModal from "@/components/common/TaxInvoiceModal";
 
@@ -31,6 +31,10 @@ export default function OrdersPage() {
   const [cnfs, setCnfs] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   
+  // Warehouse Reassignment State
+  const [reassignWhId, setReassignWhId] = useState("");
+  const [reassigningWh, setReassigningWh] = useState(false);
+
   const [targetPartyType, setTargetPartyType] = useState("dealer"); // "dealer" | "cnf"
   const [selectedPartyId, setSelectedPartyId] = useState("");
   const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
@@ -68,6 +72,25 @@ export default function OrdersPage() {
     return () => clearInterval(interval);
   }, [load]);
 
+  // Load all live warehouses on component mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get("/warehouses");
+        setWarehouses(data || []);
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
+  // Sync selected order's warehouse to reassignment selector
+  useEffect(() => {
+    if (selected) {
+      setReassignWhId(selected.warehouse_id || (warehouses[0]?.id || ""));
+    }
+  }, [selected, warehouses]);
+
   // Load parties and warehouses when order placement modal opens
   useEffect(() => {
     if (newOrderModalOpen) {
@@ -87,7 +110,7 @@ export default function OrdersPage() {
           setWarehouses(whRes.data || []);
 
           setSelectedPartyId((prev) => (!prev && dlrRes.data?.length > 0 ? dlrRes.data[0].id : prev));
-          setSelectedWarehouseId((prev) => (!prev && whRes.data?.length > 0 ? whRes.data[0].id : prev));
+          setSelectedWarehouseId((prev) => (!prev && whRes.data?.length > 0 ? "" : prev));
         } catch {
           toast.error("Failed to load catalog or partner details for ordering");
         }
@@ -95,6 +118,21 @@ export default function OrdersPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newOrderModalOpen, cat]);
+
+  const handleReassignWarehouse = async () => {
+    if (!selected || !reassignWhId) return;
+    setReassigningWh(true);
+    try {
+      const { data } = await api.put(`/orders/${selected.id}/warehouse`, { warehouse_id: reassignWhId });
+      setSelected(data);
+      toast.success(`Fulfillment hub updated to ${data.warehouse_name} (${data.warehouse_code}) & inventory reallocated`);
+      load(false);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to reassign warehouse");
+    } finally {
+      setReassigningWh(false);
+    }
+  };
 
   const updateStatus = async (orderId, newStatus, notes = "") => {
     setUpdatingStatus(true);
@@ -358,7 +396,14 @@ export default function OrdersPage() {
                           )}
                         </td>
                         <td className="text-xs text-[#5C6670] font-medium">
-                          {o.warehouse_name ? `${o.warehouse_name}${o.warehouse_code ? ` (${o.warehouse_code})` : ''}` : (o.warehouse_code || "—")}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{o.warehouse_name ? `${o.warehouse_name}${o.warehouse_code ? ` (${o.warehouse_code})` : ''}` : (o.warehouse_code || "—")}</span>
+                            {o.allocation_method === "smart_allocated" && (
+                              <span className="text-[9px] bg-blue-100 text-blue-800 font-extrabold px-1.5 py-0.5 rounded border border-blue-200" title="Smart Stock Allocated: Proximity & Live Inventory Engine">
+                                SMART
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="text-[#5C6670] text-xs">{o.dealer_state || "—"}</td>
                         <td className="font-mono">{o.items?.length || 0}</td>
@@ -483,6 +528,50 @@ export default function OrdersPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Admin Fulfillment Warehouse Hub Switcher & Allocation Overview */}
+              {isAdmin && (
+                <div className="bg-[#0F172A] text-white p-3.5 rounded-lg border border-[#334155] flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-md bg-[#F28C18]/20 border border-[#F28C18]/40 flex items-center justify-center text-[#F28C18] flex-shrink-0">
+                      <Warehouse size={18} weight="bold" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-white flex items-center gap-2">
+                        <span>Fulfillment Warehouse Hub:</span>
+                        <span className="text-[#FEF08A] font-mono font-semibold">{selected.warehouse_name || "Main Warehouse"} ({selected.warehouse_code || "WH-MAIN"})</span>
+                        {selected.allocation_method === "smart_allocated" && (
+                          <span className="text-[9px] bg-blue-500/30 text-blue-300 font-extrabold px-1.5 py-0.5 rounded border border-blue-400/40">
+                            SMART ALLOCATED
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-[#94A3B8]">Admin can manually reassign the fulfillment warehouse hub anytime</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={reassignWhId}
+                      onChange={(e) => setReassignWhId(e.target.value)}
+                      className="h-8 px-2.5 rounded bg-[#1E293B] border border-[#475569] text-xs text-white outline-none focus:border-[#F28C18]"
+                    >
+                      {warehouses.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name} ({w.code}) • {w.city || w.state}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleReassignWarehouse}
+                      disabled={reassigningWh || reassignWhId === selected.warehouse_id}
+                      className="h-8 px-3 rounded bg-[#F28C18] hover:bg-[#D96B0B] text-white font-bold transition-all shadow disabled:opacity-50"
+                    >
+                      {reassigningWh ? "Reallocating…" : "Change Warehouse Hub"}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Admin Processing & Status Controls */}
               {isAdmin && (
@@ -844,6 +933,7 @@ export default function OrdersPage() {
                   onChange={(e) => setSelectedWarehouseId(e.target.value)}
                   className="w-full h-9 px-2 rounded border border-slate-300 bg-white font-medium text-xs mt-7"
                 >
+                  <option value="">⚡ Auto: Smart Stock Allocation (Nearest Hub & Stock)</option>
                   {warehouses.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name} ({w.code}) • {w.city || w.state}

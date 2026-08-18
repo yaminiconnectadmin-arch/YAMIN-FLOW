@@ -201,6 +201,10 @@ class OrderPartialBillingIn(BaseModel):
     notes: Optional[str] = ""
 
 
+class WarehouseAssignmentIn(BaseModel):
+    warehouse_id: str
+
+
 # ---- Purchase Order ----
 class PurchaseOrderItemIn(BaseModel):
     product_id: str

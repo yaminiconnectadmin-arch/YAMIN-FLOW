@@ -1,16 +1,16 @@
 import axios from "axios";
 
+const CLOUD_BACKEND_URL = "https://yaminiflow-backend.vercel.app";
+
 const rawUrl = process.env.REACT_APP_BACKEND_URL;
 const isBrowser = typeof window !== "undefined";
 const isLocal = isBrowser && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
-let backendUrl = "";
-if (rawUrl && rawUrl !== "undefined" && rawUrl !== "") {
-  backendUrl = rawUrl;
-} else if (isBrowser && !isLocal) {
+let backendUrl = CLOUD_BACKEND_URL;
+if (rawUrl && rawUrl !== "undefined" && rawUrl.trim() !== "") {
+  backendUrl = rawUrl.trim();
+} else if (isBrowser && !isLocal && window.location.origin.includes("yaminiflow-backend")) {
   backendUrl = window.location.origin;
-} else {
-  backendUrl = "https://yaminiflow-backend.vercel.app";
 }
 
 export const API_BASE = `${backendUrl.replace(/\/$/, "")}/api`;
