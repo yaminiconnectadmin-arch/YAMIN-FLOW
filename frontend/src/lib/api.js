@@ -1,10 +1,18 @@
 import axios from "axios";
 
 const rawUrl = process.env.REACT_APP_BACKEND_URL;
-const isProd = typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1";
-const fallbackUrl = isProd ? "https://yaminiflow-backend.vercel.app" : "http://localhost:8000";
+const isBrowser = typeof window !== "undefined";
+const isLocal = isBrowser && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
-const backendUrl = (rawUrl && rawUrl !== "undefined" && rawUrl !== "http://localhost:8000") ? rawUrl : fallbackUrl;
+let backendUrl = "";
+if (rawUrl && rawUrl !== "undefined" && rawUrl !== "") {
+  backendUrl = rawUrl;
+} else if (isBrowser && !isLocal) {
+  backendUrl = window.location.origin;
+} else {
+  backendUrl = "https://yaminiflow-backend.vercel.app";
+}
+
 export const API_BASE = `${backendUrl.replace(/\/$/, "")}/api`;
 
 

@@ -148,7 +148,19 @@ async def list_orders(status: str = "", dealer_id: str = "",
     role = user.get("role")
 
     if role == "dealer":
-        query["dealer_id"] = user["id"]
+        uid = str(user.get("id") or user.get("_id") or "")
+        u_email = user.get("email") or ""
+        u_code = user.get("user_code") or user.get("login_id") or ""
+        match_conditions = []
+        if uid:
+            match_conditions.extend([{"dealer_id": uid}, {"user_id": uid}])
+            if ObjectId.is_valid(uid):
+                match_conditions.append({"dealer_id": ObjectId(uid)})
+        if u_email:
+            match_conditions.append({"dealer_email": u_email})
+        if u_code:
+            match_conditions.append({"dealer_code": u_code})
+        query["$or"] = match_conditions if match_conditions else [{"dealer_id": uid}]
     elif role in ("cnf", "mnp"):
         # Find all dealers tagged under this CNF
         dealers = await db.users.find({
