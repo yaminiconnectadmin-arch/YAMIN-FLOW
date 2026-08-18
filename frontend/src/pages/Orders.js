@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, fmt } from "@/lib/api";
 import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
@@ -16,6 +17,7 @@ import TaxInvoiceModal from "@/components/common/TaxInvoiceModal";
 const STATUS_OPTIONS = ["pending", "approved", "processing", "partially_fulfilled", "shipped", "delivered", "cancelled"];
 
 export default function OrdersPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [status, setStatus] = useState("");
@@ -284,16 +286,26 @@ export default function OrdersPage() {
 
   return (
     <AppShell
-      title="Distributor & CNF Orders"
-      subtitle="Manage, track, and place size-based orders with automatic weight, tax calculation & multi-warehouse allocation"
+      title={isAdmin ? "Distributor & CNF Orders" : "My Fastener Orders"}
+      subtitle={isAdmin ? "Manage, track, and place size-based orders with automatic weight, tax calculation & multi-warehouse allocation" : "View your order history, delivery tracking, and live stock allocation status"}
       actions={
-        <button
-          onClick={() => { setCart({}); setNewOrderModalOpen(true); }}
-          className="inline-flex items-center gap-2 px-4 h-9 rounded-md gradient-brand-accent text-white text-sm font-semibold shadow-md hover:shadow-lg hover:scale-105 transition-all"
-          data-testid="new-fastener-order-button"
-        >
-          <Plus size={16} weight="bold" /> + Place Fastener Order (Select Size & Boxes)
-        </button>
+        isAdmin ? (
+          <button
+            onClick={() => { setCart({}); setNewOrderModalOpen(true); }}
+            className="inline-flex items-center gap-2 px-4 h-9 rounded-md gradient-brand-accent text-white text-sm font-semibold shadow-md hover:shadow-lg hover:scale-105 transition-all"
+            data-testid="new-fastener-order-button"
+          >
+            <Plus size={16} weight="bold" /> + Create Admin Order
+          </button>
+        ) : (
+          <button
+            onClick={() => navigate("/browse")}
+            className="inline-flex items-center gap-2 px-4 h-9 rounded-md gradient-brand-accent text-white text-sm font-semibold shadow-md hover:shadow-lg hover:scale-105 transition-all"
+            data-testid="new-fastener-order-button"
+          >
+            <Plus size={16} weight="bold" /> + Place New Fastener Order
+          </button>
+        )
       }
     >
       <PageSection
@@ -337,7 +349,26 @@ export default function OrdersPage() {
         }
       >
         {loading ? <div className="p-8 text-center text-sm text-[#5C6670]">Loading orders…</div>
-          : orders.length === 0 ? <EmptyState title="No orders found" description="Click '+ Place Fastener Order' to configure and submit your first order." />
+          : orders.length === 0 ? (
+            <div className="py-8 text-center space-y-4">
+              <EmptyState
+                title="No orders found"
+                description={
+                  isAdmin
+                    ? "Click '+ Create Admin Order' to configure and submit an order on behalf of a distributor or depot."
+                    : "You have not placed any fastener orders yet."
+                }
+              />
+              {!isAdmin && (
+                <button
+                  onClick={() => navigate("/browse")}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-md gradient-brand-accent text-white text-sm font-bold shadow-md hover:scale-105 transition-all"
+                >
+                  <Plus size={16} weight="bold" /> Go to Fastener Catalog & Order
+                </button>
+              )}
+            </div>
+          )
           : (
             <div className="overflow-x-auto">
               <table className="yf-table w-full">

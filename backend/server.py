@@ -27,7 +27,7 @@ logger = logging.getLogger("yamini_flow")
 
 from fastapi.middleware.gzip import GZipMiddleware
 
-app = FastAPI(title="YAMINI FLOW", version="2.0.1")
+app = FastAPI(title="YAMINI FLOW", version="2.0.2")
 
 # GZip Compression for API response speed optimization
 app.add_middleware(GZipMiddleware, minimum_size=500)
@@ -49,7 +49,7 @@ app.add_middleware(
 @app.get("/api")
 @app.get("/api/")
 async def root():
-    return {"app": "YAMINI FLOW", "version": "2.0.1", "status": "ok"}
+    return {"app": "YAMINI FLOW", "version": "2.0.2", "status": "ok"}
 
 
 @app.get("/health")
@@ -57,7 +57,8 @@ async def root():
 async def health():
     try:
         await db.command("ping")
-        return {"status": "ok", "db": "up"}
+        orders_count = await db.orders.count_documents({})
+        return {"status": "ok", "db": "up", "db_name": db.name, "orders_count": orders_count}
     except Exception as e:
         return {"status": "degraded", "db": str(e)}
 
