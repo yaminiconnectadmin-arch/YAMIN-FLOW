@@ -8,9 +8,11 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function DealerBrowse() {
-  useAuth();
+  const { user } = useAuth();
   const [products, setProducts] = useState([]);
   const [dbCategories, setDbCategories] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("CSK Chipboard Screws");
   const [cart, setCart] = useState({});
@@ -25,18 +27,28 @@ export default function DealerBrowse() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await api.get("/categories");
-        setDbCategories(data);
-        if (data.length > 0) {
-          if (!data.some(c => c.name === "CSK Chipboard Screws")) {
-            setCat(data[0].name);
+        const [catRes, whRes] = await Promise.all([
+          api.get("/categories"),
+          api.get("/warehouses").catch(() => ({ data: [] }))
+        ]);
+        setDbCategories(catRes.data);
+        if (catRes.data.length > 0) {
+          if (!catRes.data.some(c => c.name === "CSK Chipboard Screws")) {
+            setCat(catRes.data[0].name);
           }
         }
+        const whs = whRes.data || [];
+        setWarehouses(whs);
+        if (whs.length > 0) {
+          const userState = (user?.state || "").toLowerCase().trim();
+          const matched = whs.find(w => (w.state || "").toLowerCase().trim() === userState);
+          setSelectedWarehouseId(matched ? matched.id : whs[0].id);
+        }
       } catch {
-        toast.error("Failed to load categories");
+        toast.error("Failed to load catalog data");
       }
     })();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     (async () => {
@@ -191,6 +203,7 @@ export default function DealerBrowse() {
     setPlacing(true);
     try {
       const payload = {
+        warehouse_id: selectedWarehouseId || undefined,
         items: cartItems.map((i) => ({
           product_id: i.product.id,
           quantity: i.qty,
@@ -253,7 +266,7 @@ export default function DealerBrowse() {
                   </span>
                   <div>
                     <h2 className="font-display font-bold text-lg text-white">Interactive Fastener Order Configuration</h2>
-                    <p className="text-xs text-[#94A3B8]">Select {cat} Size and Box option — Exact calculations aligned with Total Weight Matrix</p>
+                    <p className="text-xs text-[#94A3B8]">Select {cat} Size, Box option & Fulfillment Warehouse Hub</p>
                   </div>
                 </div>
                 <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#F28C18]/20 text-[#F28C18] border border-[#F28C18]/40">
@@ -261,21 +274,21 @@ export default function DealerBrowse() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 {/* Available Size Dropdown */}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-[#94A3B8] mb-2">
-                    1. Available Size & Specification Option
+                    1. Size & Spec Option
                   </label>
                   <select
                     value={selectedProductId}
                     onChange={(e) => setSelectedProductId(e.target.value)}
-                    className="w-full h-11 px-3.5 rounded-lg bg-[#0F172A] border border-[#475569] text-white text-sm font-medium focus:border-[#F28C18] focus:ring-2 focus:ring-[#F28C18]/30 outline-none"
+                    className="w-full h-11 px-3 rounded-lg bg-[#0F172A] border border-[#475569] text-white text-xs font-medium focus:border-[#F28C18] focus:ring-2 focus:ring-[#F28C18]/30 outline-none"
                     data-testid="size-dropdown"
                   >
                     {products.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.size ? `Size: ${p.size} (${p.sku})` : p.name} — Rate: {fmt.inr(p.dealer_landing || p.price)} | Box: {p.qty_per_box} pcs
+                        {p.size ? `Size: ${p.size}` : p.name} ({p.sku}) — {fmt.inr(p.dealer_landing || p.price)}/box
                       </option>
                     ))}
                   </select>
@@ -284,7 +297,7 @@ export default function DealerBrowse() {
                 {/* Box Option Input */}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-[#94A3B8] mb-2">
-                    2. Box Option (Boxes to Order)
+                    2. Box Quantity
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -292,14 +305,33 @@ export default function DealerBrowse() {
                       min="1"
                       value={boxCount}
                       onChange={(e) => setBoxCount(parseInt(e.target.value) || 0)}
-                      className="flex-1 h-11 px-4 rounded-lg bg-[#0F172A] border border-[#475569] text-white text-base font-mono font-bold focus:border-[#F28C18] focus:ring-2 focus:ring-[#F28C18]/30 outline-none"
+                      className="flex-1 h-11 px-3 rounded-lg bg-[#0F172A] border border-[#475569] text-white text-base font-mono font-bold focus:border-[#F28C18] focus:ring-2 focus:ring-[#F28C18]/30 outline-none"
                       data-testid="box-input"
                     />
-                    <div className="text-right px-2">
-                      <div className="text-xs text-[#94A3B8]">Packing</div>
-                      <div className="font-mono text-sm font-semibold text-[#FEF08A]">{qtyPerBox} pcs/box</div>
+                    <div className="text-right px-1">
+                      <div className="text-[10px] text-[#94A3B8]">Packing</div>
+                      <div className="font-mono text-xs font-semibold text-[#FEF08A]">{qtyPerBox} pcs</div>
                     </div>
                   </div>
+                </div>
+
+                {/* Fulfillment Warehouse Hub Dropdown */}
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#94A3B8] mb-2">
+                    3. Fulfillment Hub
+                  </label>
+                  <select
+                    value={selectedWarehouseId}
+                    onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                    className="w-full h-11 px-3 rounded-lg bg-[#0F172A] border border-[#475569] text-white text-xs font-medium focus:border-[#F28C18] focus:ring-2 focus:ring-[#F28C18]/30 outline-none"
+                    data-testid="configurator-warehouse-select"
+                  >
+                    {warehouses.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({w.code}) • {w.city || w.state}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -407,6 +439,28 @@ export default function DealerBrowse() {
               <span className="badge-brand inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider bg-[#F28C18] text-white">
                 {cartItems.length} items
               </span>
+            </div>
+
+            {/* Fulfillment Warehouse Hub Selector in Sidebar */}
+            <div className="p-3 bg-[#F8FAFC] border-b border-[#E5E7EB] text-xs">
+              <div className="text-[10px] font-bold uppercase text-[#5C6670] tracking-wider mb-1 flex items-center justify-between">
+                <span>Fulfillment Warehouse Hub</span>
+                <span className="text-[#D96B0B] font-mono font-semibold">
+                  {warehouses.find((w) => w.id === selectedWarehouseId)?.code || "HUB"}
+                </span>
+              </div>
+              <select
+                value={selectedWarehouseId}
+                onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                className="w-full h-8 px-2 rounded border border-[#CBD5E1] bg-white text-xs font-medium text-[#06182F] focus:border-[#F28C18] outline-none"
+                data-testid="sidebar-warehouse-select"
+              >
+                {warehouses.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} ({w.code}) — {w.city || w.state}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {cartItems.length === 0 ? (

@@ -35,12 +35,32 @@ async def _enrich_orders(docs: list) -> list:
         user_docs = await db.users.find({"_id": {"$in": list(party_ids)}}).to_list(1000)
         users = {str(u["_id"]): u for u in user_docs}
 
-    # Collect warehouse IDs
-    wh_ids = {ObjectId(d["warehouse_id"]) for d in out if d.get("warehouse_id") and ObjectId.is_valid(d["warehouse_id"])}
+    # Collect warehouse IDs and codes
+    wh_ids = []
+    wh_codes = []
+    for d in out:
+        wid = d.get("warehouse_id")
+        if wid:
+            if ObjectId.is_valid(str(wid)):
+                wh_ids.append(ObjectId(str(wid)))
+            else:
+                wh_codes.append(str(wid))
+
     warehouses = {}
-    if wh_ids:
-        wh_docs = await db.warehouses.find({"_id": {"$in": list(wh_ids)}}).to_list(100)
-        warehouses = {str(w["_id"]): w for w in wh_docs}
+    if wh_ids or wh_codes:
+        wh_query = {}
+        clauses = []
+        if wh_ids:
+            clauses.append({"_id": {"$in": wh_ids}})
+        if wh_codes:
+            clauses.append({"code": {"$in": wh_codes}})
+            clauses.append({"_id": {"$in": wh_codes}})
+        wh_query["$or"] = clauses
+        wh_docs = await db.warehouses.find(wh_query).to_list(100)
+        for w in wh_docs:
+            warehouses[str(w["_id"])] = w
+            if w.get("code"):
+                warehouses[w["code"]] = w
 
     for d in out:
         dlr = users.get(d.get("dealer_id"))
@@ -91,11 +111,16 @@ async def _enrich_orders(docs: list) -> list:
             d["mnp_code"] = d["cnf_code"]
             d["mnp_name"] = d["cnf_name"]
 
-        # Warehouse enrichment
-        wh = warehouses.get(d.get("warehouse_id"))
+        # Warehouse enrichment from real admin warehouse records
+        wh = warehouses.get(str(d.get("warehouse_id", "")))
         if wh:
             d["warehouse_name"] = wh.get("name") or wh.get("code")
             d["warehouse_code"] = wh.get("code")
+            d["warehouse_city"] = wh.get("city", "")
+            d["warehouse_state"] = wh.get("state", "")
+        else:
+            d["warehouse_name"] = d.get("warehouse_name") or d.get("warehouse_code") or "Main Warehouse"
+            d["warehouse_code"] = d.get("warehouse_code") or ""
 
         # Invoice number generation/alias
         if not d.get("invoice_no"):
@@ -236,13 +261,30 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
     prod_ids = [ObjectId(i.product_id) for i in payload.items if ObjectId.is_valid(i.product_id)]
     products = {str(p["_id"]): p for p in await db.products.find({"_id": {"$in": prod_ids}}).to_list(500)}
 
-    # Resolve Warehouse with Smart Multi-Warehouse Routing
+    # Resolve Warehouse with Smart Multi-Warehouse Routing from db.warehouses
     warehouses = await db.warehouses.find({}).to_list(50)
     wh_id = payload.warehouse_id
-    if not wh_id and warehouses:
+    wh_doc = None
+    if wh_id:
+        if ObjectId.is_valid(wh_id):
+            wh_doc = await db.warehouses.find_one({"_id": ObjectId(wh_id)})
+        if not wh_doc:
+            wh_doc = await db.warehouses.find_one({"_id": wh_id})
+        if not wh_doc:
+            wh_doc = await db.warehouses.find_one({"code": wh_id})
+
+    if not wh_doc and warehouses:
         # Match by State proximity
         matched_wh = next((w for w in warehouses if w.get("state", "").strip().lower() == dealer_state.strip().lower()), None)
-        wh_id = str(matched_wh["_id"]) if matched_wh else str(warehouses[0]["_id"])
+        wh_doc = matched_wh or warehouses[0]
+        wh_id = str(wh_doc["_id"])
+    elif wh_doc:
+        wh_id = str(wh_doc["_id"])
+    else:
+        wh_id = "default"
+
+    warehouse_name = wh_doc.get("name") if wh_doc else "Main Warehouse"
+    warehouse_code = wh_doc.get("code") if wh_doc else "WH-MAIN"
 
     # ------------------ SMART STOCK ALLOCATION ENGINE ------------------
     items_out = []
@@ -386,6 +428,8 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         "mnp_code": cnf_code,
         "mnp_name": cnf_name,
         "warehouse_id": wh_id,
+        "warehouse_name": warehouse_name,
+        "warehouse_code": warehouse_code,
         "items": items_out,
         "subtotal": round(subtotal, 2),
         "gst": gst_total,

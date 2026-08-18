@@ -9,7 +9,7 @@ import { toast } from "@/components/ui/sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Eye, Plus, Stack, Printer, FileText, CheckCircle, Clock, Truck, Package } from "@phosphor-icons/react";
+import { Eye, Plus, Stack, Printer, FileText, CheckCircle, Clock, Truck, Package, ArrowsClockwise } from "@phosphor-icons/react";
 import ReceiptModal from "@/components/common/ReceiptModal";
 import TaxInvoiceModal from "@/components/common/TaxInvoiceModal";
 
@@ -48,20 +48,26 @@ export default function OrdersPage() {
   const [billingInvoiceNo, setBillingInvoiceNo] = useState("");
   const [savingBilling, setSavingBilling] = useState(false);
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const { data } = await api.get("/orders", { params: { status } });
       setOrders(data);
     } catch { 
-      toast.error("Failed to load orders"); 
+      if (showLoading) toast.error("Failed to load orders"); 
     } finally { 
-      setLoading(false); 
+      if (showLoading) setLoading(false); 
     }
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load(); }, [status]);
+  useEffect(() => {
+    load();
+    const interval = setInterval(() => {
+      load(false);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [status]);
 
   // Load parties and warehouses when order placement modal opens
   useEffect(() => {
@@ -263,6 +269,14 @@ export default function OrdersPage() {
               <option value="">All Statuses</option>
               {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s.replace("_", " ").toUpperCase()}</option>)}
             </select>
+            <button
+              onClick={() => load(true)}
+              title="Refresh Orders"
+              className="h-9 px-3 rounded-md border border-[#E5E7EB] bg-white text-xs font-semibold text-[#5C6670] hover:text-[#06182F] hover:bg-[#F8FAFC] inline-flex items-center gap-1.5 shadow-sm transition-all"
+              data-testid="orders-refresh-button"
+            >
+              <ArrowsClockwise size={14} weight="bold" /> Refresh
+            </button>
             <ExportButton
               filename="yamini-flow-orders-{date}.csv"
               rows={orders}
@@ -345,7 +359,7 @@ export default function OrdersPage() {
                           )}
                         </td>
                         <td className="text-xs text-[#5C6670] font-medium">
-                          {o.warehouse_name || "Central Bhiwandi Hub"}
+                          {o.warehouse_name ? `${o.warehouse_name}${o.warehouse_code ? ` (${o.warehouse_code})` : ''}` : (o.warehouse_code || "—")}
                         </td>
                         <td className="text-[#5C6670] text-xs">{o.dealer_state || "—"}</td>
                         <td className="font-mono">{o.items?.length || 0}</td>
@@ -402,7 +416,7 @@ export default function OrdersPage() {
             <div>
               <DialogTitle className="text-lg font-bold">Order Breakdown: {selected?.order_no}</DialogTitle>
               <div className="text-xs text-slate-500 font-mono mt-0.5">
-                Invoice No: {selected?.invoice_no || "INV-PENDING"} • Warehouse: {selected?.warehouse_name || "Central Bhiwandi"}
+                Invoice No: {selected?.invoice_no || "INV-PENDING"} • Warehouse: {selected?.warehouse_name ? `${selected.warehouse_name}${selected.warehouse_code ? ` (${selected.warehouse_code})` : ''}` : "Main Warehouse"}
               </div>
             </div>
             {["approved", "processing", "partially_fulfilled", "shipped", "delivered"].includes(selected?.status?.toLowerCase()) && (
@@ -440,7 +454,7 @@ export default function OrdersPage() {
                 </div>
                 <div>
                   <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Warehouse Hub</div>
-                  <div className="font-medium mt-0.5 text-xs">{selected.warehouse_name || "Central Bhiwandi"}</div>
+                  <div className="font-medium mt-0.5 text-xs">{selected.warehouse_name ? `${selected.warehouse_name}${selected.warehouse_code ? ` (${selected.warehouse_code})` : ''}` : "Main Warehouse"}</div>
                 </div>
                 <div>
                   <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Stock Allocation</div>

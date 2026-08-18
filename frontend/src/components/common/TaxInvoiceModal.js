@@ -262,7 +262,7 @@ export default function TaxInvoiceModal({ isOpen, onClose, order }) {
             <div className="border-l pl-4 border-slate-200">
               <div className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Dispatch / Warehouse Hub</div>
               <div className="text-sm font-bold text-slate-900 mt-0.5">
-                {order.warehouse_name || "Central Bhiwandi Hub (WH-01)"}
+                {order.warehouse_name ? `${order.warehouse_name}${order.warehouse_code ? ` (${order.warehouse_code})` : ''}` : (order.warehouse_code || "Main Warehouse")}
               </div>
               <div className="mt-1 text-slate-600">
                 <strong>Order Type:</strong> {order.order_type === "cnf_stock" ? "CNF Depot Stock Replenishment" : "Distributor Commercial Order"}<br />
