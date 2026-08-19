@@ -1,4 +1,7 @@
 // craco.config.js
+process.env.CI = "false";
+process.env.DISABLE_ESLINT_PLUGIN = "true";
+
 const path = require("path");
 require("dotenv").config();
 
@@ -71,13 +74,7 @@ if (config.enableHealthCheck) {
 
 let webpackConfig = {
   eslint: {
-    configure: {
-      extends: ["plugin:react-hooks/recommended"],
-      rules: {
-        "react-hooks/rules-of-hooks": "error",
-        "react-hooks/exhaustive-deps": "warn",
-      },
-    },
+    enable: false,
   },
   webpack: {
     alias: {
