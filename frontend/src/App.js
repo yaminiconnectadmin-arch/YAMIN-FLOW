@@ -38,7 +38,7 @@ function PageLoader() {
 
 function RootRedirect() {
   const { user, loading } = useAuth();
-  if (loading || user === null) return null;
+  if (loading || user === null) return <PageLoader />;
   if (!user) return <Navigate to="/login" replace />;
   const savedPath = localStorage.getItem("yf_last_path");
   const targetPath = savedPath && savedPath !== "/" && savedPath !== "/login" ? savedPath : "/dashboard";
