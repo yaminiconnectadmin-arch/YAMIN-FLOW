@@ -5,6 +5,7 @@ import "@/index.css";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import LoginPage from "@/pages/Login";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { CircleNotch } from "@phosphor-icons/react";
 
 // Lazy load page components for UI speed optimization
@@ -48,10 +49,11 @@ function RootRedirect() {
 export default function App() {
   return (
     <div className="App">
-      <AuthProvider>
-        <BrowserRouter>
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
+      <ErrorBoundary>
+        <AuthProvider>
+          <BrowserRouter>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
               <Route path="/" element={<RootRedirect />} />
               <Route path="/login" element={<LoginPage />} />
 
@@ -87,7 +89,8 @@ export default function App() {
           </Suspense>
         </BrowserRouter>
       </AuthProvider>
-    </div>
-  );
+    </ErrorBoundary>
+  </div>
+);
 }
 
