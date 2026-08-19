@@ -1120,7 +1120,7 @@ export default function OrdersPage() {
                 <div>
                   <div className="text-xs uppercase tracking-wider text-[#94A3B8]">Total Consignment Weight</div>
                   <div className="font-mono text-xl font-bold text-[#FEF08A]">
-                    {selected.items?.reduce((s, i) => s + (i.total_weight_kg || 0), 0).toFixed(3)} KG
+                    {(selected.items?.reduce((s, i) => s + (i.total_weight_kg || 0), 0) || 0).toFixed(3)} KG
                   </div>
                 </div>
                 <div className="text-right">
@@ -1133,7 +1133,7 @@ export default function OrdersPage() {
               {/* Action Footer */}
               <div className="flex justify-between items-center pt-3 border-t border-gray-100">
                 <div className="flex items-center gap-2">
-                  {["approved", "processing", "partially_fulfilled", "shipped", "delivered"].includes(selected.status?.toLowerCase()) && (
+                  {["approved", "processing", "shipped", "delivered"].includes((selected?.status || "").toLowerCase()) && (
                     <button
                       onClick={() => setInvoiceModalOrder(selected)}
                       className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-sm"
