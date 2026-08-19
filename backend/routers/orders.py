@@ -122,8 +122,8 @@ async def _enrich_orders(docs: list) -> list:
             d["warehouse_name"] = d.get("warehouse_name") or d.get("warehouse_code") or "Main Warehouse"
             d["warehouse_code"] = d.get("warehouse_code") or ""
 
-        # Invoice number generation: Only issued AFTER admin approval!
-        is_approved = d.get("status") in ["approved", "processing", "partially_fulfilled", "shipped", "delivered"]
+        # Invoice number generation: Only issued AFTER explicit Admin approval!
+        is_approved = d.get("status") in ["approved", "processing", "shipped", "delivered"]
         if is_approved:
             if not d.get("invoice_no"):
                 ord_no = str(d.get("order_no", "ORD-PENDING"))
@@ -819,7 +819,7 @@ async def update_order_warehouse(order_id: str, payload: WarehouseAssignmentIn,
 async def list_invoices(user: dict = Depends(get_current_user)):
     """Invoices are only issued to the dealer / buyer after Admin approval."""
     query = {
-        "status": {"$in": ["approved", "processing", "partially_fulfilled", "shipped", "delivered"]}
+        "status": {"$in": ["approved", "processing", "shipped", "delivered"]}
     }
     role = user.get("role")
 

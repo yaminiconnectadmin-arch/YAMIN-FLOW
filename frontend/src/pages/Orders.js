@@ -489,8 +489,7 @@ export default function OrdersPage() {
                     const totalWeight = o.items?.reduce((s, i) => s + (i.total_weight_kg || 0), 0) || o.total_weight_kg || 0;
                     const cCode = o.cnf_code || o.mnp_code;
                     const cName = o.cnf_name || o.mnp_name;
-                    const isCnf = o.order_type === "cnf_stock" || (o.dealer_code && o.dealer_code.startsWith("C-"));
-                    const canDownloadInvoice = ["approved", "processing", "partially_fulfilled", "shipped", "delivered"].includes(o.status?.toLowerCase());
+                    const canDownloadInvoice = ["approved", "processing", "shipped", "delivered"].includes(o.status?.toLowerCase());
 
                     return (
                       <tr key={o.id} data-testid={`order-row-${o.order_no}`}>
@@ -595,7 +594,7 @@ export default function OrdersPage() {
               <DialogTitle className="text-lg font-bold">Order Breakdown: {selected?.order_no}</DialogTitle>
               <div className="text-xs text-slate-500 font-mono mt-0.5 flex items-center gap-2 flex-wrap">
                 <span>Invoice:</span>
-                {["approved", "processing", "partially_fulfilled", "shipped", "delivered"].includes(selected?.status?.toLowerCase()) ? (
+                {["approved", "processing", "shipped", "delivered"].includes(selected?.status?.toLowerCase()) ? (
                   <strong className="text-indigo-700 font-mono font-bold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
                     {selected?.invoice_no || `INV-${selected?.order_no?.replace("ORD-", "")}`}
                   </strong>
@@ -607,7 +606,7 @@ export default function OrdersPage() {
                 <span>• Warehouse: <strong>{selected?.warehouse_name ? `${selected.warehouse_name}${selected.warehouse_code ? ` (${selected.warehouse_code})` : ''}` : "Main Warehouse"}</strong></span>
               </div>
             </div>
-            {["approved", "processing", "partially_fulfilled", "shipped", "delivered"].includes(selected?.status?.toLowerCase()) ? (
+            {["approved", "processing", "shipped", "delivered"].includes(selected?.status?.toLowerCase()) ? (
               <button
                 onClick={() => setInvoiceModalOrder(selected)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow transition-all"
@@ -622,7 +621,7 @@ export default function OrdersPage() {
           </DialogHeader>
           {selected && (() => {
             const totalOrderedPcs = selected.items?.reduce((s, i) => s + (i.quantity_ordered ?? i.quantity ?? 0), 0) || 0;
-            const totalAllocatedPcs = selected.items?.reduce((s, i) => s + (i.quantity_allocated ?? (["approved", "processing", "shipped", "delivered"].includes(selected.status?.toLowerCase()) || selected.reservation_status === "reserved" ? (i.quantity_ordered ?? i.quantity ?? 0) : 0)), 0) || 0;
+            const totalAllocatedPcs = selected.items?.reduce((s, i) => s + (i.quantity_allocated ?? 0), 0) || 0;
             const totalInvoicedPcs = selected.items?.reduce((s, i) => s + (i.quantity_invoiced ?? 0), 0) || 0;
             const totalPendingPcs = selected.items?.reduce((s, i) => s + (i.quantity_pending ?? Math.max(0, (i.quantity_ordered ?? i.quantity ?? 0) - (i.quantity_allocated ?? 0))), 0) || 0;
             const fulfillmentPct = totalOrderedPcs > 0 ? Math.min(100, Math.round((totalAllocatedPcs / totalOrderedPcs) * 100)) : 100;

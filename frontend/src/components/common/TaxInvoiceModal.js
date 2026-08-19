@@ -26,7 +26,7 @@ function numberToWords(num) {
 export default function TaxInvoiceModal({ isOpen, onClose, order }) {
   const printAreaRef = useRef(null);
 
-  if (!order) return null;
+  if (!order || order.status?.toLowerCase() === "pending") return null;
 
   const invoiceNo = order.invoice_no || order.tally_voucher_no || `INV-${(order.order_no || "").replace("ORD-", "")}`;
   const invoiceDate = order.created_at ? fmt.date(order.created_at) : new Date().toLocaleDateString("en-IN");

@@ -187,12 +187,19 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
 
         for item in o.get("items", []):
             pid = item["product_id"]
-            demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + item.get("quantity", 0)
-            if pid not in dealer_codes_map:
-                dealer_codes_map[pid] = set()
-                mnp_codes_map[pid] = set()
-            dealer_codes_map[pid].add(d_code)
-            mnp_codes_map[pid].add(m_code)
+            q_ord = item.get("quantity_ordered") or item.get("quantity", 0)
+            q_alloc = item.get("quantity_allocated") or 0
+            q_deficit = item.get("quantity_pending")
+            if q_deficit is None:
+                q_deficit = max(0, q_ord - q_alloc)
+            
+            if q_deficit > 0:
+                demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + q_deficit
+                if pid not in dealer_codes_map:
+                    dealer_codes_map[pid] = set()
+                    mnp_codes_map[pid] = set()
+                dealer_codes_map[pid].add(d_code)
+                mnp_codes_map[pid].add(m_code)
 
     # Load products and inventory
     prod_ids = [ObjectId(pid) for pid in demanded_pcs_map.keys() if ObjectId.is_valid(pid)]
@@ -211,20 +218,14 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
     total_pcs = 0
     total_kg = 0.0
 
-    for pid, dem_qty in demanded_pcs_map.items():
+    for pid, deficit_demand in demanded_pcs_map.items():
         p = prods.get(pid)
         if not p:
             continue
         avail = inv_agg.get(pid, 0)
         safety = p.get("safety_stock", 0)
-        net_deficit_pcs = max(0, dem_qty - avail)
-        # If live stock in warehouse is enough for demand, order only to maintain safety buffer if depleted
-        qty_to_order_pcs = net_deficit_pcs if net_deficit_pcs > 0 else (max(0, safety - (avail - dem_qty)) if (avail - dem_qty) < safety else 0)
-        # If total demanded is collated into supplier PO, use demand or deficit
-        procure_pcs = qty_to_order_pcs if qty_to_order_pcs > 0 else dem_qty
-        wt_1000 = p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0)
-        if wt_1000 == 0.0:
-            wt_1000 = 1.0  # fallback weight per 1000 pcs if unknown
+        procure_pcs = deficit_demand
+        wt_1000 = p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0) or 1.0
         req_kg = round((procure_pcs / 1000.0) * wt_1000, 4)
 
         sid = p.get("primary_supplier_id")
@@ -237,10 +238,10 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
             "product_name": p.get("name", ""),
             "category": p.get("category", ""),
             "size": p.get("size", ""),
-            "demanded_pcs": dem_qty,
+            "demanded_pcs": deficit_demand,
             "available_pcs": avail,
             "safety_stock": safety,
-            "recommended_pcs": qty_to_order_pcs,
+            "recommended_pcs": procure_pcs,
             "wt_1000_pcs_kg": wt_1000,
             "recommended_weight_kg": req_kg,
             "supplier_id": str(sid) if sid else "",
@@ -248,7 +249,7 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
             "supplier_phone": sup.get("phone", "") if sup else "",
             "supplier_company": sup.get("company", "") if sup else "",
             "rate": rate,
-            "amount": round(qty_to_order_pcs * rate, 2),
+            "amount": round(procure_pcs * rate, 2),
             "dealer_codes": sorted(list(dealer_codes_map.get(pid, []))),
             "cnf_codes": sorted(list(mnp_codes_map.get(pid, []))),
             "mnp_codes": sorted(list(mnp_codes_map.get(pid, []))),
@@ -256,7 +257,7 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
             "cnf_summary": ", ".join(sorted(list(mnp_codes_map.get(pid, [])))),
             "mnp_summary": ", ".join(sorted(list(mnp_codes_map.get(pid, [])))),
         })
-        total_pcs += dem_qty
+        total_pcs += procure_pcs
         total_kg += req_kg
 
     items_breakdown.sort(key=lambda x: -x["recommended_weight_kg"])
@@ -360,12 +361,18 @@ async def execute_order_collation(triggered_by: str = "manual", actor: Optional[
     count = await db.collations.count_documents({})
     batch_no = f"COL-2026{(count + 1):04d}"
 
-    # Sum demand per product
+    # Sum unfulfilled deficit demand per product (units left for replenishment)
     demanded_pcs_map = {}
     for o in uncollated:
         for item in o.get("items", []):
             pid = item["product_id"]
-            demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + item.get("quantity", 0)
+            q_ord = item.get("quantity_ordered") or item.get("quantity", 0)
+            q_alloc = item.get("quantity_allocated") or 0
+            q_deficit = item.get("quantity_pending")
+            if q_deficit is None:
+                q_deficit = max(0, q_ord - q_alloc)
+            if q_deficit > 0:
+                demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + q_deficit
 
     prod_ids = [ObjectId(pid) for pid in demanded_pcs_map.keys() if ObjectId.is_valid(pid)]
     prods = {str(p["_id"]): p for p in await db.products.find({"_id": {"$in": prod_ids}}).to_list(1000)}
@@ -380,21 +387,15 @@ async def execute_order_collation(triggered_by: str = "manual", actor: Optional[
     total_pcs = 0
     total_kg = 0.0
 
-    for pid, dem_qty in demanded_pcs_map.items():
+    for pid, deficit_demand in demanded_pcs_map.items():
         p = prods.get(pid)
         if not p:
             continue
-        avail = inv_agg.get(pid, 0)
-        safety = p.get("safety_stock", 0)
-        net_deficit_pcs = max(0, dem_qty - avail)
-        qty_to_order_pcs = net_deficit_pcs if net_deficit_pcs > 0 else (max(0, safety - (avail - dem_qty)) if (avail - dem_qty) < safety else 0)
-        procure_pcs = qty_to_order_pcs if qty_to_order_pcs > 0 else dem_qty
+        procure_pcs = deficit_demand
         if procure_pcs <= 0:
             continue
 
-        wt_1000 = p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0)
-        if wt_1000 == 0.0:
-            wt_1000 = 1.0
+        wt_1000 = p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0) or 1.0
         req_kg = round((procure_pcs / 1000.0) * wt_1000, 4)
 
         sid = p.get("primary_supplier_id") or "unassigned"
@@ -611,12 +612,18 @@ async def approve_supplier_po(payload: ApproveSupplierPOIn, admin: dict = Depend
     if not uncollated:
         raise HTTPException(400, "No pending uncollated orders found to generate PO")
 
-    # Demanded per product
+    # Demanded replenishment deficit per product
     demanded_pcs_map = {}
     for o in uncollated:
         for item in o.get("items", []):
             pid = item["product_id"]
-            demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + item.get("quantity", 0)
+            q_ord = item.get("quantity_ordered") or item.get("quantity", 0)
+            q_alloc = item.get("quantity_allocated") or 0
+            q_deficit = item.get("quantity_pending")
+            if q_deficit is None:
+                q_deficit = max(0, q_ord - q_alloc)
+            if q_deficit > 0:
+                demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + q_deficit
 
     prod_ids = [ObjectId(pid) for pid in demanded_pcs_map.keys() if ObjectId.is_valid(pid)]
     prods = {str(p["_id"]): p for p in await db.products.find({"_id": {"$in": prod_ids}}).to_list(1000)}
@@ -638,7 +645,7 @@ async def approve_supplier_po(payload: ApproveSupplierPOIn, admin: dict = Depend
     total_pcs = 0
     total_kg = 0.0
 
-    for pid, dem_qty in demanded_pcs_map.items():
+    for pid, deficit_demand in demanded_pcs_map.items():
         p = prods.get(pid)
         if not p:
             continue
@@ -646,11 +653,7 @@ async def approve_supplier_po(payload: ApproveSupplierPOIn, admin: dict = Depend
         if payload.supplier_id != "all" and p_sup != payload.supplier_id:
             continue
 
-        avail = inv_agg.get(pid, 0)
-        safety = p.get("safety_stock", 0)
-        net_deficit_pcs = max(0, dem_qty - avail)
-        qty_to_order_pcs = net_deficit_pcs if net_deficit_pcs > 0 else (max(0, safety - (avail - dem_qty)) if (avail - dem_qty) < safety else 0)
-        procure_pcs = qty_to_order_pcs if qty_to_order_pcs > 0 else dem_qty
+        procure_pcs = deficit_demand
         if procure_pcs <= 0:
             continue
 
