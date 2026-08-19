@@ -489,6 +489,7 @@ export default function OrdersPage() {
                     const totalWeight = o.items?.reduce((s, i) => s + (i.total_weight_kg || 0), 0) || o.total_weight_kg || 0;
                     const cCode = o.cnf_code || o.mnp_code;
                     const cName = o.cnf_name || o.mnp_name;
+                    const isCnf = o.order_type === "cnf_stock" || (o.dealer_code && o.dealer_code.startsWith("C-"));
                     const canDownloadInvoice = ["approved", "processing", "shipped", "delivered"].includes(o.status?.toLowerCase());
 
                     return (
