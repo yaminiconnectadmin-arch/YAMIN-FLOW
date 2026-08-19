@@ -1051,7 +1051,7 @@ export default function OrdersPage() {
                   <tbody>
                     {selected.items?.map((it, i) => {
                       const qOrd = it.quantity_ordered ?? it.quantity ?? 0;
-                      const qAlloc = it.quantity_allocated ?? (["approved", "processing", "shipped", "delivered"].includes(selected.status?.toLowerCase()) || selected.reservation_status === "reserved" ? qOrd : 0);
+                      const qAlloc = it.quantity_allocated ?? (selected.reservation_status === "reserved" ? qOrd : 0);
                       const qInv = it.quantity_invoiced ?? 0;
                       const qPend = it.quantity_pending ?? Math.max(0, qOrd - qAlloc);
                       return (

@@ -158,18 +158,14 @@ async def _enrich_orders(docs: list) -> list:
         # Ensure order items have proper quantity keys
         items = d.get("items") or []
         for item in items:
-            q_ord = item.get("quantity_ordered") or item.get("quantity") or 0
+            q_ord = item.get("quantity_ordered") if item.get("quantity_ordered") is not None else (item.get("quantity") or 0)
             q_inv = item.get("quantity_invoiced") or 0
-            q_alloc = item.get("quantity_allocated")
-            if q_alloc is None:
-                if d.get("reservation_status") == "reserved" or d.get("status") in ["approved", "processing", "shipped", "delivered"]:
-                    q_alloc = q_ord
-                else:
-                    q_alloc = 0
+            q_alloc = item.get("quantity_allocated") if item.get("quantity_allocated") is not None else (q_ord if d.get("reservation_status") == "reserved" else 0)
+            
             item["quantity_ordered"] = q_ord
             item["quantity_allocated"] = q_alloc
             item["quantity_invoiced"] = q_inv
-            # True replenishment deficit:
+            # True units left for billing on replenishment = 50,000 - 20,000 = 30,000:
             item["quantity_pending"] = max(0, q_ord - q_alloc)
 
     return out
