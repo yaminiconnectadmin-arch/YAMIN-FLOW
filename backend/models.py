@@ -184,8 +184,14 @@ class OrderIn(BaseModel):
 
 
 class OrderStatusUpdate(BaseModel):
-    status: Literal["pending", "approved", "reserved", "shipped", "delivered", "cancelled", "processing", "partially_fulfilled"]
+    status: Optional[Literal["pending", "approved", "reserved", "shipped", "delivered", "cancelled", "processing", "partially_fulfilled"]] = None
     notes: Optional[str] = ""
+    carrier: Optional[str] = None
+    tracking_no: Optional[str] = None
+    dispatch_date: Optional[str] = None
+    delivery_days_total: Optional[int] = 7
+    estimated_delivery_days: Optional[str] = "7 Days"
+    target_delivery_date: Optional[str] = None
 
 
 class PartialBillingItem(BaseModel):

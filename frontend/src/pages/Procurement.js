@@ -5,20 +5,28 @@ import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common
 import { toast } from "@/components/ui/sonner";
 import {
   Lightning, Package, Clock, MagnifyingGlass,
-  Scales, Stack, PencilSimple, Plus, Sparkle, ArrowsClockwise, FileText
+  Scales, Stack, PencilSimple, Plus, Sparkle, ArrowsClockwise, FileText,
+  WhatsappLogo, Eye, Check, Copy, Printer, Users
 } from "@phosphor-icons/react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import PurchaseOrderModal from "@/components/common/PurchaseOrderModal";
 
 export default function ProcurementPage() {
   const [activeTab, setActiveTab] = useState("collation"); // collation | recs | matrix
+  const [collationViewMode, setCollationViewMode] = useState("by_supplier"); // "by_supplier" | "by_item"
   const [loading, setLoading] = useState(true);
 
   // Tab 1: Collation state
-  const [uncollatedSummary, setUncollatedSummary] = useState({ total_orders: 0, total_demanded_pcs: 0, estimated_total_kg: 0, items: [] });
+  const [uncollatedSummary, setUncollatedSummary] = useState({ total_orders: 0, total_demanded_pcs: 0, estimated_total_kg: 0, items: [], by_supplier: [] });
   const [collations, setCollations] = useState([]);
   const [collating, setCollating] = useState(false);
+  const [approvingSupplierId, setApprovingSupplierId] = useState(null);
+  const [supplierPhoneOverrides, setSupplierPhoneOverrides] = useState({});
+
+  // Official Purchase Order Preview/Print Modal State
+  const [poModalOrder, setPoModalOrder] = useState(null);
 
   // Tab 2: Recommendations state
   const [recs, setRecs] = useState([]);
@@ -39,14 +47,14 @@ export default function ProcurementPage() {
       const [r, w, u, c, m] = await Promise.all([
         api.get("/procurement/recommendations").catch(() => ({ data: [] })),
         api.get("/warehouses").catch(() => ({ data: [] })),
-        api.get("/procurement/uncollated-summary").catch(() => ({ data: { total_orders: 0, total_demanded_pcs: 0, estimated_total_kg: 0, items: [] } })),
+        api.get("/procurement/uncollated-summary").catch(() => ({ data: { total_orders: 0, total_demanded_pcs: 0, estimated_total_kg: 0, items: [], by_supplier: [] } })),
         api.get("/procurement/collations").catch(() => ({ data: [] })),
         api.get("/procurement/weight-matrix").catch(() => ({ data: [] })),
       ]);
       setRecs(r.data || []);
       setWarehouses(w.data || []);
       if (w.data && w.data[0]) setWarehouseId(w.data[0].id);
-      setUncollatedSummary(u.data || { total_orders: 0, total_demanded_pcs: 0, estimated_total_kg: 0, items: [] });
+      setUncollatedSummary(u.data || { total_orders: 0, total_demanded_pcs: 0, estimated_total_kg: 0, items: [], by_supplier: [] });
       setCollations(c.data || []);
       setMatrixItems(m.data || []);
     } catch (e) {
@@ -58,7 +66,7 @@ export default function ProcurementPage() {
 
   useEffect(() => { loadAll(); }, []);
 
-  // Handle Order Collation
+  // Handle Full Order Collation Trigger
   const handleCollateNow = async () => {
     setCollating(true);
     try {
@@ -74,6 +82,65 @@ export default function ProcurementPage() {
     } finally {
       setCollating(false);
     }
+  };
+
+  // Handle Approve PO for a single Supplier & Redirect to WhatsApp
+  const handleApproveAndSendWhatsApp = async (supplierGroup) => {
+    const sid = supplierGroup.supplier_id;
+    setApprovingSupplierId(sid);
+    try {
+      const phoneToUse = supplierPhoneOverrides[sid] ?? supplierGroup.phone ?? "";
+      const res = await api.post("/procurement/approve-supplier-po", {
+        supplier_id: sid,
+        custom_phone: phoneToUse,
+        warehouse_id: warehouseId,
+      });
+
+      toast.success(`Purchase Order ${res.data.po_no} approved for ${res.data.supplier_name}!`);
+
+      // Open WhatsApp chat in a new tab if URL available
+      if (res.data.whatsapp_url) {
+        window.open(res.data.whatsapp_url, "_blank", "noopener,noreferrer");
+      }
+
+      // Display official purchase order modal
+      if (res.data.po) {
+        setPoModalOrder(res.data.po);
+      }
+
+      await loadAll();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to approve and generate purchase order");
+    } finally {
+      setApprovingSupplierId(null);
+    }
+  };
+
+  // Preview Draft PO before approval
+  const handlePreviewDraftPO = (supplierGroup) => {
+    const draftPO = {
+      po_no: supplierGroup.draft_po_no || "DRAFT-PO",
+      supplier_name: supplierGroup.supplier_name,
+      supplier_company: supplierGroup.company || supplierGroup.supplier_name,
+      supplier_phone: supplierPhoneOverrides[supplierGroup.supplier_id] ?? supplierGroup.phone,
+      supplier_email: supplierGroup.email,
+      supplier_gstin: supplierGroup.gstin,
+      supplier_city: supplierGroup.city,
+      supplier_state: supplierGroup.state,
+      warehouse_name: "Central Warehouse Hub",
+      warehouse_address: "Plot 42, Logistics Gateway, Bhiwandi, Maharashtra - 421302",
+      items: supplierGroup.items,
+      subtotal: supplierGroup.subtotal,
+      gst: supplierGroup.gst,
+      total: supplierGroup.total,
+      total_weight_kg: supplierGroup.total_kg,
+      total_pieces: supplierGroup.total_pcs,
+      status: "draft (pending approval)",
+      whatsapp_message: supplierGroup.whatsapp_message,
+      whatsapp_url: supplierGroup.whatsapp_url,
+      created_at: new Date().toISOString(),
+    };
+    setPoModalOrder(draftPO);
   };
 
   // Recommendations checkbox selection
@@ -145,7 +212,7 @@ export default function ProcurementPage() {
   const otherScrews = filteredMatrix.filter(i => i.category !== "CSK Chipboard Screws" && i.category !== "CSK Drywall Screws");
 
   return (
-    <AppShell title="Intelligent Procurement & Weight Engine" subtitle="Order collation, exact piece-to-weight conversion, and fastener matrix"
+    <AppShell title="Intelligent Procurement & Collated Weight Engine" subtitle="Order collation, exact piece-to-weight conversion, and supplier WhatsApp dispatch"
       actions={
         <div className="flex items-center gap-2">
           <button onClick={loadAll} className="p-2 rounded-md border border-[#E5E7EB] text-[#5C6670] hover:bg-[#F8FAFC]" title="Refresh Data">
@@ -160,7 +227,7 @@ export default function ProcurementPage() {
           {activeTab === "collation" && (
             <button onClick={handleCollateNow} disabled={collating || uncollatedSummary.total_orders === 0}
               className="inline-flex items-center gap-2 px-4 h-9 rounded-md gradient-brand-accent text-white text-sm font-semibold disabled:opacity-50 shadow-sm">
-              <Sparkle size={14} weight="fill" /> {collating ? "Collating & Converting..." : "Collate Orders Now (KG POs)"}
+              <Sparkle size={14} weight="fill" /> {collating ? "Collating & Converting..." : "Collate All Orders (Batch)"}
             </button>
           )}
           {activeTab === "matrix" && (
@@ -179,10 +246,10 @@ export default function ProcurementPage() {
             activeTab === "collation" ? "border-[#F28C18] text-[#1D242B]" : "border-transparent text-[#5C6670] hover:text-[#1D242B]"
           }`}>
           <Scales size={18} weight={activeTab === "collation" ? "fill" : "regular"} className="text-[#F28C18]" />
-          Order Collation Engine
+          Collated Weight & Pending Orders
           {uncollatedSummary.total_orders > 0 && (
-            <span className="ml-1 px-2 py-0.5 text-xs font-bold bg-[#FFF7ED] text-[#D96B0B] border border-[#FDE68A] rounded-full">
-              {uncollatedSummary.total_orders} pending
+            <span className="ml-1 px-2.5 py-0.5 text-xs font-black bg-[#FFF7ED] text-[#D96B0B] border border-[#FDE68A] rounded-full shadow-xs">
+              {fmt.kg(uncollatedSummary.estimated_total_kg)} • {uncollatedSummary.total_orders} orders
             </span>
           )}
         </button>
@@ -205,114 +272,290 @@ export default function ProcurementPage() {
 
       {loading ? (
         <div className="p-16 text-center text-sm text-[#5C6670] bg-white rounded-xl border border-[#E5E7EB] shadow-sm animate-pulse">
-          Loading Intelligent Procurement Engine & Matrix Data...
+          Loading Intelligent Procurement Engine & Collated Weight Data...
         </div>
       ) : (
         <>
-          {/* ===================== TAB 1: COLLATION ENGINE ===================== */}
+          {/* ===================== TAB 1: COLLATED WEIGHT & PENDING ORDERS ===================== */}
           {activeTab === "collation" && (
             <div className="space-y-6">
-              {/* Summary Stats & Nightly Auto-Collation Banner */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              
+              {/* Prominent High-Level Collated Weight Metrics */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-gradient-to-br from-[#1D242B] to-[#2D3748] text-white p-5 rounded-xl shadow-md border border-[#374151]">
                   <div className="flex items-center justify-between text-[#9CA3AF] text-xs font-medium uppercase tracking-wider mb-2">
-                    <span>Pending Orders Queue</span>
-                    <Clock size={16} className="text-[#FBBF24]" />
+                    <span>Total Collated Weight</span>
+                    <Scales size={20} weight="fill" className="text-[#FBBF24]" />
                   </div>
-                  <div className="text-3xl font-extrabold tracking-tight">{uncollatedSummary.total_orders} Orders</div>
-                  <p className="text-xs text-[#D1D5DB] mt-1">Awaiting collation from distributors & dealers</p>
+                  <div className="text-3xl font-extrabold text-[#FEF08A] tracking-tight">{fmt.kg(uncollatedSummary.estimated_total_kg)}</div>
+                  <p className="text-[11px] text-[#D1D5DB] mt-1 font-mono">Formula: (PCS ÷ 1000) × WT OF 1000 PCS</p>
                 </div>
 
                 <div className="bg-white p-5 rounded-xl shadow-sm border border-[#E5E7EB]">
                   <div className="flex items-center justify-between text-[#5C6670] text-xs font-medium uppercase tracking-wider mb-2">
                     <span>Total Pieces Demanded</span>
-                    <Package size={16} className="text-[#3B82F6]" />
+                    <Package size={20} className="text-[#3B82F6]" />
                   </div>
                   <div className="text-3xl font-extrabold text-[#1D242B]">{fmt.num(uncollatedSummary.total_demanded_pcs)} PCS</div>
-                  <p className="text-xs text-[#5C6670] mt-1">Summed across all pending distributor order items</p>
+                  <p className="text-[11px] text-[#5C6670] mt-1">Across all uncollated distributor order items</p>
                 </div>
 
-                <div className="bg-[#FFFBF5] p-5 rounded-xl shadow-sm border border-[#FDE68A]">
-                  <div className="flex items-center justify-between text-[#D96B0B] text-xs font-bold uppercase tracking-wider mb-2">
-                    <span>Converted Weight (Exact)</span>
-                    <Scales size={18} weight="fill" className="text-[#F28C18]" />
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-[#E5E7EB]">
+                  <div className="flex items-center justify-between text-[#5C6670] text-xs font-medium uppercase tracking-wider mb-2">
+                    <span>Pending Orders Queue</span>
+                    <Clock size={20} className="text-[#F28C18]" />
                   </div>
-                  <div className="text-3xl font-extrabold text-[#D96B0B]">{fmt.kg(uncollatedSummary.estimated_total_kg)}</div>
-                  <p className="text-xs text-[#B45309] mt-1">Formula: (PCS / 1000) × Weight of 1000 PCS</p>
+                  <div className="text-3xl font-extrabold text-[#D96B0B]">{uncollatedSummary.total_orders} Orders</div>
+                  <p className="text-[11px] text-[#5C6670] mt-1">From dealers & CNF regional depots</p>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-[#E5E7EB]">
+                  <div className="flex items-center justify-between text-[#5C6670] text-xs font-medium uppercase tracking-wider mb-2">
+                    <span>Suppliers to Dispatch</span>
+                    <Users size={20} className="text-emerald-600" />
+                  </div>
+                  <div className="text-3xl font-extrabold text-emerald-700">{uncollatedSummary.by_supplier?.length || 0} Vendors</div>
+                  <p className="text-[11px] text-[#5C6670] mt-1">Direct PO & WhatsApp dispatch ready</p>
                 </div>
               </div>
 
-              {/* Nightly Auto-Collation Info Bar */}
-              <div className="flex items-center justify-between p-4 bg-[#EFF6FF] border border-[#BFDBFE] rounded-xl text-sm text-[#1E40AF]">
-                <div className="flex items-center gap-3">
-                  <span className="p-2 bg-[#DBEAFE] rounded-lg text-[#2563EB]"><Clock size={20} weight="fill" /></span>
-                  <div>
-                    <span className="font-bold">Automatic Nightly Collation Active (12:00 AM):</span>
-                    <p className="text-xs text-[#3B82F6] mt-0.5">The system auto-collates pending orders every midnight, converts weights via exact matrix ratios, and issues supplier POs.</p>
-                  </div>
+              {/* View Selector & Nightly Auto-Collation Info Bar */}
+              <div className="bg-white p-4 rounded-xl border border-[#E5E7EB] shadow-sm flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mr-1">View Mode:</span>
+                  <button
+                    onClick={() => setCollationViewMode("by_supplier")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                      collationViewMode === "by_supplier"
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    <WhatsappLogo size={16} weight="fill" />
+                    Grouped by Supplier POs (WhatsApp Approval)
+                    <span className="ml-1 px-1.5 py-0.2 bg-white/20 rounded-full text-[10px]">
+                      {uncollatedSummary.by_supplier?.length || 0}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setCollationViewMode("by_item")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                      collationViewMode === "by_item"
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    <Package size={16} />
+                    Detailed Item-by-Item Weight Breakdown
+                    <span className="ml-1 px-1.5 py-0.2 bg-white/20 rounded-full text-[10px]">
+                      {uncollatedSummary.items?.length || 0}
+                    </span>
+                  </button>
                 </div>
-                <button onClick={handleCollateNow} disabled={collating || uncollatedSummary.total_orders === 0}
-                  className="px-4 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-semibold rounded-lg shadow-sm transition-all disabled:opacity-50">
-                  {collating ? "Processing..." : "Force Collate Now"}
-                </button>
+
+                <div className="flex items-center gap-2 text-xs text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-200">
+                  <Clock size={14} weight="bold" />
+                  <span>Auto-Collation scheduled daily at <strong>12:00 AM Midnight</strong></span>
+                </div>
               </div>
 
-              {/* Queue Breakdown Table */}
-              <PageSection title="Live Uncollated Queue Breakdown" description="Real-time conversion breakdown of items waiting to be collated into supplier POs">
-                {uncollatedSummary.items?.length === 0 ? (
-                  <EmptyState title="No uncollated items" description="All distributor orders have already been collated into supplier weight POs." />
-                ) : (
-                  <table className="yf-table w-full">
-                    <thead>
-                      <tr>
-                        <th>SKU / Item Code</th><th>Fastener Description</th><th>Category</th>
-                        <th>Ordering Distributor(s)</th><th>Assigned Under</th>
-                        <th className="text-right">Demanded PCS</th><th className="text-right">Net Deficit</th>
-                        <th className="text-right">WT / 1000 PCS</th><th className="text-right">Required Weight</th>
-                        <th>Assigned Primary Supplier</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {uncollatedSummary.items.map((it) => (
-                        <tr key={it.product_id}>
-                          <td className="font-mono font-bold text-xs text-[#1D242B]">{it.sku}</td>
-                          <td className="font-medium">{it.product_name}</td>
-                          <td><span className="px-2 py-0.5 text-[11px] font-medium bg-[#F3F4F6] text-[#4B5563] rounded">{it.category}</span></td>
-                          <td>
-                            <div className="flex flex-wrap gap-1 max-w-[160px]">
-                              {it.dealer_codes && it.dealer_codes.length > 0 ? (
-                                it.dealer_codes.map((c, idx) => (
-                                  <span key={idx} className="bg-[#FEF08A] text-[#854D0E] font-mono text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm">{c}</span>
-                                ))
-                              ) : (
-                                <span className="text-xs text-[#5C6670]">—</span>
-                              )}
+              {/* VIEW 1: GROUPED BY SUPPLIER POS (WHATSAPP REDIRECTION & PO APPROVAL) */}
+              {collationViewMode === "by_supplier" && (
+                <div className="space-y-6">
+                  {(!uncollatedSummary.by_supplier || uncollatedSummary.by_supplier.length === 0) ? (
+                    <EmptyState title="No pending supplier orders" description="All distributor order items have already been collated and dispatched to suppliers." />
+                  ) : (
+                    uncollatedSummary.by_supplier.map((sup) => {
+                      const sid = sup.supplier_id;
+                      const isApproving = approvingSupplierId === sid;
+                      const currentPhone = supplierPhoneOverrides[sid] ?? sup.phone ?? "";
+
+                      return (
+                        <div key={sid} className="bg-white rounded-xl border border-slate-300 shadow-md overflow-hidden space-y-0">
+                          {/* Supplier Header Banner */}
+                          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300 font-bold text-lg flex-shrink-0">
+                                🏭
+                              </div>
+                              <div>
+                                <div className="text-base font-extrabold flex items-center gap-2">
+                                  <span>{sup.supplier_name}</span>
+                                  {sup.company && sup.company !== sup.supplier_name && (
+                                    <span className="text-xs text-slate-300 font-normal">({sup.company})</span>
+                                  )}
+                                  <span className="text-[10px] font-mono bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded border border-indigo-400/30">
+                                    {sup.draft_po_no || "DRAFT-PO"}
+                                  </span>
+                                </div>
+                                <div className="text-xs text-slate-300 mt-0.5 flex items-center gap-3 flex-wrap">
+                                  {sup.city && <span>📍 {[sup.city, sup.state].filter(Boolean).join(", ")}</span>}
+                                  {sup.gstin && <span>GSTIN: <strong className="font-mono text-white">{sup.gstin}</strong></span>}
+                                  {sup.email && <span>✉️ {sup.email}</span>}
+                                </div>
+                              </div>
                             </div>
-                          </td>
-                          <td>
-                            <div className="flex flex-wrap gap-1 max-w-[160px]">
-                              {(it.cnf_codes || it.mnp_codes) && (it.cnf_codes || it.mnp_codes).length > 0 ? (
-                                (it.cnf_codes || it.mnp_codes).map((c, idx) => c !== "DIRECT" ? (
-                                  <span key={idx} className="bg-[#BAE6FD] text-[#0369A1] font-mono text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm" title="Assigned CNF">🏷️ {c}</span>
-                                ) : (
-                                  <span key={idx} className="bg-[#E6F4EA] text-[#137333] font-medium text-[11px] px-1.5 py-0.5 rounded border border-[#CEEAD6]">⚡ Direct</span>
-                                ))
-                              ) : (
-                                <span className="text-xs text-[#5C6670]">—</span>
-                              )}
+
+                            {/* Summary Badges Box */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <div className="bg-white/10 backdrop-blur-sm border border-white/20 px-3.5 py-2 rounded-lg text-right">
+                                <div className="text-[10px] uppercase font-bold text-amber-300">Collated Weight</div>
+                                <div className="text-base font-black font-mono text-white">{fmt.kg(sup.total_kg)}</div>
+                              </div>
+                              <div className="bg-white/10 backdrop-blur-sm border border-white/20 px-3.5 py-2 rounded-lg text-right">
+                                <div className="text-[10px] uppercase font-bold text-blue-300">Total Quantity</div>
+                                <div className="text-base font-black font-mono text-white">{fmt.num(sup.total_pcs)} Pcs</div>
+                              </div>
+                              <div className="bg-white/10 backdrop-blur-sm border border-white/20 px-3.5 py-2 rounded-lg text-right">
+                                <div className="text-[10px] uppercase font-bold text-emerald-300">Payable Total</div>
+                                <div className="text-base font-black font-mono text-emerald-300">{fmt.inr(sup.total)}</div>
+                              </div>
                             </div>
-                          </td>
-                          <td className="text-right tabular font-semibold">{fmt.num(it.demanded_pcs)} pcs</td>
-                          <td className="text-right tabular text-[#5C6670]">{fmt.num(it.recommended_pcs)} pcs</td>
-                          <td className="text-right tabular font-mono text-xs text-[#3B82F6]">{it.wt_1000_pcs_kg} kg</td>
-                          <td className="text-right tabular font-bold text-[#D96B0B] bg-[#FFF7ED]">{fmt.kg(it.recommended_weight_kg)}</td>
-                          <td className="text-sm font-medium">{it.supplier_name}</td>
+                          </div>
+
+                          {/* Items Table */}
+                          <div className="p-4 sm:p-5 space-y-4">
+                            <div className="border border-slate-200 rounded-lg overflow-hidden">
+                              <table className="yf-table w-full text-xs">
+                                <thead className="bg-slate-100 font-bold text-slate-700">
+                                  <tr>
+                                    <th>SKU / Code</th>
+                                    <th>Fastener Description</th>
+                                    <th>Size</th>
+                                    <th>Category</th>
+                                    <th className="text-right">Demanded PCS</th>
+                                    <th className="text-right">WT / 1000 PCS</th>
+                                    <th className="text-right bg-amber-50 font-extrabold text-amber-900">Converted Weight</th>
+                                    <th className="text-right">Unit Rate</th>
+                                    <th className="text-right">Basic Amount</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {sup.items.map((it) => (
+                                    <tr key={it.product_id} className="hover:bg-slate-50">
+                                      <td className="font-mono font-bold text-slate-900">{it.sku}</td>
+                                      <td className="font-medium">{it.product_name}</td>
+                                      <td className="font-mono font-semibold">{it.size || "—"}</td>
+                                      <td><span className="px-2 py-0.5 text-[10px] bg-slate-100 text-slate-600 rounded">{it.category}</span></td>
+                                      <td className="text-right tabular font-mono font-semibold">{fmt.num(it.recommended_pcs)} pcs</td>
+                                      <td className="text-right tabular font-mono text-blue-700">{Number(it.wt_1000_pcs_kg).toFixed(3)} kg</td>
+                                      <td className="text-right tabular font-mono font-black text-amber-800 bg-amber-50/60">
+                                        {fmt.kg(it.recommended_weight_kg)}
+                                      </td>
+                                      <td className="text-right tabular font-mono">{fmt.inr(it.rate)}</td>
+                                      <td className="text-right tabular font-mono font-bold">{fmt.inr(it.amount)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Approval, WhatsApp & PO Actions Bar */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+                              {/* WhatsApp Phone Configurator */}
+                              <div className="flex items-center gap-2 text-xs flex-1 min-w-[280px]">
+                                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
+                                  <WhatsappLogo size={20} weight="fill" />
+                                </div>
+                                <div className="flex-1">
+                                  <div className="text-[10px] uppercase font-bold text-slate-500">Supplier WhatsApp Contact Number</div>
+                                  <input
+                                    type="text"
+                                    value={currentPhone}
+                                    onChange={(e) => setSupplierPhoneOverrides(prev => ({ ...prev, [sid]: e.target.value }))}
+                                    placeholder="Enter 10-digit mobile (e.g. 9876543210)"
+                                    className="w-full h-8 px-2.5 rounded border border-slate-300 text-xs font-mono font-bold text-slate-900 mt-0.5"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Action Buttons */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => handlePreviewDraftPO(sup)}
+                                  className="h-9 px-3.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
+                                >
+                                  <Eye size={16} /> Preview PO Document
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveAndSendWhatsApp(sup)}
+                                  disabled={isApproving}
+                                  className="h-9 px-4 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black flex items-center gap-2 transition-all shadow-md disabled:opacity-50"
+                                >
+                                  <WhatsappLogo size={18} weight="fill" />
+                                  {isApproving ? "Generating PO & Opening WhatsApp..." : "Approve & Send to Supplier WhatsApp"}
+                                </button>
+                              </div>
+                            </div>
+
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {/* VIEW 2: DETAILED ITEM-BY-ITEM WEIGHT QUEUE BREAKDOWN */}
+              {collationViewMode === "by_item" && (
+                <PageSection title="Live Uncollated Queue Breakdown" description="Real-time conversion breakdown of items waiting to be collated into supplier POs">
+                  {uncollatedSummary.items?.length === 0 ? (
+                    <EmptyState title="No uncollated items" description="All distributor orders have already been collated into supplier weight POs." />
+                  ) : (
+                    <table className="yf-table w-full">
+                      <thead>
+                        <tr>
+                          <th>SKU / Item Code</th><th>Fastener Description</th><th>Category</th>
+                          <th>Ordering Distributor(s)</th><th>Assigned Under</th>
+                          <th className="text-right">Demanded PCS</th><th className="text-right">Net Deficit</th>
+                          <th className="text-right">WT / 1000 PCS</th><th className="text-right">Required Weight</th>
+                          <th>Assigned Primary Supplier</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </PageSection>
+                      </thead>
+                      <tbody>
+                        {uncollatedSummary.items.map((it) => (
+                          <tr key={it.product_id}>
+                            <td className="font-mono font-bold text-xs text-[#1D242B]">{it.sku}</td>
+                            <td className="font-medium">{it.product_name}</td>
+                            <td><span className="px-2 py-0.5 text-[11px] font-medium bg-[#F3F4F6] text-[#4B5563] rounded">{it.category}</span></td>
+                            <td>
+                              <div className="flex flex-wrap gap-1 max-w-[160px]">
+                                {it.dealer_codes && it.dealer_codes.length > 0 ? (
+                                  it.dealer_codes.map((c, idx) => (
+                                    <span key={idx} className="bg-[#FEF08A] text-[#854D0E] font-mono text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm">{c}</span>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-[#5C6670]">—</span>
+                                )}
+                              </div>
+                            </td>
+                            <td>
+                              <div className="flex flex-wrap gap-1 max-w-[160px]">
+                                {(it.cnf_codes || it.mnp_codes) && (it.cnf_codes || it.mnp_codes).length > 0 ? (
+                                  (it.cnf_codes || it.mnp_codes).map((c, idx) => c !== "DIRECT" ? (
+                                    <span key={idx} className="bg-[#BAE6FD] text-[#0369A1] font-mono text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm" title="Assigned CNF">🏷️ {c}</span>
+                                  ) : (
+                                    <span key={idx} className="bg-[#E6F4EA] text-[#137333] font-medium text-[11px] px-1.5 py-0.5 rounded border border-[#CEEAD6]">⚡ Direct</span>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-[#5C6670]">—</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="text-right tabular font-semibold">{fmt.num(it.demanded_pcs)} pcs</td>
+                            <td className="text-right tabular text-[#5C6670]">{fmt.num(it.recommended_pcs)} pcs</td>
+                            <td className="text-right tabular font-mono text-xs text-[#3B82F6]">{it.wt_1000_pcs_kg} kg</td>
+                            <td className="text-right tabular font-bold text-[#D96B0B] bg-[#FFF7ED]">{fmt.kg(it.recommended_weight_kg)}</td>
+                            <td className="text-sm font-medium">{it.supplier_name}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </PageSection>
+              )}
 
               {/* Historical Collation Batches */}
               <PageSection title="Historical Collation Batches" description="Audit history of manual and automated 12:00 AM order collations">
@@ -655,6 +898,13 @@ export default function ProcurementPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Official Purchase Order Document Modal (Print & WhatsApp) */}
+      <PurchaseOrderModal
+        isOpen={!!poModalOrder}
+        onClose={() => setPoModalOrder(null)}
+        po={poModalOrder}
+      />
     </AppShell>
   );
 }

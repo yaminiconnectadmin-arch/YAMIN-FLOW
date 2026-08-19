@@ -421,27 +421,19 @@ export default function DealerBrowse() {
               </span>
             </div>
 
-            {/* Fulfillment Warehouse Hub Selector in Sidebar */}
+            {/* Smart Warehouse Allocation Notice */}
             <div className="p-3 bg-[#F8FAFC] border-b border-[#E5E7EB] text-xs">
-              <div className="text-[10px] font-bold uppercase text-[#5C6670] tracking-wider mb-1 flex items-center justify-between">
-                <span>Fulfillment Warehouse Hub</span>
-                <span className="text-[#D96B0B] font-mono font-semibold">
-                  {warehouses.find((w) => w.id === selectedWarehouseId)?.code || "HUB"}
+              <div className="flex items-center justify-between text-[10px] font-bold uppercase text-[#5C6670] tracking-wider mb-1">
+                <span>Fulfillment Routing</span>
+                <span className="text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-mono font-extrabold text-[9px]">
+                  SMART ALLOCATED
                 </span>
               </div>
-              <select
-                value={selectedWarehouseId}
-                onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                className="w-full h-8 px-2 rounded border border-[#CBD5E1] bg-white text-xs font-medium text-[#06182F] focus:border-[#F28C18] outline-none"
-                data-testid="sidebar-warehouse-select"
-              >
-                {warehouses.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name} ({w.code}) — {w.city || w.state}
-                  </option>
-                ))}
-              </select>
+              <div className="text-[11px] text-[#475569] leading-snug">
+                Dispatched from optimal regional hub ({user?.state || "HQ Direct"}) based on live inventory &amp; shortest transit time.
+              </div>
             </div>
+
 
             {cartItems.length === 0 ? (
               <div className="p-10 text-center text-sm text-[#5C6670]">

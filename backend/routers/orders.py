@@ -1,5 +1,5 @@
 """Orders + Invoices + Smart Multi-Warehouse Allocation & Partial Billing."""
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -122,21 +122,55 @@ async def _enrich_orders(docs: list) -> list:
             d["warehouse_name"] = d.get("warehouse_name") or d.get("warehouse_code") or "Main Warehouse"
             d["warehouse_code"] = d.get("warehouse_code") or ""
 
-        # Invoice number generation/alias
-        if not d.get("invoice_no"):
-            ord_no = str(d.get("order_no", "ORD-PENDING"))
-            d["invoice_no"] = d.get("tally_voucher_no") or ("INV-" + ord_no.replace("ORD-", ""))
+        # Invoice number generation: Only issued AFTER admin approval!
+        is_approved = d.get("status") in ["approved", "processing", "partially_fulfilled", "shipped", "delivered"]
+        if is_approved:
+            if not d.get("invoice_no"):
+                ord_no = str(d.get("order_no", "ORD-PENDING"))
+                d["invoice_no"] = d.get("tally_voucher_no") or ("INV-" + ord_no.replace("ORD-", ""))
+        else:
+            d["invoice_no"] = None
+
+        # Estimated delivery and countdown enrichment
+        if not d.get("delivery_days_total"):
+            est_raw = str(d.get("estimated_delivery_days") or "")
+            if "7" in est_raw:
+                d["delivery_days_total"] = 7
+            elif "5" in est_raw:
+                d["delivery_days_total"] = 5
+            elif "3" in est_raw:
+                d["delivery_days_total"] = 3
+            elif "10" in est_raw:
+                d["delivery_days_total"] = 10
+            else:
+                d["delivery_days_total"] = 7
+
+        if not d.get("estimated_delivery_days"):
+            d["estimated_delivery_days"] = f"{d.get('delivery_days_total', 7)} Days"
+
+        if not d.get("target_delivery_date") and d.get("dispatch_date"):
+            try:
+                disp_dt = datetime.fromisoformat(str(d["dispatch_date"])[:10])
+                d["target_delivery_date"] = (disp_dt + timedelta(days=int(d.get("delivery_days_total", 7)))).strftime("%Y-%m-%d")
+            except Exception:
+                pass
 
         # Ensure order items have proper quantity keys
         items = d.get("items") or []
         for item in items:
             q_ord = item.get("quantity_ordered") or item.get("quantity") or 0
             q_inv = item.get("quantity_invoiced") or 0
+            q_alloc = item.get("quantity_allocated")
+            if q_alloc is None:
+                if d.get("reservation_status") == "reserved" or d.get("status") in ["approved", "processing", "shipped", "delivered"]:
+                    q_alloc = q_ord
+                else:
+                    q_alloc = 0
             item["quantity_ordered"] = q_ord
+            item["quantity_allocated"] = q_alloc
             item["quantity_invoiced"] = q_inv
-            item["quantity_pending"] = item.get("quantity_pending", max(0, q_ord - q_inv))
-            if "quantity_allocated" not in item:
-                item["quantity_allocated"] = q_ord if d.get("status") in ["approved", "shipped", "delivered"] else 0
+            # True replenishment deficit:
+            item["quantity_pending"] = max(0, q_ord - q_alloc)
 
     return out
 
@@ -430,12 +464,13 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
             "quantity_ordered": qty,
             "quantity_allocated": allocated,
             "quantity_invoiced": 0,
-            "quantity_pending": qty,
+            "quantity_pending": deficit,
             "boxes": boxes,
             "qty_per_box": qty_per_box,
             "wt_1000_pcs_kg": wt_1000,
             "total_weight_kg": item_weight,
             "allocated_weight_kg": round((allocated / 1000.0) * wt_1000, 3),
+            "pending_replenishment_kg": round((deficit / 1000.0) * wt_1000, 3),
             "rate": rate,
             "dealer_landing": p.get("dealer_landing", rate),
             "value_before_tax": sub,
@@ -443,33 +478,34 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
             "value_after_tax": tot,
         })
 
-    # Allocation Status
-    if total_allocated == total_demanded:
+    # Allocation & Order Status: Dealer orders require Admin Approval before Invoice is issued!
+    is_admin = user["role"] == "admin"
+    if is_admin:
         overall_status = "approved"
-        reservation_status = "reserved"
-    elif total_allocated > 0:
-        overall_status = "partially_fulfilled"
-        reservation_status = "partially_reserved"
+        reservation_status = "reserved" if total_allocated == total_demanded else ("partially_reserved" if total_allocated > 0 else "pending")
     else:
         overall_status = "pending"
-        reservation_status = "pending"
+        reservation_status = "reserved" if total_allocated == total_demanded else ("partially_reserved" if total_allocated > 0 else "pending")
 
     order_no = await _order_number()
-    invoice_no = f"INV-{order_no.replace('ORD-', '')}"
+    invoice_no = f"INV-{order_no.replace('ORD-', '')}" if is_admin else None
     gst_total = round(subtotal * 0.18, 2)
     grand_total = round(subtotal + gst_total, 2)
 
-    initial_inv = {
-        "invoice_no": invoice_no,
-        "date": now_iso()[:10],
-        "amount": grand_total,
-        "linked_by": "order_creation",
-        "items_billed": items_out
-    }
+    invoices = []
+    if is_admin:
+        invoices.append({
+            "invoice_no": invoice_no,
+            "date": now_iso()[:10],
+            "amount": grand_total,
+            "linked_by": "admin_order_creation",
+            "items_billed": items_out
+        })
 
     doc = {
         "order_no": order_no,
         "invoice_no": invoice_no,
+        "invoices": invoices,
         "order_type": order_type,
         "billing_type": payload.billing_type or "direct",
         "dealer_id": dealer_id,
@@ -555,8 +591,8 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate,
 
     if not doc:
         raise HTTPException(404, "Order not found")
-    old_status = doc["status"]
-    new_status = payload.status
+    old_status = doc.get("status", "pending")
+    new_status = payload.status if payload.status is not None else old_status
 
     # Stock reconciliation on delivered
     if new_status == "delivered" and old_status != "delivered":
@@ -576,29 +612,63 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate,
             )
 
     update_fields = {"status": new_status, "updated_at": now_iso()}
-    if payload.notes:
+    if payload.notes is not None:
         update_fields["notes"] = payload.notes
+    if payload.carrier is not None:
+        update_fields["carrier"] = payload.carrier
+    if payload.tracking_no is not None:
+        update_fields["tracking_no"] = payload.tracking_no
+    if payload.dispatch_date is not None:
+        update_fields["dispatch_date"] = payload.dispatch_date
+    elif new_status == "shipped" and not doc.get("dispatch_date"):
+        update_fields["dispatch_date"] = now_iso()[:10]
 
-    # If approved and no invoices exist yet, generate the base synced tax invoice
-    if new_status in ["approved", "processing", "partially_fulfilled"] and not doc.get("invoices"):
+    delivery_days = payload.delivery_days_total or doc.get("delivery_days_total") or 7
+    update_fields["delivery_days_total"] = int(delivery_days)
+    
+    if payload.estimated_delivery_days is not None:
+        update_fields["estimated_delivery_days"] = payload.estimated_delivery_days
+    else:
+        update_fields["estimated_delivery_days"] = f"{delivery_days} Days"
+
+    # Compute target delivery date for countdown
+    disp_date_str = update_fields.get("dispatch_date") or doc.get("dispatch_date") or now_iso()[:10]
+    try:
+        disp_dt = datetime.fromisoformat(str(disp_date_str)[:10])
+        target_dt = disp_dt + timedelta(days=int(delivery_days))
+        update_fields["target_delivery_date"] = payload.target_delivery_date or target_dt.strftime("%Y-%m-%d")
+    except Exception:
+        pass
+
+    # If approved / processing / shipped / delivered, generate the official invoice_no and tax invoice
+    if new_status in ["approved", "processing", "partially_fulfilled", "shipped", "delivered"]:
         inv_no = doc.get("invoice_no") or f"INV-{doc['order_no'].replace('ORD-', '')}"
-        initial_inv = {
-            "invoice_no": inv_no,
-            "date": now_iso()[:10],
-            "amount": doc.get("total", 0),
-            "linked_by": "admin_approval",
-            "items_billed": doc.get("items", [])
-        }
-        update_fields["invoices"] = [initial_inv]
+        update_fields["invoice_no"] = inv_no
+        if not doc.get("invoices"):
+            initial_inv = {
+                "invoice_no": inv_no,
+                "date": now_iso()[:10],
+                "amount": doc.get("total", 0),
+                "linked_by": "admin_approval",
+                "items_billed": doc.get("items", [])
+            }
+            update_fields["invoices"] = [initial_inv]
 
     await db.orders.update_one({"_id": doc["_id"]}, {"$set": update_fields})
     await db.audit_logs.insert_one({
         "actor_id": user["id"], "actor_email": user.get("email", "system"),
-        "action": "order.status", "target": doc["order_no"],
-        "meta": {"from": old_status, "to": new_status},
+        "action": "order.status" if payload.status else "order.delivery_update",
+        "target": doc["order_no"],
+        "meta": {
+            "from": old_status,
+            "to": new_status,
+            "tracking_no": update_fields.get("tracking_no", doc.get("tracking_no")),
+            "delivery_days_total": delivery_days,
+            "target_delivery_date": update_fields.get("target_delivery_date")
+        },
         "created_at": now_iso(),
     })
-    doc["status"] = new_status
+    doc.update(update_fields)
     enriched = await _enrich_orders([doc])
     return enriched[0]
 
@@ -747,22 +817,35 @@ async def update_order_warehouse(order_id: str, payload: WarehouseAssignmentIn,
 
 @router.get("/invoices")
 async def list_invoices(user: dict = Depends(get_current_user)):
-    query = {}
+    """Invoices are only issued to the dealer / buyer after Admin approval."""
+    query = {
+        "status": {"$in": ["approved", "processing", "partially_fulfilled", "shipped", "delivered"]}
+    }
     role = user.get("role")
 
     if role == "dealer":
-        query["dealer_id"] = user["id"]
+        uid = str(user.get("id") or user.get("_id") or "")
+        match_conditions = [{"dealer_id": uid}, {"user_id": uid}]
+        if ObjectId.is_valid(uid):
+            match_conditions.append({"dealer_id": ObjectId(uid)})
+        if user.get("email"):
+            match_conditions.append({"dealer_email": user["email"]})
+        if user.get("user_code"):
+            match_conditions.append({"dealer_code": user["user_code"]})
+        query["$and"] = [{"$or": match_conditions}]
     elif role in ("cnf", "mnp"):
         dealers = await db.users.find({
             "role": "dealer",
             "$or": [{"cnf_id": user["id"]}, {"mnp_id": user["id"]}]
         }).to_list(500)
         sub_dealer_ids = [str(d["_id"]) for d in dealers]
-        query["$or"] = [
-            {"dealer_id": {"$in": sub_dealer_ids + [user["id"]]}},
-            {"cnf_id": user["id"]},
-            {"mnp_id": user["id"]}
-        ]
+        query["$and"] = [{
+            "$or": [
+                {"dealer_id": {"$in": sub_dealer_ids + [user["id"]]}},
+                {"cnf_id": user["id"]},
+                {"mnp_id": user["id"]}
+            ]
+        }]
 
     docs = await db.orders.find(query).sort("created_at", -1).to_list(1000)
     enriched = await _enrich_orders(docs)

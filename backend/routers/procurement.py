@@ -10,8 +10,94 @@ from models import PurchaseOrderIn, POStatusUpdate, WeightMatrixItem
 router = APIRouter(tags=["procurement"])
 
 
+import urllib.parse
+from datetime import datetime, timezone
+
 class CollateTriggerIn(BaseModel):
     triggered_by: str = "manual"
+
+
+class ApproveSupplierPOIn(BaseModel):
+    supplier_id: str
+    warehouse_id: Optional[str] = None
+    custom_phone: Optional[str] = None
+    notes: Optional[str] = None
+    expected_delivery: Optional[str] = None
+
+
+def clean_whatsapp_phone(phone: Optional[str]) -> str:
+    if not phone:
+        return ""
+    digits = "".join(c for c in str(phone) if c.isdigit())
+    if len(digits) == 10:
+        return "91" + digits
+    if len(digits) == 12 and digits.startswith("91"):
+        return digits
+    return digits
+
+
+def build_whatsapp_url(phone: Optional[str], text: str) -> str:
+    clean_p = clean_whatsapp_phone(phone)
+    encoded = urllib.parse.quote(text)
+    if clean_p:
+        return f"https://wa.me/{clean_p}?text={encoded}"
+    return f"https://api.whatsapp.com/send?text={encoded}"
+
+
+def generate_whatsapp_po_message(
+    po_no: str,
+    supplier_name: str,
+    items: list,
+    total_pcs: int,
+    total_kg: float,
+    subtotal: float,
+    gst: float,
+    total: float,
+    warehouse_name: str = "Central Warehouse Hub"
+) -> str:
+    today_str = datetime.now(timezone.utc).strftime("%d %b %Y")
+    lines = [
+        "📦 *OFFICIAL PURCHASE ORDER — YAMINI FLOW*",
+        f"*PO Number:* {po_no}",
+        f"*Date:* {today_str}",
+        f"*Supplier:* {supplier_name}",
+        f"*Destination Hub:* {warehouse_name}",
+        "",
+        "📋 *COLLATED ITEMS & WEIGHT BREAKDOWN:*",
+    ]
+    for idx, it in enumerate(items, 1):
+        name = it.get("product_name") or it.get("sku") or "Fastener Item"
+        size = it.get("size") or ""
+        sku = it.get("sku") or ""
+        pcs = it.get("quantity") or it.get("demanded_pcs") or it.get("recommended_pcs") or 0
+        kg = it.get("quantity_kg") or it.get("recommended_weight_kg") or 0.0
+        wt1000 = it.get("wt_1000_pcs_kg") or it.get("weight_per_1000_pcs") or 0.0
+        rate = it.get("rate") or 0.0
+        amount = it.get("amount") or round(pcs * rate, 2)
+
+        desc = f"{name}" if not size else f"{name} ({size})"
+        lines.append(f"{idx}. *{desc}* [{sku}]")
+        lines.append(f"   • Qty: {pcs:,.0f} Pcs | *Weight: {kg:,.2f} KG* (@ {wt1000:.2f} kg/1k pcs)")
+        lines.append(f"   • Rate: ₹{rate:.2f}/pc | Amount: ₹{amount:,.2f}")
+
+    lines.extend([
+        "",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"⚖️ *TOTAL COLLATED WEIGHT:* {total_kg:,.2f} KG",
+        f"🔢 *TOTAL QUANTITY:* {total_pcs:,.0f} Pcs",
+        f"💵 *SUBTOTAL (Basic):* ₹{subtotal:,.2f}",
+        f"🏷️ *GST (18%):* ₹{gst:,.2f}",
+        f"💰 *GRAND TOTAL:* ₹{total:,.2f}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "",
+        "🚚 *Instructions:*",
+        "1. Please verify fastener sizes and collated weights.",
+        "2. Confirm production schedule and share LR Docket tracking upon dispatch.",
+        "3. Share e-Way bill and Tax Invoice copy.",
+        "",
+        "_Generated via Yamini Flow Intelligent Procurement & Collation Engine._"
+    ])
+    return "\n".join(lines)
 
 
 # ================== TOTAL WEIGHT MATRIX ENDPOINTS ==================
@@ -131,17 +217,20 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
             continue
         avail = inv_agg.get(pid, 0)
         safety = p.get("safety_stock", 0)
-        deficit_pcs = max(0, dem_qty + safety - avail)
-        # If deficit is 0 but demand > 0, we still collate at least demanded or deficit
-        qty_to_order_pcs = max(deficit_pcs, dem_qty if avail < dem_qty else deficit_pcs)
+        net_deficit_pcs = max(0, dem_qty - avail)
+        # If live stock in warehouse is enough for demand, order only to maintain safety buffer if depleted
+        qty_to_order_pcs = net_deficit_pcs if net_deficit_pcs > 0 else (max(0, safety - (avail - dem_qty)) if (avail - dem_qty) < safety else 0)
+        # If total demanded is collated into supplier PO, use demand or deficit
+        procure_pcs = qty_to_order_pcs if qty_to_order_pcs > 0 else dem_qty
         wt_1000 = p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0)
         if wt_1000 == 0.0:
             wt_1000 = 1.0  # fallback weight per 1000 pcs if unknown
-        req_kg = round((qty_to_order_pcs / 1000.0) * wt_1000, 4)
+        req_kg = round((procure_pcs / 1000.0) * wt_1000, 4)
 
         sid = p.get("primary_supplier_id")
         sup = suppliers.get(str(sid)) if sid else None
 
+        rate = p.get("cost", 0) or p.get("price", 0)
         items_breakdown.append({
             "product_id": pid,
             "sku": p.get("sku", ""),
@@ -156,7 +245,10 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
             "recommended_weight_kg": req_kg,
             "supplier_id": str(sid) if sid else "",
             "supplier_name": (sup.get("company") or sup.get("name")) if sup else "Unassigned Supplier",
-            "rate": p.get("cost", 0) or p.get("price", 0),
+            "supplier_phone": sup.get("phone", "") if sup else "",
+            "supplier_company": sup.get("company", "") if sup else "",
+            "rate": rate,
+            "amount": round(qty_to_order_pcs * rate, 2),
             "dealer_codes": sorted(list(dealer_codes_map.get(pid, []))),
             "cnf_codes": sorted(list(mnp_codes_map.get(pid, []))),
             "mnp_codes": sorted(list(mnp_codes_map.get(pid, []))),
@@ -168,11 +260,80 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
         total_kg += req_kg
 
     items_breakdown.sort(key=lambda x: -x["recommended_weight_kg"])
+
+    # Group items by Supplier for direct PO generation & WhatsApp dispatch
+    by_supplier_map = {}
+    for it in items_breakdown:
+        sid = it["supplier_id"] or "unassigned"
+        if sid not in by_supplier_map:
+            sup = suppliers.get(sid)
+            s_name = it["supplier_name"]
+            s_phone = sup.get("phone", "") if sup else it.get("supplier_phone", "")
+            s_company = sup.get("company", "") if sup else s_name
+            s_email = sup.get("email", "") if sup else ""
+            s_city = sup.get("city", "") if sup else ""
+            s_state = sup.get("state", "") if sup else ""
+            s_gstin = sup.get("gstin", "") if sup else ""
+            by_supplier_map[sid] = {
+                "supplier_id": sid,
+                "supplier_name": s_name,
+                "company": s_company,
+                "phone": s_phone,
+                "email": s_email,
+                "city": s_city,
+                "state": s_state,
+                "gstin": s_gstin,
+                "items": [],
+                "total_pcs": 0,
+                "total_kg": 0.0,
+                "subtotal": 0.0,
+                "gst": 0.0,
+                "total": 0.0,
+            }
+        pcs = it["recommended_pcs"]
+        kg = it["recommended_weight_kg"]
+        amt = round(pcs * it["rate"], 2)
+        by_supplier_map[sid]["items"].append({
+            **it,
+            "quantity": pcs,
+            "quantity_kg": kg,
+            "amount": amt,
+        })
+        by_supplier_map[sid]["total_pcs"] += pcs
+        by_supplier_map[sid]["total_kg"] = round(by_supplier_map[sid]["total_kg"] + kg, 2)
+        by_supplier_map[sid]["subtotal"] = round(by_supplier_map[sid]["subtotal"] + amt, 2)
+
+    po_count = await db.purchase_orders.count_documents({})
+    by_supplier_list = []
+    for idx, (sid, s_data) in enumerate(by_supplier_map.items()):
+        sub = s_data["subtotal"]
+        gst_amt = round(sub * 0.18, 2)
+        tot = round(sub + gst_amt, 2)
+        s_data["gst"] = gst_amt
+        s_data["total"] = tot
+        draft_po = f"PO-2026{(po_count + idx + 1):04d}"
+        s_data["draft_po_no"] = draft_po
+        msg = generate_whatsapp_po_message(
+            po_no=draft_po,
+            supplier_name=s_data["supplier_name"],
+            items=s_data["items"],
+            total_pcs=s_data["total_pcs"],
+            total_kg=s_data["total_kg"],
+            subtotal=sub,
+            gst=gst_amt,
+            total=tot,
+            warehouse_name="Central Warehouse Hub"
+        )
+        s_data["whatsapp_message"] = msg
+        s_data["whatsapp_url"] = build_whatsapp_url(s_data["phone"], msg)
+        by_supplier_list.append(s_data)
+
     return {
         "total_orders": total_orders,
         "total_demanded_pcs": total_pcs,
         "estimated_total_kg": round(total_kg, 2),
         "items": items_breakdown,
+        "by_supplier": by_supplier_list,
     }
 
 
@@ -225,15 +386,16 @@ async def execute_order_collation(triggered_by: str = "manual", actor: Optional[
             continue
         avail = inv_agg.get(pid, 0)
         safety = p.get("safety_stock", 0)
-        deficit_pcs = max(0, dem_qty + safety - avail)
-        qty_to_order_pcs = max(deficit_pcs, dem_qty if avail < dem_qty else deficit_pcs)
-        if qty_to_order_pcs <= 0:
+        net_deficit_pcs = max(0, dem_qty - avail)
+        qty_to_order_pcs = net_deficit_pcs if net_deficit_pcs > 0 else (max(0, safety - (avail - dem_qty)) if (avail - dem_qty) < safety else 0)
+        procure_pcs = qty_to_order_pcs if qty_to_order_pcs > 0 else dem_qty
+        if procure_pcs <= 0:
             continue
 
         wt_1000 = p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0)
         if wt_1000 == 0.0:
             wt_1000 = 1.0
-        req_kg = round((qty_to_order_pcs / 1000.0) * wt_1000, 4)
+        req_kg = round((procure_pcs / 1000.0) * wt_1000, 4)
 
         sid = p.get("primary_supplier_id") or "unassigned"
         if sid not in by_supplier:
@@ -438,6 +600,193 @@ async def _po_number() -> str:
     return f"PO-2026{(count + 1):04d}"
 
 
+@router.post("/procurement/approve-supplier-po")
+async def approve_supplier_po(payload: ApproveSupplierPOIn, admin: dict = Depends(require_admin)):
+    """Approve collated items for a single supplier, generate official PO, update source orders, and create WhatsApp redirection."""
+    uncollated = await db.orders.find({
+        "status": {"$in": ["pending", "approved"]},
+        "collated": {"$ne": True}
+    }).to_list(5000)
+
+    if not uncollated:
+        raise HTTPException(400, "No pending uncollated orders found to generate PO")
+
+    # Demanded per product
+    demanded_pcs_map = {}
+    for o in uncollated:
+        for item in o.get("items", []):
+            pid = item["product_id"]
+            demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + item.get("quantity", 0)
+
+    prod_ids = [ObjectId(pid) for pid in demanded_pcs_map.keys() if ObjectId.is_valid(pid)]
+    prods = {str(p["_id"]): p for p in await db.products.find({"_id": {"$in": prod_ids}}).to_list(1000)}
+    inv_docs = await db.inventory.find({}).to_list(5000)
+    inv_agg = {}
+    for idx in inv_docs:
+        pid = idx["product_id"]
+        inv_agg[pid] = inv_agg.get(pid, 0) + max(0, idx.get("quantity", 0) - idx.get("reserved", 0))
+
+    # Supplier details
+    supplier = None
+    if payload.supplier_id and payload.supplier_id != "unassigned" and ObjectId.is_valid(payload.supplier_id):
+        supplier = await db.users.find_one({"_id": ObjectId(payload.supplier_id)})
+
+    sup_name = (supplier.get("company") or supplier.get("name")) if supplier else "Assigned Supplier"
+    sup_phone = payload.custom_phone or (supplier.get("phone") if supplier else "")
+
+    supplier_items = []
+    total_pcs = 0
+    total_kg = 0.0
+
+    for pid, dem_qty in demanded_pcs_map.items():
+        p = prods.get(pid)
+        if not p:
+            continue
+        p_sup = str(p.get("primary_supplier_id") or "unassigned")
+        if payload.supplier_id != "all" and p_sup != payload.supplier_id:
+            continue
+
+        avail = inv_agg.get(pid, 0)
+        safety = p.get("safety_stock", 0)
+        net_deficit_pcs = max(0, dem_qty - avail)
+        qty_to_order_pcs = net_deficit_pcs if net_deficit_pcs > 0 else (max(0, safety - (avail - dem_qty)) if (avail - dem_qty) < safety else 0)
+        procure_pcs = qty_to_order_pcs if qty_to_order_pcs > 0 else dem_qty
+        if procure_pcs <= 0:
+            continue
+
+        wt_1000 = p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0) or 1.0
+        req_kg = round((procure_pcs / 1000.0) * wt_1000, 4)
+        rate = p.get("cost", 0) or p.get("price", 0)
+        amt = round(procure_pcs * rate, 2)
+
+        supplier_items.append({
+            "product_id": pid,
+            "product_name": p.get("name", ""),
+            "category": p.get("category", ""),
+            "size": p.get("size", ""),
+            "sku": p.get("sku", ""),
+            "quantity": qty_to_order_pcs,
+            "quantity_kg": req_kg,
+            "weight_per_1000_pcs": wt_1000,
+            "wt_1000_pcs_kg": wt_1000,
+            "rate": rate,
+            "amount": amt,
+        })
+        total_pcs += qty_to_order_pcs
+        total_kg += req_kg
+
+    if not supplier_items:
+        raise HTTPException(400, f"No collated items found for supplier {sup_name}")
+
+    subtotal = sum(i["amount"] for i in supplier_items)
+    gst = round(subtotal * 0.18, 2)
+    grand_total = round(subtotal + gst, 2)
+
+    # Warehouse resolution
+    wh_id = payload.warehouse_id
+    wh_name = "Central Warehouse Hub"
+    wh_address = "Sector 18, Industrial Area, Bhiwandi, Maharashtra"
+    if wh_id and ObjectId.is_valid(wh_id):
+        wh = await db.warehouses.find_one({"_id": ObjectId(wh_id)})
+        if wh:
+            wh_name = f"{wh.get('name')} ({wh.get('code')})"
+            wh_address = f"{wh.get('address', '')}, {wh.get('city', '')} {wh.get('state', '')}"
+    else:
+        warehouses = await db.warehouses.find({}).to_list(5)
+        if warehouses:
+            wh_id = str(warehouses[0]["_id"])
+            wh_name = f"{warehouses[0].get('name')} ({warehouses[0].get('code')})"
+            wh_address = f"{warehouses[0].get('address', '')}, {warehouses[0].get('city', '')} {warehouses[0].get('state', '')}"
+
+    po_count = await db.purchase_orders.count_documents({})
+    po_no = f"PO-2026{(po_count + 1):04d}"
+
+    msg = generate_whatsapp_po_message(
+        po_no=po_no,
+        supplier_name=sup_name,
+        items=supplier_items,
+        total_pcs=total_pcs,
+        total_kg=round(total_kg, 2),
+        subtotal=subtotal,
+        gst=gst,
+        total=grand_total,
+        warehouse_name=wh_name
+    )
+    whatsapp_url = build_whatsapp_url(sup_phone, msg)
+
+    po_doc = {
+        "po_no": po_no,
+        "supplier_id": payload.supplier_id if payload.supplier_id != "unassigned" else "",
+        "supplier_name": sup_name,
+        "supplier_phone": sup_phone,
+        "supplier_company": supplier.get("company") if supplier else sup_name,
+        "supplier_email": supplier.get("email", "") if supplier else "",
+        "supplier_gstin": supplier.get("gstin", "") if supplier else "",
+        "supplier_city": supplier.get("city", "") if supplier else "",
+        "supplier_state": supplier.get("state", "") if supplier else "",
+        "warehouse_id": wh_id or "",
+        "warehouse_name": wh_name,
+        "warehouse_address": wh_address,
+        "items": supplier_items,
+        "subtotal": round(subtotal, 2),
+        "gst": gst,
+        "total": grand_total,
+        "total_weight_kg": round(total_kg, 2),
+        "total_pieces": total_pcs,
+        "status": "sent",
+        "expected_delivery": payload.expected_delivery or "",
+        "notes": payload.notes or f"Approved via Collation Engine for {sup_name}",
+        "whatsapp_url": whatsapp_url,
+        "whatsapp_message": msg,
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    res = await db.purchase_orders.insert_one(po_doc)
+    po_doc["_id"] = res.inserted_id
+
+    # Mark corresponding dealer orders as collated & processing
+    supplier_prod_ids = set(i["product_id"] for i in supplier_items)
+    affected_order_ids = []
+    for o in uncollated:
+        for item in o.get("items", []):
+            if item["product_id"] in supplier_prod_ids:
+                affected_order_ids.append(o["_id"])
+                break
+
+    if affected_order_ids:
+        await db.orders.update_many(
+            {"_id": {"$in": affected_order_ids}},
+            {"$set": {
+                "collated": True,
+                "status": "processing",
+                "updated_at": now_iso()
+            }}
+        )
+
+    # Audit & Notification
+    await db.audit_logs.insert_one({
+        "actor_id": admin["id"],
+        "actor_email": admin["email"],
+        "action": "procurement.approve_supplier_po",
+        "target": po_no,
+        "meta": {"supplier": sup_name, "total_kg": round(total_kg, 2), "total": grand_total},
+        "created_at": now_iso(),
+    })
+
+    return {
+        "success": True,
+        "po": serialize_doc(po_doc),
+        "po_no": po_no,
+        "whatsapp_url": whatsapp_url,
+        "whatsapp_message": msg,
+        "total_kg": round(total_kg, 2),
+        "total_pcs": total_pcs,
+        "total": grand_total,
+        "supplier_name": sup_name,
+        "supplier_phone": sup_phone,
+    }
+
+
 @router.get("/purchase-orders")
 async def list_purchase_orders(status: str = "", user: dict = Depends(get_current_user)):
     query = {}
@@ -446,6 +795,26 @@ async def list_purchase_orders(status: str = "", user: dict = Depends(get_curren
     if status:
         query["status"] = status
     docs = await db.purchase_orders.find(query).sort("created_at", -1).to_list(1000)
+    
+    # Enrich docs with whatsapp_url and total_weight_kg if missing
+    for d in docs:
+        if not d.get("total_weight_kg"):
+            d["total_weight_kg"] = round(sum(i.get("quantity_kg", 0) for i in d.get("items", [])), 2)
+        if not d.get("whatsapp_url") and d.get("supplier_phone"):
+            msg = d.get("whatsapp_message") or generate_whatsapp_po_message(
+                po_no=d.get("po_no", ""),
+                supplier_name=d.get("supplier_name", ""),
+                items=d.get("items", []),
+                total_pcs=sum(i.get("quantity", 0) for i in d.get("items", [])),
+                total_kg=d.get("total_weight_kg", 0.0),
+                subtotal=d.get("subtotal", 0.0),
+                gst=d.get("gst", 0.0),
+                total=d.get("total", 0.0),
+                warehouse_name=d.get("warehouse_name", "Central Warehouse Hub")
+            )
+            d["whatsapp_message"] = msg
+            d["whatsapp_url"] = build_whatsapp_url(d.get("supplier_phone"), msg)
+            
     return serialize_docs(docs)
 
 
@@ -456,6 +825,22 @@ async def get_po(po_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(404, "Not found")
     if user["role"] == "supplier" and str(doc.get("supplier_id")) != user["id"]:
         raise HTTPException(403, "Forbidden")
+    if not doc.get("total_weight_kg"):
+        doc["total_weight_kg"] = round(sum(i.get("quantity_kg", 0) for i in doc.get("items", [])), 2)
+    if not doc.get("whatsapp_url") and doc.get("supplier_phone"):
+        msg = doc.get("whatsapp_message") or generate_whatsapp_po_message(
+            po_no=doc.get("po_no", ""),
+            supplier_name=doc.get("supplier_name", ""),
+            items=doc.get("items", []),
+            total_pcs=sum(i.get("quantity", 0) for i in doc.get("items", [])),
+            total_kg=doc.get("total_weight_kg", 0.0),
+            subtotal=doc.get("subtotal", 0.0),
+            gst=doc.get("gst", 0.0),
+            total=doc.get("total", 0.0),
+            warehouse_name=doc.get("warehouse_name", "Central Warehouse Hub")
+        )
+        doc["whatsapp_message"] = msg
+        doc["whatsapp_url"] = build_whatsapp_url(doc.get("supplier_phone"), msg)
     return serialize_doc(doc)
 
 
@@ -465,6 +850,7 @@ async def create_po(payload: PurchaseOrderIn, admin: dict = Depends(require_admi
     products = {str(p["_id"]): p for p in await db.products.find({"_id": {"$in": prod_ids}}).to_list(500)}
     items_out = []
     total = 0
+    total_kg = 0.0
     for i in payload.items:
         p = products.get(i.product_id)
         if not p:
@@ -474,27 +860,58 @@ async def create_po(payload: PurchaseOrderIn, admin: dict = Depends(require_admi
         qty_kg = i.quantity_kg if i.quantity_kg > 0 else round((i.quantity / 1000.0) * wt_1000, 4)
         items_out.append({
             "product_id": i.product_id, "product_name": p["name"],
-            "sku": p["sku"], "quantity": i.quantity, "quantity_kg": qty_kg,
+            "sku": p["sku"], "size": p.get("size", ""), "category": p.get("category", ""),
+            "quantity": i.quantity, "quantity_kg": qty_kg,
             "weight_per_1000_pcs": wt_1000, "rate": i.rate, "amount": amount
         })
         total += amount
+        total_kg += qty_kg
 
     supplier = await db.users.find_one({"_id": ObjectId(payload.supplier_id)}) if ObjectId.is_valid(payload.supplier_id) else None
     if not supplier:
         raise HTTPException(400, "Supplier not found")
     po_no = await _po_number()
+
+    # Warehouse info
+    wh = await db.warehouses.find_one({"_id": ObjectId(payload.warehouse_id)}) if ObjectId.is_valid(payload.warehouse_id) else None
+    wh_name = f"{wh.get('name')} ({wh.get('code')})" if wh else "Central Warehouse Hub"
+
+    subtotal = total
+    gst = round(total * 0.18, 2)
+    grand_total = round(total * 1.18, 2)
+
+    msg = generate_whatsapp_po_message(
+        po_no=po_no,
+        supplier_name=supplier.get("company") or supplier.get("name"),
+        items=items_out,
+        total_pcs=sum(i["quantity"] for i in items_out),
+        total_kg=round(total_kg, 2),
+        subtotal=subtotal,
+        gst=gst,
+        total=grand_total,
+        warehouse_name=wh_name
+    )
+    whatsapp_url = build_whatsapp_url(supplier.get("phone"), msg)
+
     doc = {
         "po_no": po_no,
         "supplier_id": payload.supplier_id,
         "supplier_name": supplier.get("company") or supplier.get("name"),
+        "supplier_phone": supplier.get("phone", ""),
+        "supplier_company": supplier.get("company", ""),
+        "supplier_gstin": supplier.get("gstin", ""),
         "warehouse_id": payload.warehouse_id,
+        "warehouse_name": wh_name,
         "items": items_out,
-        "subtotal": total,
-        "gst": round(total * 0.18, 2),
-        "total": round(total * 1.18, 2),
+        "subtotal": subtotal,
+        "gst": gst,
+        "total": grand_total,
+        "total_weight_kg": round(total_kg, 2),
         "status": "draft",
         "expected_delivery": payload.expected_delivery or "",
         "notes": payload.notes or "",
+        "whatsapp_url": whatsapp_url,
+        "whatsapp_message": msg,
         "created_at": now_iso(),
         "updated_at": now_iso(),
     }
@@ -503,7 +920,7 @@ async def create_po(payload: PurchaseOrderIn, admin: dict = Depends(require_admi
 
     await db.notifications.insert_one({
         "user_id": payload.supplier_id, "title": f"New Purchase Order {po_no}",
-        "body": f"₹{doc['total']:.0f} — {len(items_out)} items ({sum(i['quantity_kg'] for i in items_out):.2f} kg)",
+        "body": f"₹{doc['total']:.0f} — {len(items_out)} items ({total_kg:.2f} kg)",
         "kind": "info", "read": False, "created_at": now_iso(),
     })
     await db.audit_logs.insert_one({

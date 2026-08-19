@@ -14,6 +14,47 @@ import { Eye, Plus, Stack, Printer, FileText, CheckCircle, Clock, Truck, Package
 import ReceiptModal from "@/components/common/ReceiptModal";
 import TaxInvoiceModal from "@/components/common/TaxInvoiceModal";
 
+export function getDeliveryCountdown(order) {
+  if (!order) return null;
+  const statusLower = (order.status || "").toLowerCase();
+  const isDelivered = statusLower === "delivered";
+  const isShipped = ["shipped", "in_transit"].includes(statusLower) || Boolean(order.tracking_no);
+  
+  if (!isShipped && !isDelivered) return null;
+
+  const totalDays = Number(order.delivery_days_total) || 7;
+  const dispatchDateStr = order.dispatch_date ? String(order.dispatch_date).slice(0, 10) : (order.created_at ? String(order.created_at).slice(0, 10) : new Date().toISOString().slice(0, 10));
+
+  let targetDate;
+  if (order.target_delivery_date) {
+    targetDate = new Date(String(order.target_delivery_date).slice(0, 10) + "T00:00:00");
+  } else {
+    targetDate = new Date(dispatchDateStr + "T00:00:00");
+    targetDate.setDate(targetDate.getDate() + totalDays);
+  }
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const diffTime = targetDate.getTime() - today.getTime();
+  const remainingDays = Math.ceil(diffTime / msPerDay);
+  const daysPassed = Math.max(0, totalDays - Math.max(0, remainingDays));
+  const progressPct = isDelivered ? 100 : Math.min(100, Math.max(10, Math.round(((totalDays - Math.max(0, remainingDays)) / totalDays) * 100)));
+
+  return {
+    isDelivered,
+    totalDays,
+    remainingDays: Math.max(0, remainingDays),
+    daysPassed,
+    progressPct,
+    isDueToday: remainingDays === 0 && !isDelivered,
+    isOverdue: remainingDays < 0 && !isDelivered,
+    targetDateFormatted: targetDate.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" }),
+    dispatchDateFormatted: new Date(dispatchDateStr + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+  };
+}
+
 const STATUS_OPTIONS = ["pending", "approved", "processing", "partially_fulfilled", "shipped", "delivered", "cancelled"];
 
 export default function OrdersPage() {
@@ -53,6 +94,15 @@ export default function OrdersPage() {
   const [partialBillInputs, setPartialBillInputs] = useState({});
   const [billingInvoiceNo, setBillingInvoiceNo] = useState("");
   const [savingBilling, setSavingBilling] = useState(false);
+
+  // Dispatch / Shipping Modal State with Live Days Configurator
+  const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
+  const [dispatchCarrier, setDispatchCarrier] = useState("SafeXpress Logistics");
+  const [dispatchTrackingNo, setDispatchTrackingNo] = useState("");
+  const [dispatchDays, setDispatchDays] = useState(7);
+  const [dispatchDate, setDispatchDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dispatchNotes, setDispatchNotes] = useState("");
+  const [isEditDeliveryMode, setIsEditDeliveryMode] = useState(false);
 
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -136,15 +186,60 @@ export default function OrdersPage() {
     }
   };
 
-  const updateStatus = async (orderId, newStatus, notes = "") => {
+  const updateStatus = async (orderId, newStatus, notes = "", extraFields = {}) => {
     setUpdatingStatus(true);
     try {
-      const { data } = await api.patch(`/orders/${orderId}/status`, { status: newStatus, notes });
+      const payload = { status: newStatus, notes, ...extraFields };
+      const { data } = await api.patch(`/orders/${orderId}/status`, payload);
       toast.success(`Order ${data.order_no} status updated to ${newStatus.toUpperCase()}`);
       load();
       if (selected?.id === orderId) setSelected(data);
+      setDispatchModalOpen(false);
     } catch (e) { 
       toast.error(e.response?.data?.detail || "Failed to update order status"); 
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  const handleDispatchSubmit = async () => {
+    if (!selected) return;
+    if (!dispatchTrackingNo.trim()) {
+      return toast.error("Please enter a Tracking ID / LR Docket Number before confirming dispatch");
+    }
+    const daysNum = parseInt(dispatchDays, 10) || 7;
+    const dispDate = dispatchDate || new Date().toISOString().slice(0, 10);
+    const targetDt = new Date(dispDate + "T00:00:00");
+    targetDt.setDate(targetDt.getDate() + daysNum);
+    const targetDateStr = targetDt.toISOString().slice(0, 10);
+
+    const payload = {
+      carrier: dispatchCarrier.trim() || "SafeXpress Logistics",
+      tracking_no: dispatchTrackingNo.trim(),
+      dispatch_date: dispDate,
+      delivery_days_total: daysNum,
+      estimated_delivery_days: `${daysNum} Working Days`,
+      target_delivery_date: targetDateStr,
+      notes: dispatchNotes.trim() || undefined,
+    };
+
+    if (!isEditDeliveryMode) {
+      payload.status = "shipped";
+    }
+
+    setUpdatingStatus(true);
+    try {
+      const { data } = await api.patch(`/orders/${selected.id}/status`, payload);
+      toast.success(
+        isEditDeliveryMode
+          ? `Delivery timeframe updated: ${daysNum}-day countdown refreshed!`
+          : `Order ${data.order_no} dispatched! ${daysNum}-day delivery countdown started.`
+      );
+      load();
+      setSelected(data);
+      setDispatchModalOpen(false);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to update shipment tracking");
     } finally {
       setUpdatingStatus(false);
     }
@@ -450,6 +545,14 @@ export default function OrdersPage() {
                             {o.reservation_status === "partially_reserved" && (
                               <div className="text-[9px] font-bold text-amber-700 font-mono">Partial Stock</div>
                             )}
+                            {["shipped", "in_transit"].includes(o.status?.toLowerCase()) && (() => {
+                              const cd = getDeliveryCountdown(o);
+                              return cd ? (
+                                <div className="text-[9px] font-mono font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded w-max">
+                                  ⏳ {cd.remainingDays > 0 ? `${cd.remainingDays}d left` : "Today"}
+                                </div>
+                              ) : null;
+                            })()}
                           </div>
                         </td>
                         <td className="text-[#5C6670] text-xs">{fmt.datetime(o.created_at)}</td>
@@ -490,223 +593,483 @@ export default function OrdersPage() {
           <DialogHeader className="flex flex-row items-center justify-between border-b pb-3">
             <div>
               <DialogTitle className="text-lg font-bold">Order Breakdown: {selected?.order_no}</DialogTitle>
-              <div className="text-xs text-slate-500 font-mono mt-0.5">
-                Invoice No: {selected?.invoice_no || "INV-PENDING"} • Warehouse: {selected?.warehouse_name ? `${selected.warehouse_name}${selected.warehouse_code ? ` (${selected.warehouse_code})` : ''}` : "Main Warehouse"}
+              <div className="text-xs text-slate-500 font-mono mt-0.5 flex items-center gap-2 flex-wrap">
+                <span>Invoice:</span>
+                {["approved", "processing", "partially_fulfilled", "shipped", "delivered"].includes(selected?.status?.toLowerCase()) ? (
+                  <strong className="text-indigo-700 font-mono font-bold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                    {selected?.invoice_no || `INV-${selected?.order_no?.replace("ORD-", "")}`}
+                  </strong>
+                ) : (
+                  <span className="text-amber-800 bg-amber-100 px-2 py-0.5 rounded font-semibold border border-amber-300 text-[11px]">
+                    ⏳ Issued After Admin Approval
+                  </span>
+                )}
+                <span>• Warehouse: <strong>{selected?.warehouse_name ? `${selected.warehouse_name}${selected.warehouse_code ? ` (${selected.warehouse_code})` : ''}` : "Main Warehouse"}</strong></span>
               </div>
             </div>
-            {["approved", "processing", "partially_fulfilled", "shipped", "delivered"].includes(selected?.status?.toLowerCase()) && (
+            {["approved", "processing", "partially_fulfilled", "shipped", "delivered"].includes(selected?.status?.toLowerCase()) ? (
               <button
                 onClick={() => setInvoiceModalOrder(selected)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow transition-all"
               >
                 <FileText size={15} weight="bold" /> Download Official GST Tax Invoice
               </button>
+            ) : (
+              <div className="text-xs text-slate-600 bg-slate-100 px-3 py-1 rounded border border-slate-200 font-medium">
+                🔒 Tax Invoice available once Admin approves order
+              </div>
             )}
           </DialogHeader>
-          {selected && (
-            <div className="py-2 space-y-4">
-              <div className="grid grid-cols-6 gap-3 text-sm bg-[#F8FAFC] p-3 rounded-lg border border-[#E5E7EB]">
-                <div>
-                  <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Party / Depot</div>
-                  <div className="font-bold mt-0.5 text-[#06182F]">{selected.dealer_name}</div>
-                  <div className="font-mono text-[11px] text-[#854D0E] bg-[#FEF08A] px-1.5 py-0.5 rounded font-bold w-max mt-0.5">
-                    {selected.dealer_code || "D-ASSIGNED"}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Assigned Under</div>
-                  <div className="mt-1">
-                    {selected.cnf_code && selected.cnf_code !== "DIRECT" ? (
-                      <span className="bg-[#BAE6FD] text-[#0369A1] px-2 py-0.5 rounded font-mono font-bold text-xs inline-flex items-center gap-1 shadow-sm">
-                        <span>🏷️</span> {selected.cnf_code}
-                      </span>
-                    ) : (
-                      <span className="bg-[#E6F4EA] text-[#137333] px-2 py-0.5 rounded font-medium text-xs border border-[#CEEAD6] inline-flex items-center gap-1">
-                        <span>⚡</span> Direct HQ
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Warehouse Hub</div>
-                  <div className="font-medium mt-0.5 text-xs">{selected.warehouse_name ? `${selected.warehouse_name}${selected.warehouse_code ? ` (${selected.warehouse_code})` : ''}` : "Main Warehouse"}</div>
-                </div>
-                <div>
-                  <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Stock Allocation</div>
-                  <div className="mt-0.5">
-                    <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase font-mono ${
-                      selected.reservation_status === "reserved" ? "bg-emerald-100 text-emerald-800" :
-                      selected.reservation_status === "partially_reserved" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800"
-                    }`}>
-                      {selected.reservation_status || "Pending"}
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Order Status</div>
-                  <div className="mt-0.5"><StatusBadge status={selected.status} /></div>
-                </div>
-                <div>
-                  <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Payment</div>
-                  <div className="mt-1">
-                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      selected.payment_status === "paid"
-                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                        : "bg-amber-50 text-amber-700 border border-amber-200"
-                    }`}>
-                      {selected.payment_status || "unpaid"}
-                    </span>
-                  </div>
-                </div>
-              </div>
+          {selected && (() => {
+            const totalOrderedPcs = selected.items?.reduce((s, i) => s + (i.quantity_ordered ?? i.quantity ?? 0), 0) || 0;
+            const totalAllocatedPcs = selected.items?.reduce((s, i) => s + (i.quantity_allocated ?? (["approved", "processing", "shipped", "delivered"].includes(selected.status?.toLowerCase()) || selected.reservation_status === "reserved" ? (i.quantity_ordered ?? i.quantity ?? 0) : 0)), 0) || 0;
+            const totalInvoicedPcs = selected.items?.reduce((s, i) => s + (i.quantity_invoiced ?? 0), 0) || 0;
+            const totalPendingPcs = selected.items?.reduce((s, i) => s + (i.quantity_pending ?? Math.max(0, (i.quantity_ordered ?? i.quantity ?? 0) - (i.quantity_allocated ?? 0))), 0) || 0;
+            const fulfillmentPct = totalOrderedPcs > 0 ? Math.min(100, Math.round((totalAllocatedPcs / totalOrderedPcs) * 100)) : 100;
+            const isShippedOrDelivered = ["shipped", "delivered"].includes(selected.status?.toLowerCase()) || Boolean(selected.carrier);
 
-              {/* Admin Fulfillment Warehouse Hub Switcher & Allocation Overview */}
-              {isAdmin && (
-                <div className="bg-[#0F172A] text-white p-3.5 rounded-lg border border-[#334155] flex flex-wrap items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-md bg-[#F28C18]/20 border border-[#F28C18]/40 flex items-center justify-center text-[#F28C18] flex-shrink-0">
-                      <Warehouse size={18} weight="bold" />
+            return (
+              <div className="py-2 space-y-4">
+                <div className="grid grid-cols-6 gap-3 text-sm bg-[#F8FAFC] p-3 rounded-lg border border-[#E5E7EB]">
+                  <div>
+                    <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Party / Depot</div>
+                    <div className="font-bold mt-0.5 text-[#06182F]">{selected.dealer_name}</div>
+                    <div className="font-mono text-[11px] text-[#854D0E] bg-[#FEF08A] px-1.5 py-0.5 rounded font-bold w-max mt-0.5">
+                      {selected.dealer_code || "D-ASSIGNED"}
                     </div>
-                    <div>
-                      <div className="font-bold text-white flex items-center gap-2">
-                        <span>Fulfillment Warehouse Hub:</span>
-                        <span className="text-[#FEF08A] font-mono font-semibold">{selected.warehouse_name || "Main Warehouse"} ({selected.warehouse_code || "WH-MAIN"})</span>
-                        {selected.allocation_method === "smart_allocated" && (
-                          <span className="text-[9px] bg-blue-500/30 text-blue-300 font-extrabold px-1.5 py-0.5 rounded border border-blue-400/40">
-                            SMART ALLOCATED
-                          </span>
-                        )}
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Assigned Under</div>
+                    <div className="mt-1">
+                      {selected.cnf_code && selected.cnf_code !== "DIRECT" ? (
+                        <span className="bg-[#BAE6FD] text-[#0369A1] px-2 py-0.5 rounded font-mono font-bold text-xs inline-flex items-center gap-1 shadow-sm">
+                          <span>🏷️</span> {selected.cnf_code}
+                        </span>
+                      ) : (
+                        <span className="bg-[#E6F4EA] text-[#137333] px-2 py-0.5 rounded font-medium text-xs border border-[#CEEAD6] inline-flex items-center gap-1">
+                          <span>⚡</span> Direct HQ
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Warehouse Hub</div>
+                    <div className="font-medium mt-0.5 text-xs">{selected.warehouse_name ? `${selected.warehouse_name}${selected.warehouse_code ? ` (${selected.warehouse_code})` : ''}` : "Main Warehouse"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Stock Allocation</div>
+                    <div className="mt-0.5">
+                      <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase font-mono ${
+                        selected.reservation_status === "reserved" ? "bg-emerald-100 text-emerald-800" :
+                        selected.reservation_status === "partially_reserved" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800"
+                      }`}>
+                        {selected.reservation_status || "Pending"}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Order Status</div>
+                    <div className="mt-0.5"><StatusBadge status={selected.status} /></div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase text-[#5C6670] tracking-wider">Payment</div>
+                    <div className="mt-1">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        selected.payment_status === "paid"
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : "bg-amber-50 text-amber-700 border border-amber-200"
+                      }`}>
+                        {selected.payment_status || "unpaid"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Prominent Consignment In-Transit & Estimated Delivery Countdown Banner */}
+                {isShippedOrDelivered && (() => {
+                  const countdown = getDeliveryCountdown(selected);
+                  if (!countdown) return null;
+                  return (
+                    <div className="bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 text-white p-4 sm:p-5 rounded-xl border border-indigo-700/80 shadow-lg space-y-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-xl bg-indigo-500/20 border border-indigo-400/40 flex items-center justify-center text-indigo-300 flex-shrink-0 shadow-inner">
+                            <Truck size={28} weight="bold" />
+                          </div>
+                          <div>
+                            <div className="font-extrabold text-sm sm:text-base flex items-center gap-2 flex-wrap">
+                              <span>{countdown.isDelivered ? "✓ Consignment Delivered" : "📦 Order Dispatched & In-Transit"}</span>
+                              <span className={`text-[10px] uppercase font-mono px-2.5 py-0.5 rounded-full font-bold shadow-sm ${
+                                countdown.isDelivered ? "bg-emerald-500 text-white" : "bg-blue-500 text-white animate-pulse"
+                              }`}>
+                                {selected.status?.toUpperCase() || "SHIPPED"}
+                              </span>
+                            </div>
+                            <div className="text-xs text-indigo-200 mt-1 flex items-center gap-2 flex-wrap">
+                              <span>Carrier: <strong className="text-white">{selected.carrier || "SafeXpress Logistics"}</strong></span>
+                              <span>•</span>
+                              <span className="flex items-center gap-1">
+                                LR/Docket No: <strong className="text-amber-300 font-mono font-bold bg-amber-500/20 px-2 py-0.5 rounded border border-amber-400/30">{selected.tracking_no || `TRK-${selected.order_no.replace("ORD-", "")}`}</strong>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Live Countdown Display Box */}
+                        <div className="bg-white/10 backdrop-blur-md border border-white/20 px-4 py-2.5 rounded-xl text-right min-w-[210px] shadow-sm">
+                          <div className="text-[10px] uppercase font-bold text-amber-300 tracking-wider flex items-center justify-end gap-1">
+                            <Clock size={13} weight="bold" /> Live Delivery Countdown
+                          </div>
+                          <div className="text-lg sm:text-xl font-black font-mono mt-0.5">
+                            {countdown.isDelivered ? (
+                              <span className="text-emerald-400">✓ Delivered</span>
+                            ) : countdown.isDueToday ? (
+                              <span className="text-emerald-400 animate-bounce">🚀 Arriving Today!</span>
+                            ) : (
+                              <span className="text-amber-300">⏳ {countdown.remainingDays} Days Left</span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-indigo-200">
+                            {countdown.isDelivered ? "Reached destination depot" : `Expected by: ${countdown.targetDateFormatted}`}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-[10px] text-[#94A3B8]">Admin can manually reassign the fulfillment warehouse hub anytime</div>
+
+                      {/* Visual Journey Stepper & Daily Countdown Progress Bar */}
+                      <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
+                        <div className="flex justify-between items-center text-[11px] font-mono flex-wrap gap-1">
+                          <div className="flex items-center gap-1.5 text-emerald-300 font-semibold">
+                            <span>🚀 Dispatched:</span>
+                            <span className="text-white">{countdown.dispatchDateFormatted}</span>
+                          </div>
+                          <div className="text-center text-indigo-200 text-[10px]">
+                            <span>{countdown.isDelivered ? "Delivery Complete (100%)" : `Day ${countdown.daysPassed + 1} of ${countdown.totalDays} (Updates daily at midnight)`}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-amber-300 font-semibold">
+                            <span>🎯 Target Arrival:</span>
+                            <span className="text-white">{countdown.targetDateFormatted}</span>
+                          </div>
+                        </div>
+
+                        {/* Dynamic Progress Bar */}
+                        <div className="w-full bg-slate-800/90 rounded-full h-2.5 overflow-hidden border border-indigo-900/50">
+                          <div
+                            className={`h-2.5 transition-all duration-500 rounded-full ${
+                              countdown.isDelivered ? "bg-emerald-500" : "bg-gradient-to-r from-blue-500 via-indigo-400 to-amber-400"
+                            }`}
+                            style={{ width: `${countdown.progressPct}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Admin Action Option to Change Delivery Timeframe Anytime */}
+                      {isAdmin && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-indigo-800/80 text-xs">
+                          <div className="text-[11px] text-indigo-200 font-mono">
+                            Origin: <strong className="text-white">{selected.warehouse_name || "Central Warehouse"}</strong> • Destination: <strong className="text-white">{selected.dealer_state || "Registered Depot"}</strong>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setDispatchTrackingNo(selected.tracking_no || `TRK-${selected.order_no.replace("ORD-", "")}`);
+                              setDispatchCarrier(selected.carrier || "SafeXpress Logistics");
+                              setDispatchDays(selected.delivery_days_total || 7);
+                              setDispatchDate(selected.dispatch_date ? String(selected.dispatch_date).slice(0, 10) : new Date().toISOString().slice(0, 10));
+                              setDispatchNotes(selected.notes || "");
+                              setIsEditDeliveryMode(true);
+                              setDispatchModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-indigo-500/30 hover:bg-indigo-500/50 border border-indigo-400/50 text-white font-semibold text-xs transition-all shadow-xs"
+                          >
+                            <Clock size={14} weight="bold" /> ✏️ Change Delivery Timeframe / Tracking
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Live Stock Allocation Status Banner */}
+                {totalPendingPcs === 0 ? (
+                  <div className="bg-emerald-50 border border-emerald-300 p-3.5 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-black text-base shadow-sm">
+                        ✓
+                      </div>
+                      <div>
+                        <div className="font-bold text-xs text-emerald-950 flex items-center gap-2">
+                          <span>100% Stock Available & Allocated from Live Inventory</span>
+                          <span className="font-mono text-[10px] bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded-full font-black border border-emerald-300">
+                            {fmt.num(totalOrderedPcs)} pcs Billed
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-emerald-800 mt-0.5">
+                          All items are fully in-stock in warehouse inventory ({selected.warehouse_name || "Main Warehouse"}) and allocated for immediate fulfillment.
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right font-mono font-black text-sm text-emerald-700 bg-white/80 px-3 py-1.5 rounded-lg border border-emerald-200 shadow-2xs">
+                      100% Fulfilled
                     </div>
                   </div>
+                ) : (
+                  <div className="bg-gradient-to-r from-amber-50/90 via-orange-50/70 to-amber-100/90 border border-amber-300 p-4 rounded-xl space-y-3 shadow-sm">
+                    {/* Notice Header & Badges */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-amber-200/80">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold text-base shadow-sm">
+                          📦
+                        </div>
+                        <div>
+                          <div className="font-extrabold text-xs uppercase tracking-wider text-amber-950 flex items-center gap-2">
+                            <span>Billing Allocation & Stock Replenishment Notice</span>
+                          </div>
+                          <div className="text-[11px] text-amber-800 font-medium mt-0.5">
+                            Order split billing breakdown based on live warehouse inventory
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 font-mono text-xs">
+                        <span className="bg-emerald-100 text-emerald-800 font-bold px-2.5 py-1 rounded-md border border-emerald-200 shadow-2xs">
+                          ✓ {fmt.num(totalAllocatedPcs)} pcs Billed Now
+                        </span>
+                        <span className="bg-amber-100 text-amber-900 font-bold px-2.5 py-1 rounded-md border border-amber-300 shadow-2xs">
+                          ⏳ {fmt.num(totalPendingPcs)} pcs On Replenishment
+                        </span>
+                      </div>
+                    </div>
 
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={reassignWhId}
-                      onChange={(e) => setReassignWhId(e.target.value)}
-                      className="h-8 px-2.5 rounded bg-[#1E293B] border border-[#475569] text-xs text-white outline-none focus:border-[#F28C18]"
-                    >
-                      {warehouses.map((w) => (
-                        <option key={w.id} value={w.id}>
-                          {w.name} ({w.code}) • {w.city || w.state}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={handleReassignWarehouse}
-                      disabled={reassigningWh || reassignWhId === selected.warehouse_id}
-                      className="h-8 px-3 rounded bg-[#F28C18] hover:bg-[#D96B0B] text-white font-bold transition-all shadow disabled:opacity-50"
-                    >
-                      {reassigningWh ? "Reallocating…" : "Change Warehouse Hub"}
-                    </button>
-                  </div>
-                </div>
-              )}
+                    {/* Dual Highlight Stat Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Billed For You Card */}
+                      <div className="bg-white/95 border border-emerald-300/90 rounded-lg p-3 shadow-xs">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+                          <span>Currently Being Billed For You</span>
+                        </div>
+                        <div className="flex items-baseline gap-2 mt-1.5">
+                          <span className="text-xl font-black font-mono text-emerald-700">
+                            {fmt.num(totalAllocatedPcs)} pcs
+                          </span>
+                          <span className="text-xs text-emerald-600 font-bold font-mono">
+                            ({fulfillmentPct}% fulfilled)
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 mt-1 leading-snug">
+                          Allocated and being billed for you from current available warehouse stock.
+                        </p>
+                      </div>
 
-              {/* Admin Processing & Status Controls */}
-              {isAdmin && (
-                <div className="bg-slate-900 text-white p-3 rounded-lg flex flex-wrap items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2 font-semibold">
-                    <span className="text-amber-400 font-bold uppercase tracking-wider text-[11px]">Admin Actions:</span>
-                    <span>Update Order & Processing Lifecycle</span>
+                      {/* Remaining Replenishment Card */}
+                      <div className="bg-white/95 border border-amber-300/90 rounded-lg p-3 shadow-xs">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>
+                          <span>To Be Billed On Stock Replenishment</span>
+                        </div>
+                        <div className="flex items-baseline gap-2 mt-1.5">
+                          <span className="text-xl font-black font-mono text-amber-800">
+                            {fmt.num(totalPendingPcs)} pcs
+                          </span>
+                          <span className="text-xs text-amber-700 font-bold font-mono">
+                            ({100 - fulfillmentPct}% remaining)
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 mt-1 leading-snug">
+                          The rest will be billed as per stock replenishment upon incoming inventory.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Explanatory Banner Note */}
+                    <div className="text-xs text-amber-950 leading-relaxed bg-amber-100/70 p-3 rounded-lg border border-amber-200/80 flex items-start gap-2.5">
+                      <span className="text-base flex-shrink-0">💡</span>
+                      <div>
+                        <strong>{fmt.num(totalAllocatedPcs)} pcs</strong> is currently being billed for you from available stock, and the rest (<strong className="font-mono text-amber-900 font-bold">{fmt.num(totalPendingPcs)} pcs</strong>) will be billed as per the stock replenishment.
+                      </div>
+                    </div>
+
+                    {/* Fulfillment Progress Bar */}
+                    <div className="space-y-1 pt-1">
+                      <div className="flex justify-between text-[11px] font-mono font-semibold text-amber-950">
+                        <span className="text-emerald-800">{fulfillmentPct}% Billed From Available Stock</span>
+                        <span className="text-amber-800">{100 - fulfillmentPct}% Remaining For Stock Replenishment</span>
+                      </div>
+                      <div className="w-full bg-amber-200/80 rounded-full h-2.5 overflow-hidden flex">
+                        <div className="bg-emerald-600 h-2.5 transition-all duration-300" style={{ width: `${fulfillmentPct}%` }} title={`${fulfillmentPct}% Billed Now`}></div>
+                        <div className="bg-amber-500 h-2.5 transition-all duration-300" style={{ width: `${100 - fulfillmentPct}%` }} title={`${100 - fulfillmentPct}% Under Stock Replenishment`}></div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {selected.status === "pending" && (
-                      <button
-                        onClick={() => updateStatus(selected.id, "approved")}
-                        disabled={updatingStatus}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold transition-all inline-flex items-center gap-1"
+                )}
+
+                {/* Admin Fulfillment Warehouse Hub Switcher */}
+                {isAdmin && (
+                  <div className="bg-[#0F172A] text-white p-3.5 rounded-lg border border-[#334155] flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-md bg-[#F28C18]/20 border border-[#F28C18]/40 flex items-center justify-center text-[#F28C18] flex-shrink-0">
+                        <Warehouse size={18} weight="bold" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-white flex items-center gap-2">
+                          <span>Fulfillment Warehouse Hub:</span>
+                          <span className="text-[#FEF08A] font-mono font-semibold">{selected.warehouse_name || "Main Warehouse"} ({selected.warehouse_code || "WH-MAIN"})</span>
+                          {selected.allocation_method === "smart_allocated" && (
+                            <span className="text-[9px] bg-blue-500/30 text-blue-300 font-extrabold px-1.5 py-0.5 rounded border border-blue-400/40">
+                              SMART ALLOCATED
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-[#94A3B8]">Admin can manually reassign the fulfillment warehouse hub anytime</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={reassignWhId}
+                        onChange={(e) => setReassignWhId(e.target.value)}
+                        className="h-8 px-2.5 rounded bg-[#1E293B] border border-[#475569] text-xs text-white outline-none focus:border-[#F28C18]"
                       >
-                        <CheckCircle size={14} weight="bold" /> Approve & Reserve Stock
+                        {warehouses.map((w) => (
+                          <option key={w.id} value={w.id}>
+                            {w.name} ({w.code}) • {w.city || w.state}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={handleReassignWarehouse}
+                        disabled={reassigningWh || reassignWhId === selected.warehouse_id}
+                        className="h-8 px-3 rounded bg-[#F28C18] hover:bg-[#D96B0B] text-white font-bold transition-all shadow disabled:opacity-50"
+                      >
+                        {reassigningWh ? "Reallocating…" : "Change Warehouse Hub"}
                       </button>
-                    )}
-                    {["approved", "partially_fulfilled"].includes(selected.status) && (
-                      <>
+                    </div>
+                  </div>
+                )}
+
+                {/* Admin Processing & Status Controls */}
+                {isAdmin && (
+                  <div className="bg-slate-900 text-white p-3 rounded-lg flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2 font-semibold">
+                      <span className="text-amber-400 font-bold uppercase tracking-wider text-[11px]">Admin Actions:</span>
+                      <span>Update Order Lifecycle</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {selected.status === "pending" && (
                         <button
-                          onClick={() => updateStatus(selected.id, "processing")}
+                          onClick={() => updateStatus(selected.id, "approved")}
                           disabled={updatingStatus}
-                          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded font-bold transition-all inline-flex items-center gap-1"
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-bold transition-all inline-flex items-center gap-1 shadow"
                         >
-                          <Clock size={14} weight="bold" /> Mark Under Processing
+                          <CheckCircle size={14} weight="bold" /> Approve & Reserve Stock
                         </button>
-                        <button
-                          onClick={() => {
-                            setBillingInvoiceNo(`INV-${selected.order_no.replace("ORD-", "")}-P${(selected.invoices?.length || 0) + 1}`);
-                            const init = {};
-                            selected.items?.forEach(it => {
-                              init[it.product_id] = it.quantity_pending || Math.max(0, (it.quantity_ordered || it.quantity) - (it.quantity_invoiced || 0));
-                            });
-                            setPartialBillInputs(init);
-                            setPartialBillModalOpen(true);
-                          }}
-                          className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded font-bold transition-all inline-flex items-center gap-1"
-                        >
-                          <FileText size={14} weight="bold" /> Record Partial Billing
-                        </button>
-                      </>
-                    )}
-                    {selected.status === "processing" && (
-                      <button
-                        onClick={() => updateStatus(selected.id, "shipped")}
-                        disabled={updatingStatus}
-                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold transition-all inline-flex items-center gap-1"
-                      >
-                        <Truck size={14} weight="bold" /> Mark Shipped / Dispatched
-                      </button>
-                    )}
-                    {selected.status === "shipped" && (
-                      <button
-                        onClick={() => updateStatus(selected.id, "delivered")}
-                        disabled={updatingStatus}
-                        className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white rounded font-bold transition-all inline-flex items-center gap-1"
-                      >
-                        <Package size={14} weight="bold" /> Mark Delivered
-                      </button>
-                    )}
+                      )}
+                      {["approved", "partially_fulfilled", "processing"].includes(selected.status) && (
+                        <>
+                          <button
+                            onClick={() => updateStatus(selected.id, "processing")}
+                            disabled={updatingStatus}
+                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded font-bold transition-all inline-flex items-center gap-1 shadow"
+                          >
+                            <Clock size={14} weight="bold" /> Mark Under Processing
+                          </button>
+                          <button
+                            onClick={() => {
+                              setBillingInvoiceNo(`INV-${selected.order_no.replace("ORD-", "")}-P${(selected.invoices?.length || 0) + 1}`);
+                              const init = {};
+                              selected.items?.forEach(it => {
+                                init[it.product_id] = it.quantity_pending ?? Math.max(0, (it.quantity_ordered || it.quantity) - (it.quantity_invoiced || 0));
+                              });
+                              setPartialBillInputs(init);
+                              setPartialBillModalOpen(true);
+                            }}
+                            className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded font-bold transition-all inline-flex items-center gap-1 shadow"
+                          >
+                            <FileText size={14} weight="bold" /> Record Partial Billing
+                          </button>
+                          <button
+                            onClick={() => {
+                              setDispatchTrackingNo(selected.tracking_no || `TRK-${selected.order_no.replace("ORD-", "")}`);
+                              setDispatchCarrier(selected.carrier || "SafeXpress Logistics");
+                              setDispatchDays(selected.delivery_days_total || 7);
+                              setDispatchDate(selected.dispatch_date ? String(selected.dispatch_date).slice(0, 10) : new Date().toISOString().slice(0, 10));
+                              setDispatchNotes(selected.notes || "");
+                              setIsEditDeliveryMode(false);
+                              setDispatchModalOpen(true);
+                            }}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold transition-all inline-flex items-center gap-1 shadow"
+                          >
+                            <Truck size={14} weight="bold" /> Mark Shipped & Dispatch
+                          </button>
+                        </>
+                      )}
+                      {selected.status === "shipped" && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setDispatchTrackingNo(selected.tracking_no || `TRK-${selected.order_no.replace("ORD-", "")}`);
+                              setDispatchCarrier(selected.carrier || "SafeXpress Logistics");
+                              setDispatchDays(selected.delivery_days_total || 7);
+                              setDispatchDate(selected.dispatch_date ? String(selected.dispatch_date).slice(0, 10) : new Date().toISOString().slice(0, 10));
+                              setDispatchNotes(selected.notes || "");
+                              setIsEditDeliveryMode(true);
+                              setDispatchModalOpen(true);
+                            }}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold transition-all inline-flex items-center gap-1 shadow"
+                          >
+                            <Clock size={14} weight="bold" /> ✏️ Update Delivery Timeframe
+                          </button>
+                          <button
+                            onClick={() => updateStatus(selected.id, "delivered")}
+                            disabled={updatingStatus}
+                            className="px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white rounded font-bold transition-all inline-flex items-center gap-1 shadow"
+                          >
+                            <Package size={14} weight="bold" /> Mark Delivered
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Items Table */}
-              <div className="border border-[#E5E7EB] rounded-lg overflow-hidden">
-                <table className="yf-table w-full">
-                  <thead>
-                    <tr>
-                      <th>Product / Fastener Description</th>
-                      <th>Size</th>
-                      <th className="text-right">Ordered</th>
-                      <th className="text-right text-emerald-700">Allocated (Stock)</th>
-                      <th className="text-right text-blue-700">Billed</th>
-                      <th className="text-right text-amber-700">Under Processing</th>
-                      <th className="text-right">Weight (KG)</th>
-                      <th className="text-right">Before Tax</th>
-                      <th className="text-right">GST (18%)</th>
-                      <th className="text-right">After Tax</th>
-                    </tr>
-                  </thead>
+                {/* Items Table */}
+                <div className="border border-[#E5E7EB] rounded-lg overflow-hidden">
+                  <table className="yf-table w-full">
+                    <thead>
+                      <tr>
+                        <th>Product / Fastener Description</th>
+                        <th>Size</th>
+                        <th className="text-right">Ordered</th>
+                        <th className="text-right text-emerald-700">Being Billed Now</th>
+                        <th className="text-right text-blue-700">Invoiced (Tally)</th>
+                        <th className="text-right text-amber-700">To Be Billed (Replenishment)</th>
+                        <th className="text-right">Weight (KG)</th>
+                        <th className="text-right">Before Tax</th>
+                        <th className="text-right">GST (18%)</th>
+                        <th className="text-right">After Tax</th>
+                      </tr>
+                    </thead>
+
                   <tbody>
                     {selected.items?.map((it, i) => {
                       const qOrd = it.quantity_ordered ?? it.quantity ?? 0;
-                      const qAlloc = it.quantity_allocated ?? (selected.reservation_status === "reserved" ? qOrd : 0);
+                      const qAlloc = it.quantity_allocated ?? (["approved", "processing", "shipped", "delivered"].includes(selected.status?.toLowerCase()) || selected.reservation_status === "reserved" ? qOrd : 0);
                       const qInv = it.quantity_invoiced ?? 0;
-                      const qPend = it.quantity_pending ?? Math.max(0, qOrd - qInv);
+                      const qPend = it.quantity_pending ?? Math.max(0, qOrd - qAlloc);
                       return (
                         <tr key={i}>
                           <td className="font-medium text-[#06182F]">{it.product_name}</td>
                           <td className="font-mono font-bold text-xs text-[#4B5563]">{it.size || it.sku}</td>
-                          <td className="text-right tabular font-mono font-semibold">{qOrd} pcs</td>
+                          <td className="text-right tabular font-mono font-semibold">{fmt.num(qOrd)} pcs</td>
                           <td className="text-right tabular font-mono font-bold text-emerald-700">
-                            {qAlloc} pcs
+                            {fmt.num(qAlloc)} pcs
                           </td>
-                          <td className="text-right tabular font-mono font-bold text-blue-700">{qInv} pcs</td>
+                          <td className="text-right tabular font-mono font-bold text-blue-700">{fmt.num(qInv)} pcs</td>
                           <td className="text-right tabular font-mono font-bold">
                             {qPend > 0 ? (
-                              <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-xs">
-                                ⏳ {qPend} pcs
+                              <span className="bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-xs inline-flex items-center gap-1 font-mono font-bold" title="To be billed as per stock replenishment">
+                                <span>⏳</span> {fmt.num(qPend)} pcs
                               </span>
                             ) : (
-                              <span className="text-gray-400">0 pcs</span>
+                              <span className="text-emerald-700 font-mono text-xs font-bold">✓ 0 pcs</span>
                             )}
                           </td>
                           <td className="text-right tabular font-mono font-bold text-[#D96B0B]">
@@ -795,8 +1158,11 @@ export default function OrdersPage() {
                 </button>
               </div>
             </div>
-          )}
+          );
+        })()}
         </DialogContent>
+
+
       </Dialog>
 
       {/* Partial Billing Modal */}
@@ -878,6 +1244,175 @@ export default function OrdersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dispatch / Shipping Tracking Modal with Live Days Configurator */}
+      <Dialog open={dispatchModalOpen} onOpenChange={setDispatchModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
+              <Truck size={22} className="text-indigo-600" />
+              {isEditDeliveryMode ? "Update Delivery Timeframe & Shipment Tracking" : "Mark Order Dispatched & Start Delivery Countdown"}
+            </DialogTitle>
+          </DialogHeader>
+          {selected && (() => {
+            const daysNum = parseInt(dispatchDays, 10) || 7;
+            const dispDate = dispatchDate || new Date().toISOString().slice(0, 10);
+            const targetDt = new Date(dispDate + "T00:00:00");
+            targetDt.setDate(targetDt.getDate() + daysNum);
+            const targetDateFormatted = targetDt.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+
+            return (
+              <div className="space-y-4 py-2 text-xs">
+                <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-lg text-indigo-950">
+                  <div className="font-bold flex items-center gap-1.5 mb-1">
+                    <span>⏱️ Live {daysNum}-Day Delivery Countdown Flow</span>
+                  </div>
+                  <p className="leading-relaxed">
+                    Once set, the customer/dealer will see a live countdown starting from <strong>{daysNum} Days</strong>. Every midnight, it updates to 1 day less until final delivery. You can adjust this timeframe anytime.
+                  </p>
+                </div>
+
+                {/* Tracking Number (Required) */}
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="font-semibold text-slate-700">Docket / LR / Tracking ID <span className="text-red-500">*</span></label>
+                    {!dispatchTrackingNo && (
+                      <button
+                        type="button"
+                        onClick={() => setDispatchTrackingNo(`TRK-${selected.order_no.replace("ORD-", "")}-${Date.now().toString().slice(-4)}`)}
+                        className="text-[11px] text-indigo-600 hover:underline font-mono font-semibold"
+                      >
+                        + Generate Tracking ID
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={dispatchTrackingNo}
+                    onChange={(e) => setDispatchTrackingNo(e.target.value)}
+                    placeholder="e.g. TRK-9823140 or SFX-8829104"
+                    className={`w-full h-9 px-3 rounded border text-xs font-mono font-bold ${
+                      !dispatchTrackingNo.trim() ? "border-amber-400 bg-amber-50/40" : "border-slate-300"
+                    }`}
+                  />
+                  {!dispatchTrackingNo.trim() && (
+                    <div className="text-[10px] text-amber-700 mt-0.5">Please provide or generate a tracking ID for customer consignment tracking.</div>
+                  )}
+                </div>
+
+                {/* Logistics Partner */}
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Logistics / Courier Partner</label>
+                  <div className="grid grid-cols-3 gap-1.5 mb-2">
+                    {["SafeXpress Logistics", "V-Trans Logistics", "DTDC Express", "Direct Fleet", "SpotOn Logistics", "TCI Express"].map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setDispatchCarrier(c)}
+                        className={`p-1.5 text-[11px] rounded border text-center font-medium ${dispatchCarrier === c ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm font-bold' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    value={dispatchCarrier}
+                    onChange={(e) => setDispatchCarrier(e.target.value)}
+                    placeholder="Custom Carrier Name"
+                    className="w-full h-8 px-3 rounded border text-xs font-medium"
+                  />
+                </div>
+
+                {/* Delivery Days Duration Configurator */}
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Delivery Timeframe (Countdown Duration)</label>
+                  <div className="grid grid-cols-4 gap-1.5 mb-2">
+                    {[
+                      { days: 3, label: "3 Days (Express)" },
+                      { days: 5, label: "5 Days (Fast)" },
+                      { days: 7, label: "7 Days (Standard)" },
+                      { days: 10, label: "10 Days (Long)" },
+                    ].map(opt => (
+                      <button
+                        key={opt.days}
+                        type="button"
+                        onClick={() => setDispatchDays(opt.days)}
+                        className={`p-1.5 text-[11px] rounded border text-center font-medium ${
+                          Number(dispatchDays) === opt.days ? 'bg-amber-500 text-white border-amber-600 shadow-sm font-bold' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500 font-medium">Custom Days:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="30"
+                      value={dispatchDays}
+                      onChange={(e) => setDispatchDays(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                      className="w-20 h-8 px-2 rounded border text-xs font-mono font-bold text-center text-amber-900 bg-amber-50"
+                    />
+                    <span className="text-slate-600">Days duration</span>
+                  </div>
+                </div>
+
+                {/* Live Target Delivery Date Preview Box */}
+                <div className="p-2.5 bg-slate-900 text-white rounded-lg border border-slate-700 flex items-center justify-between font-mono text-[11px]">
+                  <div>
+                    <div className="text-slate-400 text-[10px] uppercase tracking-wider">🎯 Target Expected Delivery Date</div>
+                    <div className="text-amber-300 font-bold text-xs mt-0.5">{targetDateFormatted}</div>
+                  </div>
+                  <div className="text-right">
+                    <span className="bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded border border-amber-400/30 text-[10px] font-bold">
+                      {daysNum}-Day Countdown
+                    </span>
+                  </div>
+                </div>
+
+                {/* Dispatch Date */}
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Dispatch Date</label>
+                  <input
+                    type="date"
+                    value={dispatchDate}
+                    onChange={(e) => setDispatchDate(e.target.value)}
+                    className="w-full h-8 px-3 rounded border text-xs font-mono"
+                  />
+                </div>
+
+                {/* Remarks */}
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Dispatch Notes / Remarks (Optional)</label>
+                  <input
+                    type="text"
+                    value={dispatchNotes}
+                    onChange={(e) => setDispatchNotes(e.target.value)}
+                    placeholder="e.g. Dispatched via Express Road Freight in sealed cartons"
+                    className="w-full h-8 px-3 rounded border text-xs"
+                  />
+                </div>
+              </div>
+            );
+          })()}
+          <DialogFooter>
+            <button onClick={() => setDispatchModalOpen(false)} className="h-9 px-4 rounded border text-xs font-semibold">
+              Cancel
+            </button>
+            <button
+              onClick={handleDispatchSubmit}
+              disabled={updatingStatus}
+              className="h-9 px-4 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow flex items-center gap-1.5"
+            >
+              <Truck size={15} weight="bold" /> {updatingStatus ? "Saving..." : (isEditDeliveryMode ? "Save Updated Timeframe" : `Confirm Dispatch & Start ${dispatchDays}-Day Countdown`)}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {/* Tax Invoice Modal for Download / Print */}
       <TaxInvoiceModal
