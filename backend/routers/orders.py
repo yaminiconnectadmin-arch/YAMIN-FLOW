@@ -124,13 +124,16 @@ async def _enrich_orders(docs: list) -> list:
             d["warehouse_code"] = d.get("warehouse_code") or ""
 
         # Invoice number generation: Only issued AFTER explicit Admin approval!
-        is_approved = d.get("status") in ["approved", "processing", "shipped", "delivered"]
+        has_invoices = bool(d.get("invoices") and len(d.get("invoices", [])) > 0)
+        is_approved = bool(d.get("approved_at")) or has_invoices or bool(d.get("tally_voucher_no"))
         if is_approved:
             if not d.get("invoice_no"):
                 ord_no = str(d.get("order_no", "ORD-PENDING"))
                 d["invoice_no"] = d.get("tally_voucher_no") or ("INV-" + ord_no.replace("ORD-", ""))
         else:
             d["invoice_no"] = None
+            d["invoices"] = []
+            d["status"] = "pending"
 
         # Estimated delivery and countdown enrichment
         if not d.get("delivery_days_total"):
@@ -775,20 +778,6 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate,
         update_fields["target_delivery_date"] = payload.target_delivery_date or target_dt.strftime("%Y-%m-%d")
     except Exception:
         pass
-
-    # If approved / processing / shipped / delivered, generate the official invoice_no and tax invoice
-    if new_status in ["approved", "processing", "partially_fulfilled", "shipped", "delivered"]:
-        inv_no = doc.get("invoice_no") or f"INV-{doc['order_no'].replace('ORD-', '')}"
-        update_fields["invoice_no"] = inv_no
-        if not doc.get("invoices"):
-            initial_inv = {
-                "invoice_no": inv_no,
-                "date": now_iso()[:10],
-                "amount": doc.get("total", 0),
-                "linked_by": "admin_approval",
-                "items_billed": doc.get("items", [])
-            }
-            update_fields["invoices"] = [initial_inv]
 
     await db.orders.update_one({"_id": doc["_id"]}, {"$set": update_fields})
     await db.audit_logs.insert_one({
