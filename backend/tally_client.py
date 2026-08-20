@@ -127,27 +127,34 @@ async def _parse_and_persist_xml(xml_text: str, module: str) -> int:
             rate = _amount(_text(item, "CLOSINGRATE") or _text(item, "RATE"))
             value = _amount(_text(item, "CLOSINGVALUE"))
 
-            await db.products.update_one(
-                {"name": name},
-                {"$set": {
-                    "name": name, "sku": sku, "category": category,
-                    "price": rate if rate > 0 else 100.0, "unit": unit,
-                    "stock": int(qty), "updated_at": now_iso()
-                }},
-                upsert=True
-            )
-
-            # Get product_id and main warehouse_id for inventory update
             prod_doc = await db.products.find_one({"name": name})
             wh_doc = await db.warehouses.find_one({})
             if prod_doc:
                 prod_id = str(prod_doc["_id"])
                 wh_id = str(wh_doc["_id"]) if wh_doc else "default"
+                qty_per_box = prod_doc.get("qty_per_box", 1000) or 1000
+                raw_bal_str = _text(item, "CLOSINGBALANCE") or _text(item, "OPENINGBALANCE")
+                
+                # Convert raw piece balance to Boxes if unit or text specifies Pcs
+                if "pc" in unit.lower() or "pc" in raw_bal_str.lower():
+                    boxes_qty = int(qty / qty_per_box) if qty_per_box else int(qty)
+                else:
+                    boxes_qty = int(qty)
+
+                await db.products.update_one(
+                    {"_id": prod_doc["_id"]},
+                    {"$set": {
+                        "name": name, "sku": sku, "category": category,
+                        "price": rate if rate > 0 else 100.0, "unit": "box",
+                        "stock": boxes_qty, "updated_at": now_iso()
+                    }}
+                )
+
                 await db.inventory.update_one(
                     {"warehouse_id": wh_id, "product_id": prod_id},
                     {"$set": {
                         "warehouse_id": wh_id, "product_id": prod_id,
-                        "sku": sku, "product_name": name, "quantity": int(qty),
+                        "sku": sku, "product_name": name, "quantity": boxes_qty,
                         "unit_price": rate, "valuation": value, "updated_at": now_iso()
                     }},
                     upsert=True

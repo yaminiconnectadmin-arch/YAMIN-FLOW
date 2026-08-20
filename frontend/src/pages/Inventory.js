@@ -156,10 +156,19 @@ export default function InventoryPage() {
                       <td className="font-mono text-xs">{r.product_sku}</td>
                       <td className="font-medium">{r.product_name}</td>
                       <td className="text-[#5C6670]">{r.category}</td>
-                      <td className="text-right tabular font-semibold text-slate-900">{r.quantity}</td>
-                      <td className="text-right tabular text-[#5C6670]">{r.reserved}</td>
-                      <td className="text-right tabular font-semibold text-emerald-700">{r.available}</td>
-                      <td className="text-right tabular text-[#5C6670]">{r.safety_stock}</td>
+                      <td className="text-right tabular font-bold text-slate-900">
+                        <div>{r.quantity?.toLocaleString()} Boxes</div>
+                        <div className="text-[10px] text-slate-400 font-normal">({((r.quantity || 0) * (r.qty_per_box || 1000)).toLocaleString()} pcs)</div>
+                      </td>
+                      <td className="text-right tabular text-[#5C6670]">
+                        <div>{r.reserved?.toLocaleString()} Boxes</div>
+                        <div className="text-[10px] text-slate-400">({((r.reserved || 0) * (r.qty_per_box || 1000)).toLocaleString()} pcs)</div>
+                      </td>
+                      <td className="text-right tabular font-bold text-emerald-700">
+                        <div>{r.available?.toLocaleString()} Boxes</div>
+                        <div className="text-[10px] text-emerald-600/80 font-normal">({((r.available || 0) * (r.qty_per_box || 1000)).toLocaleString()} pcs)</div>
+                      </td>
+                      <td className="text-right tabular text-[#5C6670]">{r.safety_stock?.toLocaleString()} Boxes</td>
                       <td className="text-right tabular">{fmt.inr(r.quantity * r.price)}</td>
                       <td><StatusBadge status={r.stock_status} /></td>
                       {isAdmin && (
@@ -172,7 +181,7 @@ export default function InventoryPage() {
                               setEditReason("Manual stock override");
                               setEditModalOpen(true);
                             }}
-                            className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold transition-all shadow-2xs inline-flex items-center gap-1 font-mono"
+                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold transition-all shadow-2xs inline-flex items-center gap-1 font-mono"
                           >
                             ✏️ Edit Stock
                           </button>
@@ -191,7 +200,7 @@ export default function InventoryPage() {
         <DialogContent className="max-w-md bg-white p-6 border rounded-xl shadow-lg space-y-4">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-              <span>📦</span> Manual Stock Update (Tally Sync Fallback)
+              <span>📦</span> Manual Stock Update (in Boxes)
             </DialogTitle>
           </DialogHeader>
           {selectedRow && (
@@ -199,17 +208,21 @@ export default function InventoryPage() {
               <div className="bg-slate-50 border p-3 rounded-lg text-slate-700 space-y-1">
                 <div>Product: <strong className="text-slate-900">{selectedRow.product_name}</strong></div>
                 <div>SKU: <span className="font-mono">{selectedRow.product_sku}</span> • Warehouse: <strong>{selectedRow.warehouse_code} ({selectedRow.warehouse_name})</strong></div>
-                <div>Current Stock: <strong className="font-mono text-amber-700">{selectedRow.quantity} Boxes</strong> ({selectedRow.reserved || 0} Reserved)</div>
+                <div>Packing: <span className="font-mono font-bold text-slate-900">{selectedRow.qty_per_box || 1000} pcs / Box</span></div>
+                <div>Current On-Hand Stock: <strong className="font-mono text-amber-700">{selectedRow.quantity?.toLocaleString()} Boxes</strong> <span className="text-slate-500">({((selectedRow.quantity || 0) * (selectedRow.qty_per_box || 1000)).toLocaleString()} pcs)</span></div>
               </div>
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Target On-Hand Stock (Boxes) <span className="text-red-500">*</span></label>
+                <label className="block font-semibold text-slate-700 mb-1">Target On-Hand Stock (Number of Boxes) <span className="text-red-500">*</span></label>
                 <input
                   type="number"
                   min="0"
                   value={editQty}
                   onChange={(e) => setEditQty(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                  className="w-full h-9 px-3 border rounded text-sm font-mono font-bold"
+                  className="w-full h-9 px-3 border rounded text-sm font-mono font-bold text-slate-900 bg-white"
                 />
+                <div className="text-[11px] text-amber-700 font-mono mt-1 font-semibold">
+                  = {editQty?.toLocaleString()} Boxes ({((editQty || 0) * (selectedRow.qty_per_box || 1000)).toLocaleString()} total pieces)
+                </div>
               </div>
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Safety Stock Threshold (Boxes)</label>
