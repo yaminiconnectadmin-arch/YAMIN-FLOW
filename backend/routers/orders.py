@@ -195,8 +195,10 @@ async def _enrich_orders(docs: list) -> list:
             total_b_alloc += b_alloc
 
         # Force pending status if order has not been explicitly approved by admin
-        if not d.get("approved_at") and not d.get("tally_voucher_no"):
+        if not d.get("approved_at"):
             d["status"] = "pending"
+            d["invoice_no"] = None
+            d["invoices"] = []
 
         # Dynamically correct reservation status for existing orders
         if total_b_ord > 0:
