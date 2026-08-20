@@ -6,12 +6,170 @@ import { toast } from "@/components/ui/sonner";
 import {
   Lightning, Package, Clock, MagnifyingGlass,
   Scales, Stack, PencilSimple, Plus, Sparkle, ArrowsClockwise, FileText,
-  WhatsappLogo, Eye, Check, Copy, Printer, Users
+  WhatsappLogo, Eye, Check, Copy, Printer, Users, CaretDown, CaretRight
 } from "@phosphor-icons/react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import PurchaseOrderModal from "@/components/common/PurchaseOrderModal";
+
+// ===================== ITEM ACCORDION ROW =====================
+function ItemAccordionRow({ it, idx, fmt }) {
+  const [open, setOpen] = useState(false);
+  const statusColors = {
+    pending: "bg-amber-100 text-amber-800 border-amber-300",
+    approved: "bg-emerald-100 text-emerald-800 border-emerald-300",
+    partially_fulfilled: "bg-blue-100 text-blue-800 border-blue-300",
+    processing: "bg-purple-100 text-purple-800 border-purple-300",
+  };
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Summary Row — clickable */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full text-left px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors group"
+      >
+        {/* Index */}
+        <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-[11px] font-black flex items-center justify-center flex-shrink-0">
+          {idx + 1}
+        </span>
+
+        {/* SKU + Name */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono font-black text-xs text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{it.sku}</span>
+            <span className="font-semibold text-sm text-slate-800">{it.product_name}</span>
+            {it.size && <span className="text-xs text-slate-500 font-mono">({it.size})</span>}
+            <span className="px-2 py-0.5 text-[10px] font-medium bg-slate-100 text-slate-600 rounded">{it.category}</span>
+          </div>
+          <div className="flex items-center gap-3 mt-1 flex-wrap">
+            <span className="text-xs text-slate-500">Supplier: <strong className="text-slate-700">{it.supplier_name}</strong></span>
+            <span className="text-xs text-slate-400">•</span>
+            <span className="text-xs text-slate-500">{(it.order_breakdown || []).length} order{(it.order_breakdown || []).length !== 1 ? 's' : ''} driving demand</span>
+          </div>
+        </div>
+
+        {/* Key Metrics */}
+        <div className="hidden sm:flex items-center gap-4 text-right flex-shrink-0">
+          <div>
+            <div className="text-[10px] font-bold uppercase text-slate-400">Pending PCS</div>
+            <div className="text-sm font-black text-slate-900 font-mono">{fmt.num(it.recommended_pcs)}</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase text-amber-600">Required KG</div>
+            <div className="text-sm font-black text-amber-700 font-mono">{fmt.kg(it.recommended_weight_kg)}</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase text-blue-500">Wt/1000 PCS</div>
+            <div className="text-sm font-black text-blue-700 font-mono">{Number(it.wt_1000_pcs_kg).toFixed(3)} kg</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase text-slate-400">Amount</div>
+            <div className="text-sm font-black text-emerald-700 font-mono">{fmt.inr(it.amount)}</div>
+          </div>
+        </div>
+
+        {/* Expand Icon */}
+        <div className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+          open ? "bg-amber-500 text-white" : "bg-slate-100 text-slate-400 group-hover:bg-amber-100 group-hover:text-amber-600"
+        }`}>
+          {open ? <CaretDown size={14} weight="bold" /> : <CaretRight size={14} weight="bold" />}
+        </div>
+      </button>
+
+      {/* Expanded Drill-Down */}
+      {open && (
+        <div className="border-t border-slate-200 bg-slate-50">
+          {/* Dealer Code Tags */}
+          <div className="px-5 py-2.5 flex items-center gap-2 flex-wrap border-b border-slate-100">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ordering Dealers:</span>
+            {(it.dealer_codes || []).map((c, i) => (
+              <span key={i} className="bg-amber-100 text-amber-800 font-mono text-[11px] font-bold px-2 py-0.5 rounded border border-amber-300">{c}</span>
+            ))}
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider ml-3">Under CNF/MNP:</span>
+            {(it.cnf_codes || []).map((c, i) => c !== "DIRECT" ? (
+              <span key={i} className="bg-blue-100 text-blue-800 font-mono text-[11px] font-bold px-2 py-0.5 rounded border border-blue-300">🏷️ {c}</span>
+            ) : (
+              <span key={i} className="bg-emerald-100 text-emerald-800 text-[11px] font-medium px-2 py-0.5 rounded border border-emerald-300">⚡ Direct</span>
+            ))}
+          </div>
+
+          {/* Per-Order Breakdown Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-200">
+                  <th className="text-left px-4 py-2.5 font-bold text-slate-600">Order No.</th>
+                  <th className="text-left px-4 py-2.5 font-bold text-slate-600">Dealer Code</th>
+                  <th className="text-left px-4 py-2.5 font-bold text-slate-600">Dealer Name</th>
+                  <th className="text-left px-4 py-2.5 font-bold text-slate-600">CNF / MNP</th>
+                  <th className="text-left px-4 py-2.5 font-bold text-slate-600">Order Status</th>
+                  <th className="text-right px-4 py-2.5 font-bold text-slate-600">Qty Ordered</th>
+                  <th className="text-right px-4 py-2.5 font-bold text-emerald-700">Qty Allocated</th>
+                  <th className="text-right px-4 py-2.5 font-bold text-amber-700 bg-amber-50">Qty Pending ⬇</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(it.order_breakdown || []).map((ob, oi) => (
+                  <tr key={oi} className={`border-b border-slate-100 ${
+                    oi % 2 === 0 ? "bg-white" : "bg-slate-50/60"
+                  }`}>
+                    <td className="px-4 py-2.5 font-mono font-black text-slate-900">{ob.order_no}</td>
+                    <td className="px-4 py-2.5">
+                      <span className="bg-amber-100 text-amber-800 font-mono font-bold px-2 py-0.5 rounded text-[11px] border border-amber-300">
+                        {ob.dealer_code}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 font-medium text-slate-700">{ob.dealer_name || ob.dealer_code}</td>
+                    <td className="px-4 py-2.5">
+                      {ob.cnf_code && ob.cnf_code !== "DIRECT" ? (
+                        <span className="bg-blue-100 text-blue-800 font-mono font-bold px-2 py-0.5 rounded text-[11px] border border-blue-300">🏷️ {ob.cnf_code}</span>
+                      ) : (
+                        <span className="text-emerald-700 font-medium text-[11px]">⚡ Direct</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                        statusColors[ob.order_status] || "bg-slate-100 text-slate-700 border-slate-300"
+                      }`}>
+                        {ob.order_status?.toUpperCase().replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular font-mono text-slate-700">{fmt.num(ob.qty_ordered)}</td>
+                    <td className="px-4 py-2.5 text-right tabular font-mono text-emerald-700 font-semibold">{fmt.num(ob.qty_allocated)}</td>
+                    <td className="px-4 py-2.5 text-right tabular font-mono font-black text-amber-800 bg-amber-50">{fmt.num(ob.qty_pending)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-900 text-white">
+                  <td colSpan={5} className="px-4 py-2.5 font-black text-xs uppercase tracking-wider">TOTAL — {it.product_name}</td>
+                  <td className="px-4 py-2.5 text-right tabular font-mono font-bold">{fmt.num((it.order_breakdown || []).reduce((s, o) => s + (o.qty_ordered || 0), 0))}</td>
+                  <td className="px-4 py-2.5 text-right tabular font-mono font-bold text-emerald-400">{fmt.num((it.order_breakdown || []).reduce((s, o) => s + (o.qty_allocated || 0), 0))}</td>
+                  <td className="px-4 py-2.5 text-right tabular font-mono font-black text-amber-300 bg-amber-900/40">{fmt.num(it.recommended_pcs)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {/* Weight Conversion Summary */}
+          <div className="px-5 py-3 bg-gradient-to-r from-amber-50 to-orange-50 border-t border-amber-200 flex flex-wrap items-center gap-6">
+            <div className="text-xs">
+              <span className="text-amber-700 font-bold">Weight Formula: </span>
+              <span className="font-mono text-slate-700">({fmt.num(it.recommended_pcs)} PCS ÷ 1000) × {Number(it.wt_1000_pcs_kg).toFixed(3)} kg = </span>
+              <span className="font-black text-amber-800">{fmt.kg(it.recommended_weight_kg)}</span>
+            </div>
+            <div className="text-xs">
+              <span className="text-slate-600 font-bold">To Supplier: </span>
+              <span className="font-semibold text-slate-800">{it.supplier_name}</span>
+              {it.supplier_phone && <span className="ml-2 font-mono text-slate-500">{it.supplier_phone}</span>}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ProcurementPage() {
   const [activeTab, setActiveTab] = useState("collation"); // collation | recs | matrix
@@ -498,63 +656,29 @@ export default function ProcurementPage() {
                 </div>
               )}
 
-              {/* VIEW 2: DETAILED ITEM-BY-ITEM WEIGHT QUEUE BREAKDOWN */}
+              {/* VIEW 2: DETAILED ITEM-BY-ITEM WEIGHT QUEUE BREAKDOWN — EXPANDABLE */}
               {collationViewMode === "by_item" && (
-                <PageSection title="Live Uncollated Queue Breakdown" description="Real-time conversion breakdown of items waiting to be collated into supplier POs">
-                  {uncollatedSummary.items?.length === 0 ? (
+                <div className="space-y-3">
+                  <div className="bg-white border border-[#E5E7EB] rounded-xl shadow-sm px-5 py-3 flex items-center justify-between">
+                    <div>
+                      <h3 className="font-extrabold text-sm text-[#1D242B]">Live Uncollated Queue — Item Breakdown</h3>
+                      <p className="text-xs text-[#5C6670] mt-0.5">Click any item row to expand and see which orders & dealers are driving the procurement need</p>
+                    </div>
+                    <span className="text-xs font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200 px-3 py-1.5 rounded-lg">
+                      {uncollatedSummary.items?.length || 0} Items Pending Procurement
+                    </span>
+                  </div>
+
+                  {(!uncollatedSummary.items || uncollatedSummary.items.length === 0) ? (
                     <EmptyState title="No uncollated items" description="All distributor orders have already been collated into supplier weight POs." />
                   ) : (
-                    <table className="yf-table w-full">
-                      <thead>
-                        <tr>
-                          <th>SKU / Item Code</th><th>Fastener Description</th><th>Category</th>
-                          <th>Ordering Distributor(s)</th><th>Assigned Under</th>
-                          <th className="text-right">Demanded PCS</th><th className="text-right">Net Deficit</th>
-                          <th className="text-right">WT / 1000 PCS</th><th className="text-right">Required Weight</th>
-                          <th>Assigned Primary Supplier</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {uncollatedSummary.items.map((it) => (
-                          <tr key={it.product_id}>
-                            <td className="font-mono font-bold text-xs text-[#1D242B]">{it.sku}</td>
-                            <td className="font-medium">{it.product_name}</td>
-                            <td><span className="px-2 py-0.5 text-[11px] font-medium bg-[#F3F4F6] text-[#4B5563] rounded">{it.category}</span></td>
-                            <td>
-                              <div className="flex flex-wrap gap-1 max-w-[160px]">
-                                {it.dealer_codes && it.dealer_codes.length > 0 ? (
-                                  it.dealer_codes.map((c, idx) => (
-                                    <span key={idx} className="bg-[#FEF08A] text-[#854D0E] font-mono text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm">{c}</span>
-                                  ))
-                                ) : (
-                                  <span className="text-xs text-[#5C6670]">—</span>
-                                )}
-                              </div>
-                            </td>
-                            <td>
-                              <div className="flex flex-wrap gap-1 max-w-[160px]">
-                                {(it.cnf_codes || it.mnp_codes) && (it.cnf_codes || it.mnp_codes).length > 0 ? (
-                                  (it.cnf_codes || it.mnp_codes).map((c, idx) => c !== "DIRECT" ? (
-                                    <span key={idx} className="bg-[#BAE6FD] text-[#0369A1] font-mono text-[11px] font-bold px-1.5 py-0.5 rounded shadow-sm" title="Assigned CNF">🏷️ {c}</span>
-                                  ) : (
-                                    <span key={idx} className="bg-[#E6F4EA] text-[#137333] font-medium text-[11px] px-1.5 py-0.5 rounded border border-[#CEEAD6]">⚡ Direct</span>
-                                  ))
-                                ) : (
-                                  <span className="text-xs text-[#5C6670]">—</span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="text-right tabular font-semibold">{fmt.num(it.demanded_pcs)} pcs</td>
-                            <td className="text-right tabular text-[#5C6670]">{fmt.num(it.recommended_pcs)} pcs</td>
-                            <td className="text-right tabular font-mono text-xs text-[#3B82F6]">{it.wt_1000_pcs_kg} kg</td>
-                            <td className="text-right tabular font-bold text-[#D96B0B] bg-[#FFF7ED]">{fmt.kg(it.recommended_weight_kg)}</td>
-                            <td className="text-sm font-medium">{it.supplier_name}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="space-y-2">
+                      {uncollatedSummary.items.map((it, idx) => (
+                        <ItemAccordionRow key={it.product_id} it={it} idx={idx} fmt={fmt} />
+                      ))}
+                    </div>
                   )}
-                </PageSection>
+                </div>
               )}
 
               {/* Historical Collation Batches */}

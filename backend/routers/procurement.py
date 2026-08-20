@@ -167,6 +167,7 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
     demanded_pcs_map = {}
     dealer_codes_map = {}
     mnp_codes_map = {}
+    order_breakdown_map = {}   # pid -> list of {order_no, dealer_code, dealer_name, order_status, qty_pending, qty_allocated, qty_ordered}
     for o in uncollated:
         dlr = dealers.get(o.get("dealer_id"))
         d_code = o.get("dealer_code")
@@ -174,6 +175,8 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
             d_code = dlr.get("user_code") or dlr.get("login_id")
         if not d_code:
             d_code = "D-UNKNOWN"
+
+        d_name = o.get("dealer_name") or (dlr.get("company") or dlr.get("name")) if dlr else d_code
 
         m_code = o.get("mnp_code")
         if not m_code and dlr:
@@ -198,8 +201,20 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
                 if pid not in dealer_codes_map:
                     dealer_codes_map[pid] = set()
                     mnp_codes_map[pid] = set()
+                    order_breakdown_map[pid] = []
                 dealer_codes_map[pid].add(d_code)
                 mnp_codes_map[pid].add(m_code)
+                order_breakdown_map[pid].append({
+                    "order_no": o.get("order_no", str(o.get("_id", ""))[:8]),
+                    "dealer_code": d_code,
+                    "dealer_name": d_name,
+                    "cnf_code": m_code,
+                    "order_status": o.get("status", "pending"),
+                    "qty_ordered": q_ord,
+                    "qty_allocated": q_alloc,
+                    "qty_pending": q_deficit,
+                })
+
 
     # Load products and inventory
     prod_ids = [ObjectId(pid) for pid in demanded_pcs_map.keys() if ObjectId.is_valid(pid)]
@@ -256,6 +271,7 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
             "dealer_summary": ", ".join(sorted(list(dealer_codes_map.get(pid, [])))),
             "cnf_summary": ", ".join(sorted(list(mnp_codes_map.get(pid, [])))),
             "mnp_summary": ", ".join(sorted(list(mnp_codes_map.get(pid, [])))),
+            "order_breakdown": order_breakdown_map.get(pid, []),
         })
         total_pcs += procure_pcs
         total_kg += req_kg
