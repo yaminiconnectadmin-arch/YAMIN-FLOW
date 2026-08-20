@@ -1,5 +1,6 @@
 """Orders + Invoices + Smart Multi-Warehouse Allocation & Partial Billing."""
 from datetime import datetime, timezone, timedelta
+import math
 from typing import Optional, List
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -155,18 +156,27 @@ async def _enrich_orders(docs: list) -> list:
             except Exception:
                 pass
 
-        # Ensure order items have proper quantity keys
+        # Ensure order items have proper quantity and box keys
         items = d.get("items") or []
         for item in items:
             q_ord = item.get("quantity_ordered") if item.get("quantity_ordered") is not None else (item.get("quantity") or 0)
             q_inv = item.get("quantity_invoiced") or 0
-            q_alloc = item.get("quantity_allocated") if item.get("quantity_allocated") is not None else (q_ord if d.get("reservation_status") == "reserved" else 0)
+            q_alloc = item.get("quantity_allocated") if item.get("quantity_allocated") is not None else (q_ord if (d.get("reservation_status") == "reserved" or d.get("status") in ["approved", "processing", "shipped", "delivered"]) else 0)
             
+            qty_per_box = item.get("qty_per_box") or 1000
+            b_ord = item.get("boxes") if item.get("boxes") is not None else (int(math.ceil(q_ord / qty_per_box)) if (qty_per_box and q_ord) else q_ord)
+            b_alloc = item.get("boxes_allocated") if item.get("boxes_allocated") is not None else (int(math.ceil(q_alloc / qty_per_box)) if (qty_per_box and q_alloc) else q_alloc)
+            b_inv = item.get("boxes_invoiced") if item.get("boxes_invoiced") is not None else (int(math.floor(q_inv / qty_per_box)) if (qty_per_box and q_inv) else q_inv)
+            b_pend = max(0, b_ord - b_alloc)
+
             item["quantity_ordered"] = q_ord
             item["quantity_allocated"] = q_alloc
             item["quantity_invoiced"] = q_inv
-            # True units left for billing on replenishment = 50,000 - 20,000 = 30,000:
             item["quantity_pending"] = max(0, q_ord - q_alloc)
+            item["boxes"] = b_ord
+            item["boxes_allocated"] = b_alloc
+            item["boxes_invoiced"] = b_inv
+            item["boxes_pending"] = b_pend
 
     return out
 
@@ -348,10 +358,17 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
             stock_score = 0
             for it in payload.items:
                 inv = await db.inventory.find_one({"warehouse_id": cand_id, "product_id": it.product_id})
-                avail = max(0, (inv.get("quantity", 0) - inv.get("reserved", 0))) if inv else 0
-                if avail >= it.quantity:
+                on_hand_boxes = inv.get("quantity", 0) if inv else 0
+                reserved_boxes = inv.get("reserved", 0) if inv else 0
+                avail_boxes = max(0, on_hand_boxes - reserved_boxes)
+
+                p_it = products.get(it.product_id, {})
+                q_per_b = it.qty_per_box or p_it.get("qty_per_box", 1000)
+                demanded_b = it.boxes or (it.quantity if p_it.get("unit") == "box" else max(1, it.quantity // q_per_b))
+
+                if avail_boxes >= demanded_b:
                     stock_score += 2
-                elif avail > 0:
+                elif avail_boxes > 0:
                     stock_score += 1
             
             # Proximity bonus for regional hub
@@ -388,67 +405,81 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         qty = int(i.quantity)
         total_demanded += qty
         qty_per_box = i.qty_per_box or p.get("qty_per_box", 1000)
-        boxes = i.boxes or max(1, qty // qty_per_box)
+        demanded_boxes = i.boxes or (qty if p.get("unit") == "box" else max(1, qty // qty_per_box))
         wt_1000 = i.wt_1000_pcs_kg or p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000)
         item_weight = round((qty / 1000.0) * wt_1000, 3)
         total_weight_kg += item_weight
 
         # Price computation
         rate = i.rate or (p.get("wd_landing") if is_cnf_depot else (p.get("dealer_landing") or p.get("price", 0.0)))
-        sub = i.value_before_tax if (i.value_before_tax and i.value_before_tax > 0) else round(rate * boxes, 2)
+        sub = i.value_before_tax if (i.value_before_tax and i.value_before_tax > 0) else round(rate * demanded_boxes, 2)
         gst = i.gst_amount if (i.gst_amount and i.gst_amount > 0) else round(sub * 0.18, 2)
         tot = i.value_after_tax if (i.value_after_tax and i.value_after_tax > 0) else round(sub + gst, 2)
         subtotal += sub
 
-        # Check inventory at target warehouse
+        # Check inventory at target warehouse (db.inventory quantity & reserved are stored in BOXES)
         inv = await db.inventory.find_one({"warehouse_id": wh_id, "product_id": i.product_id})
-        on_hand = inv.get("quantity", 0) if inv else 0
-        reserved = inv.get("reserved", 0) if inv else 0
-        available = max(0, on_hand - reserved)
+        on_hand_boxes = inv.get("quantity", 0) if inv else 0
+        reserved_boxes = inv.get("reserved", 0) if inv else 0
+        avail_boxes = max(0, on_hand_boxes - reserved_boxes)
 
-        if available >= qty:
-            allocated = qty
-            deficit = 0
-            # Reserve full stock
+        if avail_boxes >= demanded_boxes:
+            allocated_boxes = demanded_boxes
+            allocated_pcs = qty
+            deficit_boxes = 0
+            deficit_pcs = 0
+            # Reserve stock in boxes
             await db.inventory.update_one(
                 {"warehouse_id": wh_id, "product_id": i.product_id},
-                {"$inc": {"reserved": qty}, "$set": {"updated_at": now_iso()}},
+                {"$inc": {"reserved": allocated_boxes}, "$set": {"updated_at": now_iso()}},
                 upsert=True
             )
-        elif available > 0:
-            allocated = available
-            deficit = qty - available
-            # Reserve partial stock
+        elif avail_boxes > 0:
+            allocated_boxes = avail_boxes
+            allocated_pcs = allocated_boxes * qty_per_box
+            deficit_boxes = demanded_boxes - allocated_boxes
+            deficit_pcs = max(0, qty - allocated_pcs)
+            # Reserve partial stock in boxes
             await db.inventory.update_one(
                 {"warehouse_id": wh_id, "product_id": i.product_id},
-                {"$inc": {"reserved": available}, "$set": {"updated_at": now_iso()}},
+                {"$inc": {"reserved": allocated_boxes}, "$set": {"updated_at": now_iso()}},
                 upsert=True
             )
             deficits.append({
                 "product_id": i.product_id,
                 "product_name": p["name"],
                 "sku": p["sku"],
+                "required_boxes": demanded_boxes,
+                "available_boxes": avail_boxes,
+                "allocated_boxes": allocated_boxes,
+                "deficit_boxes": deficit_boxes,
                 "required": qty,
-                "available": available,
-                "allocated": allocated,
-                "deficit": deficit,
-                "weight_deficit_kg": round((deficit / 1000.0) * wt_1000, 3)
+                "available": allocated_pcs,
+                "allocated": allocated_pcs,
+                "deficit": deficit_pcs,
+                "weight_deficit_kg": round((deficit_pcs / 1000.0) * wt_1000, 3)
             })
         else:
-            allocated = 0
-            deficit = qty
+            allocated_boxes = 0
+            allocated_pcs = 0
+            deficit_boxes = demanded_boxes
+            deficit_pcs = qty
             deficits.append({
                 "product_id": i.product_id,
                 "product_name": p["name"],
                 "sku": p["sku"],
+                "required_boxes": demanded_boxes,
+                "available_boxes": 0,
+                "allocated_boxes": 0,
+                "deficit_boxes": deficit_boxes,
                 "required": qty,
                 "available": 0,
                 "allocated": 0,
-                "deficit": deficit,
-                "weight_deficit_kg": round((deficit / 1000.0) * wt_1000, 3)
+                "deficit": deficit_pcs,
+                "weight_deficit_kg": round((deficit_pcs / 1000.0) * wt_1000, 3)
             })
 
-        total_allocated += allocated
+        total_allocated += allocated_pcs
 
         items_out.append({
             "product_id": i.product_id,
@@ -458,15 +489,18 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
             "size": i.size or p.get("size", ""),
             "quantity": qty,
             "quantity_ordered": qty,
-            "quantity_allocated": allocated,
+            "quantity_allocated": allocated_pcs,
             "quantity_invoiced": 0,
-            "quantity_pending": deficit,
-            "boxes": boxes,
+            "quantity_pending": deficit_pcs,
+            "boxes": demanded_boxes,
+            "boxes_allocated": allocated_boxes,
+            "boxes_invoiced": 0,
+            "boxes_pending": deficit_boxes,
             "qty_per_box": qty_per_box,
             "wt_1000_pcs_kg": wt_1000,
             "total_weight_kg": item_weight,
-            "allocated_weight_kg": round((allocated / 1000.0) * wt_1000, 3),
-            "pending_replenishment_kg": round((deficit / 1000.0) * wt_1000, 3),
+            "allocated_weight_kg": round((allocated_pcs / 1000.0) * wt_1000, 3),
+            "pending_replenishment_kg": round((deficit_pcs / 1000.0) * wt_1000, 3),
             "rate": rate,
             "dealer_landing": p.get("dealer_landing", rate),
             "value_before_tax": sub,
@@ -528,7 +562,6 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         "reservation_status": reservation_status,
         "payment_status": "unpaid",
         "deficits": deficits,
-        "invoices": [initial_inv] if overall_status in ["approved", "processing", "partially_fulfilled"] else [],  # Multi-invoice tracking synced from Tally or generated on approval
         "notes": payload.notes or "",
         "created_at": now_iso(),
         "updated_at": now_iso(),
@@ -593,18 +626,22 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate,
     # Stock reconciliation on delivered
     if new_status == "delivered" and old_status != "delivered":
         for item in doc.get("items", []):
-            qty = item.get("quantity_ordered") or item.get("quantity", 0)
+            qty_per_b = item.get("qty_per_box") or 1000
+            q_ord = item.get("quantity_ordered") or item.get("quantity", 0)
+            boxes_deliv = item.get("boxes_allocated") or item.get("boxes") or (int(math.ceil(q_ord / qty_per_b)) if qty_per_b else q_ord)
             await db.inventory.update_one(
                 {"warehouse_id": doc.get("warehouse_id"), "product_id": item["product_id"]},
-                {"$inc": {"quantity": -qty, "reserved": -qty},
+                {"$inc": {"quantity": -boxes_deliv, "reserved": -boxes_deliv},
                  "$set": {"updated_at": now_iso()}},
             )
     elif new_status == "cancelled" and old_status != "cancelled":
         for item in doc.get("items", []):
-            qty = item.get("quantity_allocated") or item.get("quantity", 0)
+            qty_per_b = item.get("qty_per_box") or 1000
+            q_alloc = item.get("quantity_allocated") or item.get("quantity", 0)
+            boxes_unreserve = item.get("boxes_allocated") or (int(math.ceil(q_alloc / qty_per_b)) if qty_per_b else q_alloc)
             await db.inventory.update_one(
                 {"warehouse_id": doc.get("warehouse_id"), "product_id": item["product_id"]},
-                {"$inc": {"reserved": -qty}, "$set": {"updated_at": now_iso()}},
+                {"$inc": {"reserved": -boxes_unreserve}, "$set": {"updated_at": now_iso()}},
             )
 
     update_fields = {"status": new_status, "updated_at": now_iso()}
@@ -694,21 +731,40 @@ async def record_partial_billing(order_id: str, payload: OrderPartialBillingIn,
         pid = it["product_id"]
         q_ord = it.get("quantity_ordered") or it.get("quantity", 0)
         q_prev_inv = it.get("quantity_invoiced", 0)
+        qty_per_b = it.get("qty_per_box") or 1000
         
-        bill_qty = bill_map.get(pid, 0)
+        b_item = next((b for b in payload.items if b.product_id == pid), None)
+        if b_item:
+            if b_item.boxes_to_bill is not None and b_item.boxes_to_bill > 0:
+                bill_boxes = b_item.boxes_to_bill
+                bill_qty = bill_boxes * qty_per_b
+            else:
+                bill_qty = b_item.quantity_to_bill
+                bill_boxes = int(math.ceil(bill_qty / qty_per_b)) if qty_per_b else bill_qty
+        else:
+            bill_qty = 0
+            bill_boxes = 0
+
         new_inv_qty = min(q_ord, q_prev_inv + bill_qty)
         new_pending = max(0, q_ord - new_inv_qty)
 
-        if new_pending > 0:
+        b_ord = it.get("boxes") or (int(math.ceil(q_ord / qty_per_b)) if qty_per_b else q_ord)
+        b_prev_inv = it.get("boxes_invoiced") or (int(math.floor(q_prev_inv / qty_per_b)) if qty_per_b else q_prev_inv)
+        new_inv_boxes = min(b_ord, b_prev_inv + bill_boxes)
+        new_pending_boxes = max(0, b_ord - new_inv_boxes)
+
+        if new_pending > 0 or new_pending_boxes > 0:
             all_completed = False
 
         it["quantity_invoiced"] = new_inv_qty
         it["quantity_pending"] = new_pending
+        it["boxes_invoiced"] = new_inv_boxes
+        it["boxes_pending"] = new_pending_boxes
         updated_items.append(it)
 
-        # Rate and amount for this batch
+        # Rate and amount for this batch (rate per box)
         rate = it.get("rate") or 0
-        total_billed_now += round(rate * bill_qty * 1.18, 2)
+        total_billed_now += round(rate * bill_boxes * 1.18, 2)
 
     inv_number = payload.invoice_no or f"INV-{doc['order_no'].replace('ORD-', '')}-P{len(doc.get('invoices', [])) + 1}"
     new_invoice_entry = {
@@ -775,16 +831,18 @@ async def update_order_warehouse(order_id: str, payload: WarehouseAssignmentIn,
     if doc.get("status") in ["pending", "approved", "processing", "partially_fulfilled"]:
         for item in doc.get("items", []):
             p_id = item.get("product_id")
-            allocated = item.get("quantity_allocated") or item.get("quantity", 0)
-            if allocated > 0:
+            qty_per_b = item.get("qty_per_box") or 1000
+            q_alloc = item.get("quantity_allocated") or item.get("quantity", 0)
+            allocated_boxes = item.get("boxes_allocated") or (int(math.ceil(q_alloc / qty_per_b)) if qty_per_b else q_alloc)
+            if allocated_boxes > 0:
                 if old_wh_id and old_wh_id != "default":
                     await db.inventory.update_one(
                         {"warehouse_id": old_wh_id, "product_id": p_id},
-                        {"$inc": {"reserved": -allocated}}
+                        {"$inc": {"reserved": -allocated_boxes}}
                     )
                 await db.inventory.update_one(
                     {"warehouse_id": new_wh_id, "product_id": p_id},
-                    {"$inc": {"reserved": allocated}, "$set": {"updated_at": now_iso()}},
+                    {"$inc": {"reserved": allocated_boxes}, "$set": {"updated_at": now_iso()}},
                     upsert=True
                 )
 

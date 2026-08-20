@@ -407,13 +407,13 @@ async def execute_order_collation(triggered_by: str = "manual", actor: Optional[
             "product_id": pid,
             "product_name": p.get("name", ""),
             "sku": p.get("sku", ""),
-            "quantity": qty_to_order_pcs,
+            "quantity": procure_pcs,
             "quantity_kg": req_kg,
             "weight_per_1000_pcs": wt_1000,
             "rate": rate,
-            "amount": round(qty_to_order_pcs * rate, 2),
+            "amount": round(procure_pcs * rate, 2),
         })
-        total_pcs += qty_to_order_pcs
+        total_pcs += procure_pcs
         total_kg += req_kg
 
     # Default warehouse for POs
@@ -668,14 +668,14 @@ async def approve_supplier_po(payload: ApproveSupplierPOIn, admin: dict = Depend
             "category": p.get("category", ""),
             "size": p.get("size", ""),
             "sku": p.get("sku", ""),
-            "quantity": qty_to_order_pcs,
+            "quantity": procure_pcs,
             "quantity_kg": req_kg,
             "weight_per_1000_pcs": wt_1000,
             "wt_1000_pcs_kg": wt_1000,
             "rate": rate,
             "amount": amt,
         })
-        total_pcs += qty_to_order_pcs
+        total_pcs += procure_pcs
         total_kg += req_kg
 
     if not supplier_items:

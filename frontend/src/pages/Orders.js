@@ -249,10 +249,16 @@ export default function OrdersPage() {
     if (!selected) return;
     setSavingBilling(true);
     try {
-      const itemsToBill = Object.entries(partialBillInputs).map(([pid, qty]) => ({
-        product_id: pid,
-        quantity_to_bill: parseInt(qty, 10) || 0
-      })).filter(i => i.quantity_to_bill > 0);
+      const itemsToBill = Object.entries(partialBillInputs).map(([pid, bQty]) => {
+        const itemObj = selected?.items?.find((i) => i.product_id === pid);
+        const qPerBox = itemObj?.qty_per_box || 1000;
+        const numBoxes = parseInt(bQty, 10) || 0;
+        return {
+          product_id: pid,
+          boxes_to_bill: numBoxes,
+          quantity_to_bill: numBoxes * qPerBox
+        };
+      }).filter(i => i.boxes_to_bill > 0 || i.quantity_to_bill > 0);
 
       if (itemsToBill.length === 0) {
         toast.error("Please enter billed quantity for at least one item");
@@ -625,7 +631,13 @@ export default function OrdersPage() {
             const totalAllocatedPcs = selected.items?.reduce((s, i) => s + (i.quantity_allocated ?? 0), 0) || 0;
             const totalInvoicedPcs = selected.items?.reduce((s, i) => s + (i.quantity_invoiced ?? 0), 0) || 0;
             const totalPendingPcs = selected.items?.reduce((s, i) => s + (i.quantity_pending ?? Math.max(0, (i.quantity_ordered ?? i.quantity ?? 0) - (i.quantity_allocated ?? 0))), 0) || 0;
-            const fulfillmentPct = totalOrderedPcs > 0 ? Math.min(100, Math.round((totalAllocatedPcs / totalOrderedPcs) * 100)) : 100;
+
+            const totalOrderedBoxes = selected.items?.reduce((s, i) => s + (i.boxes ?? Math.ceil((i.quantity_ordered ?? i.quantity ?? 0) / (i.qty_per_box || 1000))), 0) || 0;
+            const totalAllocatedBoxes = selected.items?.reduce((s, i) => s + (i.boxes_allocated ?? Math.ceil((i.quantity_allocated ?? 0) / (i.qty_per_box || 1000))), 0) || 0;
+            const totalInvoicedBoxes = selected.items?.reduce((s, i) => s + (i.boxes_invoiced ?? Math.floor((i.quantity_invoiced ?? 0) / (i.qty_per_box || 1000))), 0) || 0;
+            const totalPendingBoxes = selected.items?.reduce((s, i) => s + (i.boxes_pending ?? Math.max(0, (i.boxes ?? 0) - (i.boxes_allocated ?? 0))), 0) || 0;
+
+            const fulfillmentPct = totalOrderedBoxes > 0 ? Math.min(100, Math.round((totalAllocatedBoxes / totalOrderedBoxes) * 100)) : (totalOrderedPcs > 0 ? Math.min(100, Math.round((totalAllocatedPcs / totalOrderedPcs) * 100)) : 100);
             const isShippedOrDelivered = ["shipped", "delivered"].includes(selected.status?.toLowerCase()) || Boolean(selected.carrier);
 
             return (
@@ -789,7 +801,7 @@ export default function OrdersPage() {
                 })()}
 
                 {/* Live Stock Allocation Status Banner */}
-                {totalPendingPcs === 0 ? (
+                {totalPendingBoxes === 0 && totalPendingPcs === 0 ? (
                   <div className="bg-emerald-50 border border-emerald-300 p-3.5 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-black text-base shadow-sm">
@@ -799,7 +811,7 @@ export default function OrdersPage() {
                         <div className="font-bold text-xs text-emerald-950 flex items-center gap-2">
                           <span>100% Stock Available & Allocated from Live Inventory</span>
                           <span className="font-mono text-[10px] bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded-full font-black border border-emerald-300">
-                            {fmt.num(totalOrderedPcs)} pcs Billed
+                            {fmt.num(totalOrderedBoxes)} Boxes ({fmt.num(totalOrderedPcs)} pcs) Billed
                           </span>
                         </div>
                         <div className="text-[11px] text-emerald-800 mt-0.5">
@@ -830,10 +842,10 @@ export default function OrdersPage() {
                       </div>
                       <div className="flex items-center gap-2 font-mono text-xs">
                         <span className="bg-emerald-100 text-emerald-800 font-bold px-2.5 py-1 rounded-md border border-emerald-200 shadow-2xs">
-                          ✓ {fmt.num(totalAllocatedPcs)} pcs Billed Now
+                          ✓ {fmt.num(totalAllocatedBoxes)} Boxes Billed Now
                         </span>
                         <span className="bg-amber-100 text-amber-900 font-bold px-2.5 py-1 rounded-md border border-amber-300 shadow-2xs">
-                          ⏳ {fmt.num(totalPendingPcs)} pcs On Replenishment
+                          ⏳ {fmt.num(totalPendingBoxes)} Boxes On Replenishment
                         </span>
                       </div>
                     </div>
@@ -848,10 +860,10 @@ export default function OrdersPage() {
                         </div>
                         <div className="flex items-baseline gap-2 mt-1.5">
                           <span className="text-xl font-black font-mono text-emerald-700">
-                            {fmt.num(totalAllocatedPcs)} pcs
+                            {fmt.num(totalAllocatedBoxes)} Boxes
                           </span>
                           <span className="text-xs text-emerald-600 font-bold font-mono">
-                            ({fulfillmentPct}% fulfilled)
+                            ({fulfillmentPct}% fulfilled • {fmt.num(totalAllocatedPcs)} pcs)
                           </span>
                         </div>
                         <p className="text-xs text-slate-600 mt-1 leading-snug">
@@ -867,10 +879,10 @@ export default function OrdersPage() {
                         </div>
                         <div className="flex items-baseline gap-2 mt-1.5">
                           <span className="text-xl font-black font-mono text-amber-800">
-                            {fmt.num(totalPendingPcs)} pcs
+                            {fmt.num(totalPendingBoxes)} Boxes
                           </span>
                           <span className="text-xs text-amber-700 font-bold font-mono">
-                            ({100 - fulfillmentPct}% remaining)
+                            ({100 - fulfillmentPct}% remaining • {fmt.num(totalPendingPcs)} pcs)
                           </span>
                         </div>
                         <p className="text-xs text-slate-600 mt-1 leading-snug">
@@ -883,19 +895,19 @@ export default function OrdersPage() {
                     <div className="text-xs text-amber-950 leading-relaxed bg-amber-100/70 p-3 rounded-lg border border-amber-200/80 flex items-start gap-2.5">
                       <span className="text-base flex-shrink-0">💡</span>
                       <div>
-                        <strong>{fmt.num(totalAllocatedPcs)} pcs</strong> is currently being billed for you from available stock, and the rest (<strong className="font-mono text-amber-900 font-bold">{fmt.num(totalPendingPcs)} pcs</strong>) will be billed as per the stock replenishment.
+                        <strong>{fmt.num(totalAllocatedBoxes)} Boxes ({fmt.num(totalAllocatedPcs)} pcs)</strong> is currently being billed for you from available stock, and the rest (<strong className="font-mono text-amber-900 font-bold">{fmt.num(totalPendingBoxes)} Boxes ({fmt.num(totalPendingPcs)} pcs)</strong>) will be billed as per the stock replenishment.
                       </div>
                     </div>
 
                     {/* Fulfillment Progress Bar */}
                     <div className="space-y-1 pt-1">
                       <div className="flex justify-between text-[11px] font-mono font-semibold text-amber-950">
-                        <span className="text-emerald-800">{fulfillmentPct}% Billed From Available Stock</span>
-                        <span className="text-amber-800">{100 - fulfillmentPct}% Remaining For Stock Replenishment</span>
+                        <span className="text-emerald-800">{fulfillmentPct}% Billed From Available Stock ({fmt.num(totalAllocatedBoxes)} Boxes)</span>
+                        <span className="text-amber-800">{100 - fulfillmentPct}% Remaining For Stock Replenishment ({fmt.num(totalPendingBoxes)} Boxes)</span>
                       </div>
                       <div className="w-full bg-amber-200/80 rounded-full h-2.5 overflow-hidden flex">
-                        <div className="bg-emerald-600 h-2.5 transition-all duration-300" style={{ width: `${fulfillmentPct}%` }} title={`${fulfillmentPct}% Billed Now`}></div>
-                        <div className="bg-amber-500 h-2.5 transition-all duration-300" style={{ width: `${100 - fulfillmentPct}%` }} title={`${100 - fulfillmentPct}% Under Stock Replenishment`}></div>
+                        <div className="bg-emerald-600 h-2.5 transition-all duration-300" style={{ width: `${fulfillmentPct}%` }} title={`${fulfillmentPct}% Billed Now (${fmt.num(totalAllocatedBoxes)} Boxes)`}></div>
+                        <div className="bg-amber-500 h-2.5 transition-all duration-300" style={{ width: `${100 - fulfillmentPct}%` }} title={`${100 - fulfillmentPct}% Under Stock Replenishment (${fmt.num(totalPendingBoxes)} Boxes)`}></div>
                       </div>
                     </div>
                   </div>
@@ -976,7 +988,10 @@ export default function OrdersPage() {
                               setBillingInvoiceNo(`INV-${selected.order_no.replace("ORD-", "")}-P${(selected.invoices?.length || 0) + 1}`);
                               const init = {};
                               selected.items?.forEach(it => {
-                                init[it.product_id] = it.quantity_pending ?? Math.max(0, (it.quantity_ordered || it.quantity) - (it.quantity_invoiced || 0));
+                                const qPerBox = it.qty_per_box || 1000;
+                                const bOrd = it.boxes ?? Math.ceil((it.quantity_ordered || it.quantity || 0) / qPerBox);
+                                const bInv = it.boxes_invoiced ?? Math.floor((it.quantity_invoiced || 0) / qPerBox);
+                                init[it.product_id] = it.boxes_pending ?? Math.max(0, bOrd - bInv);
                               });
                               setPartialBillInputs(init);
                               setPartialBillModalOpen(true);
@@ -1050,26 +1065,44 @@ export default function OrdersPage() {
 
                   <tbody>
                     {selected.items?.map((it, i) => {
+                      const qtyPerBox = it.qty_per_box || 1000;
                       const qOrd = it.quantity_ordered ?? it.quantity ?? 0;
                       const qAlloc = it.quantity_allocated ?? (selected.reservation_status === "reserved" ? qOrd : 0);
                       const qInv = it.quantity_invoiced ?? 0;
                       const qPend = it.quantity_pending ?? Math.max(0, qOrd - qAlloc);
+
+                      const bOrd = it.boxes ?? (Math.ceil(qOrd / qtyPerBox) || 0);
+                      const bAlloc = it.boxes_allocated ?? (Math.ceil(qAlloc / qtyPerBox) || 0);
+                      const bInv = it.boxes_invoiced ?? (Math.floor(qInv / qtyPerBox) || 0);
+                      const bPend = it.boxes_pending ?? Math.max(0, bOrd - bAlloc);
+
                       return (
                         <tr key={i}>
-                          <td className="font-medium text-[#06182F]">{it.product_name}</td>
-                          <td className="font-mono font-bold text-xs text-[#4B5563]">{it.size || it.sku}</td>
-                          <td className="text-right tabular font-mono font-semibold">{fmt.num(qOrd)} pcs</td>
-                          <td className="text-right tabular font-mono font-bold text-emerald-700">
-                            {fmt.num(qAlloc)} pcs
+                          <td className="font-medium text-[#06182F]">
+                            <div>{it.product_name}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">Box of {qtyPerBox} pcs</div>
                           </td>
-                          <td className="text-right tabular font-mono font-bold text-blue-700">{fmt.num(qInv)} pcs</td>
+                          <td className="font-mono font-bold text-xs text-[#4B5563]">{it.size || it.sku}</td>
+                          <td className="text-right tabular font-mono font-semibold">
+                            <div>{fmt.num(bOrd)} Boxes</div>
+                            <div className="text-[10px] text-slate-400">({fmt.num(qOrd)} pcs)</div>
+                          </td>
+                          <td className="text-right tabular font-mono font-bold text-emerald-700">
+                            <div>{fmt.num(bAlloc)} Boxes</div>
+                            <div className="text-[10px] text-emerald-600 font-normal">({fmt.num(qAlloc)} pcs)</div>
+                          </td>
+                          <td className="text-right tabular font-mono font-bold text-blue-700">
+                            <div>{fmt.num(bInv)} Boxes</div>
+                            <div className="text-[10px] text-blue-600 font-normal">({fmt.num(qInv)} pcs)</div>
+                          </td>
                           <td className="text-right tabular font-mono font-bold">
-                            {qPend > 0 ? (
-                              <span className="bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-xs inline-flex items-center gap-1 font-mono font-bold" title="To be billed as per stock replenishment">
-                                <span>⏳</span> {fmt.num(qPend)} pcs
-                              </span>
+                            {bPend > 0 || qPend > 0 ? (
+                              <div className="bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-xs inline-flex flex-col items-end font-mono font-bold" title="To be billed as per stock replenishment">
+                                <span>⏳ {fmt.num(bPend)} Boxes</span>
+                                <span className="text-[10px] text-amber-800 font-normal">({fmt.num(qPend)} pcs)</span>
+                              </div>
                             ) : (
-                              <span className="text-emerald-700 font-mono text-xs font-bold">✓ 0 pcs</span>
+                              <span className="text-emerald-700 font-mono text-xs font-bold">✓ 0 Boxes</span>
                             )}
                           </td>
                           <td className="text-right tabular font-mono font-bold text-[#D96B0B]">
@@ -1194,33 +1227,50 @@ export default function OrdersPage() {
                   <thead className="bg-slate-100 text-slate-700 font-bold">
                     <tr>
                       <th className="p-2">Item Description</th>
-                      <th className="p-2 text-right">Ordered</th>
-                      <th className="p-2 text-right">Already Billed</th>
-                      <th className="p-2 text-right">Quantity to Bill Now (Pcs)</th>
+                      <th className="p-2 text-right">Ordered (Boxes)</th>
+                      <th className="p-2 text-right">Already Billed (Boxes)</th>
+                      <th className="p-2 text-right">Boxes to Bill Now</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {selected.items?.map((it) => {
+                      const qPerBox = it.qty_per_box || 1000;
                       const qOrd = it.quantity_ordered || it.quantity || 0;
                       const qInv = it.quantity_invoiced || 0;
-                      const pending = Math.max(0, qOrd - qInv);
+
+                      const bOrd = it.boxes ?? (Math.ceil(qOrd / qPerBox) || 0);
+                      const bInv = it.boxes_invoiced ?? (Math.floor(qInv / qPerBox) || 0);
+                      const pendingBoxes = it.boxes_pending ?? Math.max(0, bOrd - bInv);
+
                       return (
                         <tr key={it.product_id} className="hover:bg-slate-50">
-                          <td className="p-2 font-medium">{it.product_name} <span className="font-mono text-slate-500">({it.size})</span></td>
-                          <td className="p-2 text-right font-mono">{qOrd}</td>
-                          <td className="p-2 text-right font-mono text-emerald-600">{qInv}</td>
+                          <td className="p-2 font-medium">
+                            {it.product_name} <span className="font-mono text-slate-500">({it.size})</span>
+                            <div className="text-[10px] text-slate-400 font-mono">Box of {qPerBox} pcs</div>
+                          </td>
+                          <td className="p-2 text-right font-mono font-semibold">
+                            {bOrd} Boxes
+                            <div className="text-[10px] text-slate-400 font-normal">({qOrd.toLocaleString()} pcs)</div>
+                          </td>
+                          <td className="p-2 text-right font-mono text-emerald-600 font-semibold">
+                            {bInv} Boxes
+                            <div className="text-[10px] text-emerald-600/80 font-normal">({qInv.toLocaleString()} pcs)</div>
+                          </td>
                           <td className="p-2 text-right">
-                            <input
-                              type="number"
-                              min="0"
-                              max={pending}
-                              value={partialBillInputs[it.product_id] ?? pending}
-                              onChange={(e) => {
-                                const val = parseInt(e.target.value, 10) || 0;
-                                setPartialBillInputs(p => ({ ...p, [it.product_id]: val }));
-                              }}
-                              className="w-24 h-8 px-2 border rounded text-right font-mono font-bold"
-                            />
+                            <div className="flex items-center justify-end gap-1.5">
+                              <input
+                                type="number"
+                                min="0"
+                                max={pendingBoxes}
+                                value={partialBillInputs[it.product_id] ?? pendingBoxes}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10) || 0;
+                                  setPartialBillInputs(p => ({ ...p, [it.product_id]: val }));
+                                }}
+                                className="w-24 h-8 px-2 border rounded text-right font-mono font-bold text-slate-900 bg-white shadow-xs focus:ring-2 focus:ring-sky-500"
+                              />
+                              <span className="text-xs font-semibold text-slate-500">Boxes</span>
+                            </div>
                           </td>
                         </tr>
                       );

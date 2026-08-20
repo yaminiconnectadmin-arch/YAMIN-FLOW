@@ -162,6 +162,9 @@ class OrderItemIn(BaseModel):
     quantity_invoiced: Optional[int] = 0
     quantity_pending: Optional[int] = None
     boxes: Optional[int] = None
+    boxes_allocated: Optional[int] = None
+    boxes_invoiced: Optional[int] = 0
+    boxes_pending: Optional[int] = None
     size: Optional[str] = ""
     qty_per_box: Optional[int] = 1000
     wt_1000_pcs_kg: Optional[float] = 0.0
