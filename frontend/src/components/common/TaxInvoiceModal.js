@@ -36,7 +36,7 @@ export default function TaxInvoiceModal({ isOpen, onClose, order }) {
   const gstTotal = order.gst || (subtotal * 0.18);
   const grandTotal = order.total || (subtotal + gstTotal);
   const totalWeight = order.items?.reduce((s, i) => s + (i.total_weight_kg || 0), 0) || order.total_weight_kg || 0;
-  const totalBoxes = order.items?.reduce((s, i) => s + (i.boxes_allocated || i.boxes || Math.ceil((i.quantity_allocated || i.quantity || 1000) / (i.qty_per_box || 1000))), 0) || 0;
+  const totalBoxes = order.items?.reduce((s, i) => s + (i.boxes_allocated ?? i.boxes ?? i.quantity_allocated ?? i.quantity ?? 0), 0) || 0;
 
   const handlePrint = () => {
     const printContent = printAreaRef.current ? printAreaRef.current.innerHTML : "";
@@ -291,10 +291,11 @@ export default function TaxInvoiceModal({ isOpen, onClose, order }) {
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {order.items?.map((item, idx) => {
-                  const boxes = item.boxes_allocated ?? item.boxes ?? Math.ceil((item.quantity_allocated || item.quantity || 1000) / (item.qty_per_box || 1000));
-                  const pcs = item.quantity_allocated || item.quantity || (boxes * (item.qty_per_box || 1000));
+                  const qtyPerBox = item.qty_per_box || 1000;
+                  const boxes = item.boxes_allocated ?? item.boxes ?? item.quantity_allocated ?? item.quantity ?? 0;
+                  const pcs = item.allocated_pcs ?? item.total_pcs ?? (boxes * qtyPerBox);
                   const wt = item.allocated_weight_kg || item.total_weight_kg || 0;
-                  const rate = item.rate || item.dealer_landing || (item.value_before_tax ? (item.value_before_tax / (item.boxes || 1)) : 0);
+                  const rate = item.rate || item.dealer_landing || (item.value_before_tax ? (item.value_before_tax / (boxes || 1)) : 0);
                   const taxable = item.value_before_tax ? (rate * boxes) : (rate * boxes);
                   const gst = item.gst_amount ? (taxable * 0.18) : (taxable * 0.18);
                   const total = taxable + gst;

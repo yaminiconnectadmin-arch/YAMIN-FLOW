@@ -652,15 +652,15 @@ export default function OrdersPage() {
             )}
           </DialogHeader>
           {selected && (() => {
-            const totalOrderedPcs = selected.items?.reduce((s, i) => s + (i.quantity_ordered ?? i.quantity ?? 0), 0) || 0;
-            const totalAllocatedPcs = selected.items?.reduce((s, i) => s + (i.quantity_allocated ?? 0), 0) || 0;
-            const totalInvoicedPcs = selected.items?.reduce((s, i) => s + (i.quantity_invoiced ?? 0), 0) || 0;
-            const totalPendingPcs = selected.items?.reduce((s, i) => s + (i.quantity_pending ?? Math.max(0, (i.quantity_ordered ?? i.quantity ?? 0) - (i.quantity_allocated ?? 0))), 0) || 0;
+            const totalOrderedBoxes = selected.items?.reduce((s, i) => s + (i.boxes ?? i.quantity_ordered ?? i.quantity ?? 0), 0) || 0;
+            const totalAllocatedBoxes = selected.items?.reduce((s, i) => s + (i.boxes_allocated ?? i.quantity_allocated ?? 0), 0) || 0;
+            const totalInvoicedBoxes = selected.items?.reduce((s, i) => s + (i.boxes_invoiced ?? i.quantity_invoiced ?? 0), 0) || 0;
+            const totalPendingBoxes = selected.items?.reduce((s, i) => s + (i.boxes_pending ?? Math.max(0, totalOrderedBoxes - totalAllocatedBoxes)), 0) || 0;
 
-            const totalOrderedBoxes = selected.items?.reduce((s, i) => s + (i.boxes ?? Math.ceil((i.quantity_ordered ?? i.quantity ?? 0) / (i.qty_per_box || 1000))), 0) || 0;
-            const totalAllocatedBoxes = selected.items?.reduce((s, i) => s + (i.boxes_allocated ?? Math.ceil((i.quantity_allocated ?? 0) / (i.qty_per_box || 1000))), 0) || 0;
-            const totalInvoicedBoxes = selected.items?.reduce((s, i) => s + (i.boxes_invoiced ?? Math.floor((i.quantity_invoiced ?? 0) / (i.qty_per_box || 1000))), 0) || 0;
-            const totalPendingBoxes = selected.items?.reduce((s, i) => s + (i.boxes_pending ?? Math.max(0, (i.boxes ?? 0) - (i.boxes_allocated ?? 0))), 0) || 0;
+            const totalOrderedPcs = selected.items?.reduce((s, i) => s + (i.total_pcs ?? ((i.boxes ?? i.quantity_ordered ?? i.quantity ?? 0) * (i.qty_per_box || 1000))), 0) || 0;
+            const totalAllocatedPcs = selected.items?.reduce((s, i) => s + (i.allocated_pcs ?? ((i.boxes_allocated ?? i.quantity_allocated ?? 0) * (i.qty_per_box || 1000))), 0) || 0;
+            const totalInvoicedPcs = selected.items?.reduce((s, i) => s + (i.invoiced_pcs ?? ((i.boxes_invoiced ?? i.quantity_invoiced ?? 0) * (i.qty_per_box || 1000))), 0) || 0;
+            const totalPendingPcs = selected.items?.reduce((s, i) => s + (i.pending_pcs ?? (totalPendingBoxes * (i.qty_per_box || 1000))), 0) || 0;
 
             const rawFulfillmentPct = totalOrderedBoxes > 0 ? ((totalAllocatedBoxes / totalOrderedBoxes) * 100) : (totalOrderedPcs > 0 ? ((totalAllocatedPcs / totalOrderedPcs) * 100) : 100);
             const fulfillmentPct = (rawFulfillmentPct > 0 && rawFulfillmentPct < 1) ? rawFulfillmentPct.toFixed(1) : Math.min(100, Math.round(rawFulfillmentPct));
@@ -1026,8 +1026,8 @@ export default function OrdersPage() {
                               const init = {};
                               selected.items?.forEach(it => {
                                 const qPerBox = it.qty_per_box || 1000;
-                                const bOrd = it.boxes ?? Math.ceil((it.quantity_ordered || it.quantity || 0) / qPerBox);
-                                const bInv = it.boxes_invoiced ?? Math.floor((it.quantity_invoiced || 0) / qPerBox);
+                                const bOrd = it.boxes ?? (it.quantity_ordered || it.quantity || 0);
+                                const bInv = it.boxes_invoiced ?? (it.quantity_invoiced || 0);
                                 init[it.product_id] = it.boxes_pending ?? Math.max(0, bOrd - bInv);
                               });
                               setPartialBillInputs(init);
@@ -1103,15 +1103,15 @@ export default function OrdersPage() {
                   <tbody>
                     {selected.items?.map((it, i) => {
                       const qtyPerBox = it.qty_per_box || 1000;
-                      const qOrd = it.quantity_ordered ?? it.quantity ?? 0;
-                      const qAlloc = it.quantity_allocated ?? (selected.reservation_status === "reserved" ? qOrd : 0);
-                      const qInv = it.quantity_invoiced ?? 0;
-                      const qPend = it.quantity_pending ?? Math.max(0, qOrd - qAlloc);
-
-                      const bOrd = it.boxes ?? (Math.ceil(qOrd / qtyPerBox) || 0);
-                      const bAlloc = it.boxes_allocated ?? (Math.ceil(qAlloc / qtyPerBox) || 0);
-                      const bInv = it.boxes_invoiced ?? (Math.floor(qInv / qtyPerBox) || 0);
+                      const bOrd = it.boxes ?? (it.quantity_ordered ?? it.quantity ?? 0);
+                      const bAlloc = it.boxes_allocated ?? (it.quantity_allocated ?? (selected.reservation_status === "reserved" ? bOrd : 0));
+                      const bInv = it.boxes_invoiced ?? (it.quantity_invoiced ?? 0);
                       const bPend = it.boxes_pending ?? Math.max(0, bOrd - bAlloc);
+
+                      const qOrd = it.total_pcs ?? (bOrd * qtyPerBox);
+                      const qAlloc = it.allocated_pcs ?? (bAlloc * qtyPerBox);
+                      const qInv = it.invoiced_pcs ?? (bInv * qtyPerBox);
+                      const qPend = it.pending_pcs ?? (bPend * qtyPerBox);
 
                       return (
                         <tr key={i}>
@@ -1272,12 +1272,12 @@ export default function OrdersPage() {
                   <tbody className="divide-y">
                     {selected.items?.map((it) => {
                       const qPerBox = it.qty_per_box || 1000;
-                      const qOrd = it.quantity_ordered || it.quantity || 0;
-                      const qInv = it.quantity_invoiced || 0;
-
-                      const bOrd = it.boxes ?? (Math.ceil(qOrd / qPerBox) || 0);
-                      const bInv = it.boxes_invoiced ?? (Math.floor(qInv / qPerBox) || 0);
+                      const bOrd = it.boxes ?? (it.quantity_ordered || it.quantity || 0);
+                      const bInv = it.boxes_invoiced ?? (it.quantity_invoiced || 0);
                       const pendingBoxes = it.boxes_pending ?? Math.max(0, bOrd - bInv);
+
+                      const pcsOrd = it.total_pcs ?? (bOrd * qPerBox);
+                      const pcsInv = it.invoiced_pcs ?? (bInv * qPerBox);
 
                       return (
                         <tr key={it.product_id} className="hover:bg-slate-50">
@@ -1287,11 +1287,11 @@ export default function OrdersPage() {
                           </td>
                           <td className="p-2 text-right font-mono font-semibold">
                             {bOrd} Boxes
-                            <div className="text-[10px] text-slate-400 font-normal">({qOrd.toLocaleString()} pcs)</div>
+                            <div className="text-[10px] text-slate-400 font-normal">({pcsOrd.toLocaleString()} pcs)</div>
                           </td>
                           <td className="p-2 text-right font-mono text-emerald-600 font-semibold">
                             {bInv} Boxes
-                            <div className="text-[10px] text-emerald-600/80 font-normal">({qInv.toLocaleString()} pcs)</div>
+                            <div className="text-[10px] text-emerald-600/80 font-normal">({pcsInv.toLocaleString()} pcs)</div>
                           </td>
                           <td className="p-2 text-right">
                             <div className="flex items-center justify-end gap-1.5">
