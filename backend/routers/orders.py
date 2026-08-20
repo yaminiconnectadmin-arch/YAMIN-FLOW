@@ -1131,11 +1131,20 @@ async def reallocate_order_stock(order_id: str, user: dict = Depends(get_current
 
     reservation_status = "reserved" if total_allocated_pcs == total_demanded_pcs else ("partially_reserved" if total_allocated_pcs > 0 else "pending")
 
+    new_status = doc.get("status", "pending")
+    if total_allocated_pcs == total_demanded_pcs:
+        if new_status in ["pending", "partially_fulfilled", "processing"]:
+            new_status = "approved"
+    elif total_allocated_pcs > 0:
+        if new_status in ["pending", "approved"]:
+            new_status = "partially_fulfilled"
+
     await db.orders.update_one(
         {"_id": doc["_id"]},
         {"$set": {
             "items": updated_items,
             "deficits": deficits,
+            "status": new_status,
             "reservation_status": reservation_status,
             "updated_at": now_iso()
         }}

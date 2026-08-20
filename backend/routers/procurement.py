@@ -249,9 +249,24 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
     total_kg = 0.0
 
     for pid, deficit_pcs in demanded_pcs_map.items():
-        p = prods.get(pid)
+        p = prods.get(str(pid))
         if not p:
-            continue
+            if ObjectId.is_valid(str(pid)):
+                p = await db.products.find_one({"_id": ObjectId(pid)})
+            if not p:
+                p = await db.products.find_one({"_id": str(pid)})
+            if not p:
+                p = await db.products.find_one({"sku": str(pid)})
+        if not p:
+            sample_ob = order_breakdown_map.get(pid, [{}])[0]
+            p = {
+                "name": sample_ob.get("product_name") or f"Fastener Product ({str(pid)[:6]})",
+                "sku": sample_ob.get("sku") or str(pid)[:8],
+                "category": "Fasteners",
+                "size": "",
+                "wt_1000_pcs_kg": 1.0,
+                "price": 0
+            }
         avail = inv_agg.get(pid, 0)
         safety = p.get("safety_stock", 0)
         procure_pcs = deficit_pcs
@@ -423,9 +438,16 @@ async def execute_order_collation(triggered_by: str = "manual", actor: Optional[
     total_kg = 0.0
 
     for pid, deficit_demand in demanded_pcs_map.items():
-        p = prods.get(pid)
+        p = prods.get(str(pid))
         if not p:
-            continue
+            if ObjectId.is_valid(str(pid)):
+                p = await db.products.find_one({"_id": ObjectId(pid)})
+            if not p:
+                p = await db.products.find_one({"_id": str(pid)})
+            if not p:
+                p = await db.products.find_one({"sku": str(pid)})
+        if not p:
+            p = {"name": f"Fastener Product ({str(pid)[:6]})", "sku": str(pid)[:8], "wt_1000_pcs_kg": 1.0, "cost": 0, "price": 0}
         procure_pcs = deficit_demand
         if procure_pcs <= 0:
             continue
