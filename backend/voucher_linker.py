@@ -59,7 +59,8 @@ async def find_candidate_orders(party: str, amount: float, limit: int = 5, order
     if order_no:
         direct = await db.orders.find_one({
             "order_no": order_no,
-            "status": {"$nin": ["cancelled", "delivered"]},
+            "status": {"$in": ["approved", "processing", "shipped", "partially_fulfilled"]},
+            "approved_at": {"$exists": True, "$ne": None}
         })
         if direct:
             return [direct]
@@ -67,9 +68,10 @@ async def find_candidate_orders(party: str, amount: float, limit: int = 5, order
     if not party or amount <= 0:
         return []
 
-    # Fetch open orders (broadly), filter in-memory
+    # Fetch open approved orders (EXCLUDING PENDING orders)
     orders = await db.orders.find({
-        "status": {"$in": ["pending", "approved", "shipped", "partially_fulfilled"]},
+        "status": {"$in": ["approved", "processing", "shipped", "partially_fulfilled"]},
+        "approved_at": {"$exists": True, "$ne": None}
     }).sort("created_at", -1).to_list(500)
     candidates = []
     for o in orders:

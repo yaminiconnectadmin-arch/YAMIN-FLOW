@@ -124,7 +124,7 @@ async def _enrich_orders(docs: list) -> list:
             d["warehouse_code"] = d.get("warehouse_code") or ""
 
         # Invoice number generation: Only issued AFTER explicit Admin approval!
-        is_approved = bool(d.get("approved_at")) or bool(d.get("tally_voucher_no"))
+        is_approved = bool(d.get("approved_at"))
         if is_approved:
             if not d.get("invoice_no"):
                 ord_no = str(d.get("order_no", "ORD-PENDING"))
@@ -133,6 +133,11 @@ async def _enrich_orders(docs: list) -> list:
             d["invoice_no"] = None
             d["invoices"] = []
             d["status"] = "pending"
+            if d.get("_id") and (d.get("invoices") or d.get("invoice_no") or d.get("status") != "pending"):
+                await db.orders.update_one(
+                    {"_id": d["_id"]},
+                    {"$set": {"status": "pending"}, "$unset": {"invoice_no": "", "invoices": "", "tally_voucher_no": "", "tally_voucher": ""}}
+                )
 
         # Estimated delivery and countdown enrichment
         if not d.get("delivery_days_total"):
