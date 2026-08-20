@@ -34,38 +34,38 @@ function ItemAccordionRow({ it, idx, fmt }) {
           {idx + 1}
         </span>
 
-        {/* SKU + Name */}
+        {/* SKU + Name + Dealer Badges */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono font-black text-xs text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{it.sku}</span>
-            <span className="font-semibold text-sm text-slate-800">{it.product_name}</span>
+            <span className="font-bold text-sm text-slate-900">{it.product_name}</span>
             {it.size && <span className="text-xs text-slate-500 font-mono">({it.size})</span>}
             <span className="px-2 py-0.5 text-[10px] font-medium bg-slate-100 text-slate-600 rounded">{it.category}</span>
           </div>
-          <div className="flex items-center gap-3 mt-1 flex-wrap">
-            <span className="text-xs text-slate-500">Supplier: <strong className="text-slate-700">{it.supplier_name}</strong></span>
-            <span className="text-xs text-slate-400">•</span>
-            <span className="text-xs text-slate-500">{(it.order_breakdown || []).length} order{(it.order_breakdown || []).length !== 1 ? 's' : ''} driving demand</span>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className="text-xs text-slate-500">Supplier: <strong className="text-slate-800">{it.supplier_name}</strong></span>
+            <span className="text-xs text-slate-300">•</span>
+            <span className="text-xs text-slate-500">Dealers:</span>
+            {(it.dealer_codes || []).map((c, i) => (
+              <span key={i} className="bg-amber-100 text-amber-900 font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border border-amber-300">{c}</span>
+            ))}
           </div>
         </div>
 
         {/* Key Metrics */}
-        <div className="hidden sm:flex items-center gap-4 text-right flex-shrink-0">
+        <div className="hidden sm:flex items-center gap-5 text-right flex-shrink-0">
           <div>
-            <div className="text-[10px] font-bold uppercase text-slate-400">Pending PCS</div>
-            <div className="text-sm font-black text-slate-900 font-mono">{fmt.num(it.recommended_pcs)}</div>
+            <div className="text-[10px] font-bold uppercase text-slate-400">Demanded Boxes</div>
+            <div className="text-sm font-black text-slate-900 font-mono">{fmt.num(it.demanded_boxes || (it.recommended_pcs / 1000))} Boxes</div>
+            <div className="text-[10px] text-slate-400 font-mono">({fmt.num(it.demanded_pcs || it.recommended_pcs)} pcs)</div>
           </div>
           <div>
-            <div className="text-[10px] font-bold uppercase text-amber-600">Required KG</div>
-            <div className="text-sm font-black text-amber-700 font-mono">{fmt.kg(it.recommended_weight_kg)}</div>
+            <div className="text-[10px] font-bold uppercase text-amber-600">Total Weight</div>
+            <div className="text-base font-black text-amber-700 font-mono">{fmt.kg(it.recommended_weight_kg)}</div>
           </div>
           <div>
-            <div className="text-[10px] font-bold uppercase text-blue-500">Wt/1000 PCS</div>
-            <div className="text-sm font-black text-blue-700 font-mono">{Number(it.wt_1000_pcs_kg).toFixed(3)} kg</div>
-          </div>
-          <div>
-            <div className="text-[10px] font-bold uppercase text-slate-400">Amount</div>
-            <div className="text-sm font-black text-emerald-700 font-mono">{fmt.inr(it.amount)}</div>
+            <div className="text-[10px] font-bold uppercase text-blue-500">WT / 1000 PCS</div>
+            <div className="text-xs font-bold text-blue-700 font-mono">{Number(it.wt_1000_pcs_kg).toFixed(3)} kg</div>
           </div>
         </div>
 
@@ -104,9 +104,9 @@ function ItemAccordionRow({ it, idx, fmt }) {
                   <th className="text-left px-4 py-2.5 font-bold text-slate-600">Dealer Name</th>
                   <th className="text-left px-4 py-2.5 font-bold text-slate-600">CNF / MNP</th>
                   <th className="text-left px-4 py-2.5 font-bold text-slate-600">Order Status</th>
-                  <th className="text-right px-4 py-2.5 font-bold text-slate-600">Qty Ordered</th>
-                  <th className="text-right px-4 py-2.5 font-bold text-emerald-700">Qty Allocated</th>
-                  <th className="text-right px-4 py-2.5 font-bold text-amber-700 bg-amber-50">Qty Pending ⬇</th>
+                  <th className="text-right px-4 py-2.5 font-bold text-slate-600">Ordered (Boxes)</th>
+                  <th className="text-right px-4 py-2.5 font-bold text-emerald-700">Allocated (Boxes)</th>
+                  <th className="text-right px-4 py-2.5 font-bold text-amber-700 bg-amber-50">Pending Replenishment ⬇</th>
                 </tr>
               </thead>
               <tbody>
@@ -135,18 +135,25 @@ function ItemAccordionRow({ it, idx, fmt }) {
                         {ob.order_status?.toUpperCase().replace(/_/g, " ")}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5 text-right tabular font-mono text-slate-700">{fmt.num(ob.qty_ordered)}</td>
-                    <td className="px-4 py-2.5 text-right tabular font-mono text-emerald-700 font-semibold">{fmt.num(ob.qty_allocated)}</td>
-                    <td className="px-4 py-2.5 text-right tabular font-mono font-black text-amber-800 bg-amber-50">{fmt.num(ob.qty_pending)}</td>
+                    <td className="px-4 py-2.5 text-right tabular font-mono text-slate-700">
+                      {fmt.num(ob.qty_ordered_boxes ?? ob.qty_ordered)} Boxes
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular font-mono text-emerald-700 font-semibold">
+                      {fmt.num(ob.qty_allocated_boxes ?? ob.qty_allocated)} Boxes
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular font-mono font-black text-amber-800 bg-amber-50">
+                      <div>{fmt.num(ob.qty_pending_boxes ?? ob.qty_pending)} Boxes</div>
+                      <div className="text-[10px] font-normal text-amber-600 font-mono">({fmt.num(ob.qty_pending_pcs ?? ((ob.qty_pending_boxes ?? ob.qty_pending) * 1000))} pcs)</div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="bg-slate-900 text-white">
                   <td colSpan={5} className="px-4 py-2.5 font-black text-xs uppercase tracking-wider">TOTAL — {it.product_name}</td>
-                  <td className="px-4 py-2.5 text-right tabular font-mono font-bold">{fmt.num((it.order_breakdown || []).reduce((s, o) => s + (o.qty_ordered || 0), 0))}</td>
-                  <td className="px-4 py-2.5 text-right tabular font-mono font-bold text-emerald-400">{fmt.num((it.order_breakdown || []).reduce((s, o) => s + (o.qty_allocated || 0), 0))}</td>
-                  <td className="px-4 py-2.5 text-right tabular font-mono font-black text-amber-300 bg-amber-900/40">{fmt.num(it.recommended_pcs)}</td>
+                  <td className="px-4 py-2.5 text-right tabular font-mono font-bold">{fmt.num((it.order_breakdown || []).reduce((s, o) => s + (o.qty_ordered_boxes ?? o.qty_ordered || 0), 0))} Boxes</td>
+                  <td className="px-4 py-2.5 text-right tabular font-mono font-bold text-emerald-400">{fmt.num((it.order_breakdown || []).reduce((s, o) => s + (o.qty_allocated_boxes ?? o.qty_allocated || 0), 0))} Boxes</td>
+                  <td className="px-4 py-2.5 text-right tabular font-mono font-black text-amber-300 bg-amber-900/40">{fmt.num(it.demanded_boxes || (it.recommended_pcs / 1000))} Boxes ({fmt.num(it.recommended_pcs)} pcs)</td>
                 </tr>
               </tfoot>
             </table>
@@ -173,7 +180,7 @@ function ItemAccordionRow({ it, idx, fmt }) {
 
 export default function ProcurementPage() {
   const [activeTab, setActiveTab] = useState("collation"); // collation | recs | matrix
-  const [collationViewMode, setCollationViewMode] = useState("by_supplier"); // "by_supplier" | "by_item"
+  const [collationViewMode, setCollationViewMode] = useState("by_item"); // "by_item" | "by_supplier"
   const [loading, setLoading] = useState(true);
 
   // Tab 1: Collation state

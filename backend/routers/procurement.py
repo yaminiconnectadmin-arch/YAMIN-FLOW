@@ -154,9 +154,8 @@ async def upsert_weight_matrix_item(payload: WeightMatrixItem, admin: dict = Dep
 async def get_uncollated_summary(user: dict = Depends(get_current_user)):
     """Analyze pending/approved/partially_fulfilled orders that haven't been fully collated into weight-based supplier POs."""
     uncollated = await db.orders.find({
-        "status": {"$in": ["pending", "approved", "partially_fulfilled"]},
-        "$or": [{"collated": {"$ne": True}}, {"quantity_pending": {"$gt": 0}}]
-    }).to_list(2000)
+        "status": {"$in": ["pending", "approved", "partially_fulfilled"]}
+    }).to_list(5000)
 
     total_orders = len(uncollated)
     dealer_ids = {o.get("dealer_id") for o in uncollated if o.get("dealer_id") and ObjectId.is_valid(o.get("dealer_id"))}
@@ -164,10 +163,13 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
     mnp_ids = {u.get("mnp_id") for u in dealers.values() if u.get("mnp_id") and ObjectId.is_valid(u.get("mnp_id"))}
     mnps = {str(m["_id"]): m for m in await db.users.find({"_id": {"$in": [ObjectId(x) for x in mnp_ids]}}).to_list(1000)} if mnp_ids else {}
 
+    demanded_boxes_map = {}
     demanded_pcs_map = {}
     dealer_codes_map = {}
     mnp_codes_map = {}
     order_breakdown_map = {}   # pid -> list of {order_no, dealer_code, dealer_name, order_status, qty_pending, qty_allocated, qty_ordered}
+    filtered_orders_count = set()
+
     for o in uncollated:
         dlr = dealers.get(o.get("dealer_id"))
         d_code = o.get("dealer_code")
@@ -188,16 +190,22 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
         if not m_code:
             m_code = "DIRECT"
 
+        has_pending_items = False
         for item in o.get("items", []):
             pid = item["product_id"]
-            q_ord = item.get("quantity_ordered") or item.get("quantity", 0)
-            q_alloc = item.get("quantity_allocated") or 0
-            q_deficit = item.get("quantity_pending")
-            if q_deficit is None:
-                q_deficit = max(0, q_ord - q_alloc)
+            qty_per_b = item.get("qty_per_box") or 1000
+            q_ord = item.get("boxes") if item.get("boxes") is not None else (item.get("quantity_ordered") or item.get("quantity", 0))
+            q_alloc = item.get("boxes_allocated") if item.get("boxes_allocated") is not None else (item.get("quantity_allocated") or 0)
+            q_deficit_boxes = item.get("boxes_pending") if item.get("boxes_pending") is not None else item.get("quantity_pending")
+            if q_deficit_boxes is None:
+                q_deficit_boxes = max(0, q_ord - q_alloc)
             
-            if q_deficit > 0:
-                demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + q_deficit
+            if q_deficit_boxes > 0:
+                has_pending_items = True
+                q_deficit_pcs = q_deficit_boxes * qty_per_b
+                demanded_boxes_map[pid] = demanded_boxes_map.get(pid, 0) + q_deficit_boxes
+                demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + q_deficit_pcs
+
                 if pid not in dealer_codes_map:
                     dealer_codes_map[pid] = set()
                     mnp_codes_map[pid] = set()
@@ -210,11 +218,18 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
                     "dealer_name": d_name,
                     "cnf_code": m_code,
                     "order_status": o.get("status", "pending"),
-                    "qty_ordered": q_ord,
-                    "qty_allocated": q_alloc,
-                    "qty_pending": q_deficit,
+                    "qty_ordered_boxes": q_ord,
+                    "qty_allocated_boxes": q_alloc,
+                    "qty_pending_boxes": q_deficit_boxes,
+                    "qty_ordered_pcs": q_ord * qty_per_b,
+                    "qty_allocated_pcs": q_alloc * qty_per_b,
+                    "qty_pending_pcs": q_deficit_pcs,
                 })
 
+        if has_pending_items:
+            filtered_orders_count.add(str(o["_id"]))
+
+    total_orders = len(filtered_orders_count)
 
     # Load products and inventory
     prod_ids = [ObjectId(pid) for pid in demanded_pcs_map.keys() if ObjectId.is_valid(pid)]
@@ -233,13 +248,14 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
     total_pcs = 0
     total_kg = 0.0
 
-    for pid, deficit_demand in demanded_pcs_map.items():
+    for pid, deficit_pcs in demanded_pcs_map.items():
         p = prods.get(pid)
         if not p:
             continue
         avail = inv_agg.get(pid, 0)
         safety = p.get("safety_stock", 0)
-        procure_pcs = deficit_demand
+        procure_pcs = deficit_pcs
+        procure_boxes = demanded_boxes_map.get(pid, 0)
         wt_1000 = p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0) or 1.0
         req_kg = round((procure_pcs / 1000.0) * wt_1000, 4)
 
@@ -253,9 +269,11 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
             "product_name": p.get("name", ""),
             "category": p.get("category", ""),
             "size": p.get("size", ""),
-            "demanded_pcs": deficit_demand,
+            "demanded_boxes": procure_boxes,
+            "demanded_pcs": deficit_pcs,
             "available_pcs": avail,
             "safety_stock": safety,
+            "recommended_boxes": procure_boxes,
             "recommended_pcs": procure_pcs,
             "wt_1000_pcs_kg": wt_1000,
             "recommended_weight_kg": req_kg,
@@ -264,7 +282,7 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
             "supplier_phone": sup.get("phone", "") if sup else "",
             "supplier_company": sup.get("company", "") if sup else "",
             "rate": rate,
-            "amount": round(procure_pcs * rate, 2),
+            "amount": round(procure_boxes * rate, 2),
             "dealer_codes": sorted(list(dealer_codes_map.get(pid, []))),
             "cnf_codes": sorted(list(mnp_codes_map.get(pid, []))),
             "mnp_codes": sorted(list(mnp_codes_map.get(pid, []))),
@@ -358,8 +376,7 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
 async def execute_order_collation(triggered_by: str = "manual", actor: Optional[dict] = None) -> dict:
     """Core logic: aggregates uncollated/partially-fulfilled orders, computes kg weight, creates grouped supplier POs."""
     uncollated = await db.orders.find({
-        "status": {"$in": ["pending", "approved", "partially_fulfilled"]},
-        "$or": [{"collated": {"$ne": True}}, {"quantity_pending": {"$gt": 0}}]
+        "status": {"$in": ["pending", "approved", "partially_fulfilled"]}
     }).to_list(5000)
 
     if not uncollated:
@@ -382,13 +399,15 @@ async def execute_order_collation(triggered_by: str = "manual", actor: Optional[
     for o in uncollated:
         for item in o.get("items", []):
             pid = item["product_id"]
-            q_ord = item.get("quantity_ordered") or item.get("quantity", 0)
-            q_alloc = item.get("quantity_allocated") or 0
-            q_deficit = item.get("quantity_pending")
-            if q_deficit is None:
-                q_deficit = max(0, q_ord - q_alloc)
-            if q_deficit > 0:
-                demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + q_deficit
+            qty_per_b = item.get("qty_per_box") or 1000
+            q_ord = item.get("boxes") if item.get("boxes") is not None else (item.get("quantity_ordered") or item.get("quantity", 0))
+            q_alloc = item.get("boxes_allocated") if item.get("boxes_allocated") is not None else (item.get("quantity_allocated") or 0)
+            q_deficit_boxes = item.get("boxes_pending") if item.get("boxes_pending") is not None else item.get("quantity_pending")
+            if q_deficit_boxes is None:
+                q_deficit_boxes = max(0, q_ord - q_alloc)
+            if q_deficit_boxes > 0:
+                q_deficit_pcs = q_deficit_boxes * qty_per_b
+                demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + q_deficit_pcs
 
     prod_ids = [ObjectId(pid) for pid in demanded_pcs_map.keys() if ObjectId.is_valid(pid)]
     prods = {str(p["_id"]): p for p in await db.products.find({"_id": {"$in": prod_ids}}).to_list(1000)}
@@ -626,8 +645,7 @@ async def _po_number() -> str:
 async def approve_supplier_po(payload: ApproveSupplierPOIn, admin: dict = Depends(require_admin)):
     """Approve collated items for a single supplier, generate official PO, update source orders, and create WhatsApp redirection."""
     uncollated = await db.orders.find({
-        "status": {"$in": ["pending", "approved", "partially_fulfilled"]},
-        "$or": [{"collated": {"$ne": True}}, {"quantity_pending": {"$gt": 0}}]
+        "status": {"$in": ["pending", "approved", "partially_fulfilled"]}
     }).to_list(5000)
 
     if not uncollated:
@@ -638,13 +656,15 @@ async def approve_supplier_po(payload: ApproveSupplierPOIn, admin: dict = Depend
     for o in uncollated:
         for item in o.get("items", []):
             pid = item["product_id"]
-            q_ord = item.get("quantity_ordered") or item.get("quantity", 0)
-            q_alloc = item.get("quantity_allocated") or 0
-            q_deficit = item.get("quantity_pending")
-            if q_deficit is None:
-                q_deficit = max(0, q_ord - q_alloc)
-            if q_deficit > 0:
-                demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + q_deficit
+            qty_per_b = item.get("qty_per_box") or 1000
+            q_ord = item.get("boxes") if item.get("boxes") is not None else (item.get("quantity_ordered") or item.get("quantity", 0))
+            q_alloc = item.get("boxes_allocated") if item.get("boxes_allocated") is not None else (item.get("quantity_allocated") or 0)
+            q_deficit_boxes = item.get("boxes_pending") if item.get("boxes_pending") is not None else item.get("quantity_pending")
+            if q_deficit_boxes is None:
+                q_deficit_boxes = max(0, q_ord - q_alloc)
+            if q_deficit_boxes > 0:
+                q_deficit_pcs = q_deficit_boxes * qty_per_b
+                demanded_pcs_map[pid] = demanded_pcs_map.get(pid, 0) + q_deficit_pcs
 
     prod_ids = [ObjectId(pid) for pid in demanded_pcs_map.keys() if ObjectId.is_valid(pid)]
     prods = {str(p["_id"]): p for p in await db.products.find({"_id": {"$in": prod_ids}}).to_list(1000)}
