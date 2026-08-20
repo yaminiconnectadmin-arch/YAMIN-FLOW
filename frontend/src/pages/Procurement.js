@@ -136,14 +136,14 @@ function ItemAccordionRow({ it, idx, fmt }) {
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-right tabular font-mono text-slate-700">
-                      {fmt.num(ob.qty_ordered_boxes ?? ob.qty_ordered)} Boxes
+                      {fmt.num(ob.qty_ordered_boxes ?? (ob.qty_ordered || 0))} Boxes
                     </td>
                     <td className="px-4 py-2.5 text-right tabular font-mono text-emerald-700 font-semibold">
-                      {fmt.num(ob.qty_allocated_boxes ?? ob.qty_allocated)} Boxes
+                      {fmt.num(ob.qty_allocated_boxes ?? (ob.qty_allocated || 0))} Boxes
                     </td>
                     <td className="px-4 py-2.5 text-right tabular font-mono font-black text-amber-800 bg-amber-50">
-                      <div>{fmt.num(ob.qty_pending_boxes ?? ob.qty_pending)} Boxes</div>
-                      <div className="text-[10px] font-normal text-amber-600 font-mono">({fmt.num(ob.qty_pending_pcs ?? ((ob.qty_pending_boxes ?? ob.qty_pending) * 1000))} pcs)</div>
+                      <div>{fmt.num(ob.qty_pending_boxes ?? (ob.qty_pending || 0))} Boxes</div>
+                      <div className="text-[10px] font-normal text-amber-600 font-mono">({fmt.num(ob.qty_pending_pcs ?? ((ob.qty_pending_boxes ?? (ob.qty_pending || 0)) * 1000))} pcs)</div>
                     </td>
                   </tr>
                 ))}
@@ -151,8 +151,8 @@ function ItemAccordionRow({ it, idx, fmt }) {
               <tfoot>
                 <tr className="bg-slate-900 text-white">
                   <td colSpan={5} className="px-4 py-2.5 font-black text-xs uppercase tracking-wider">TOTAL — {it.product_name}</td>
-                  <td className="px-4 py-2.5 text-right tabular font-mono font-bold">{fmt.num((it.order_breakdown || []).reduce((s, o) => s + (o.qty_ordered_boxes ?? o.qty_ordered || 0), 0))} Boxes</td>
-                  <td className="px-4 py-2.5 text-right tabular font-mono font-bold text-emerald-400">{fmt.num((it.order_breakdown || []).reduce((s, o) => s + (o.qty_allocated_boxes ?? o.qty_allocated || 0), 0))} Boxes</td>
+                  <td className="px-4 py-2.5 text-right tabular font-mono font-bold">{fmt.num((it.order_breakdown || []).reduce((s, o) => s + (o.qty_ordered_boxes ?? (o.qty_ordered || 0)), 0))} Boxes</td>
+                  <td className="px-4 py-2.5 text-right tabular font-mono font-bold text-emerald-400">{fmt.num((it.order_breakdown || []).reduce((s, o) => s + (o.qty_allocated_boxes ?? (o.qty_allocated || 0)), 0))} Boxes</td>
                   <td className="px-4 py-2.5 text-right tabular font-mono font-black text-amber-300 bg-amber-900/40">{fmt.num(it.demanded_boxes || (it.recommended_pcs / 1000))} Boxes ({fmt.num(it.recommended_pcs)} pcs)</td>
                 </tr>
               </tfoot>
