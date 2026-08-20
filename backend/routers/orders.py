@@ -434,32 +434,68 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         tot = i.value_after_tax if (i.value_after_tax and i.value_after_tax > 0) else round(sub + gst, 2)
         subtotal += sub
 
-        # New orders start in PENDING state with ZERO reserved stock until Admin Approval
-        allocated_boxes = 0
-        allocated_pcs = 0
-        deficit_boxes = demanded_boxes
-        deficit_pcs = demanded_pcs
-
         inv = await db.inventory.find_one({"warehouse_id": wh_id, "product_id": i.product_id})
         on_hand_boxes = inv.get("quantity", 0) if inv else 0
         reserved_boxes = inv.get("reserved", 0) if inv else 0
         avail_boxes = max(0, on_hand_boxes - reserved_boxes)
 
-        if avail_boxes < demanded_boxes:
+        if avail_boxes >= demanded_boxes:
+            allocated_boxes = demanded_boxes
+            allocated_pcs = demanded_pcs
+            deficit_boxes = 0
+            deficit_pcs = 0
+            # Reserve stock in inventory immediately so stock is locked
+            await db.inventory.update_one(
+                {"warehouse_id": wh_id, "product_id": i.product_id},
+                {"$inc": {"reserved": allocated_boxes}, "$set": {"updated_at": now_iso()}},
+                upsert=True
+            )
+        elif avail_boxes > 0:
+            allocated_boxes = avail_boxes
+            allocated_pcs = allocated_boxes * qty_per_box
+            deficit_boxes = demanded_boxes - allocated_boxes
+            deficit_pcs = deficit_boxes * qty_per_box
+            # Reserve partial stock in inventory immediately
+            await db.inventory.update_one(
+                {"warehouse_id": wh_id, "product_id": i.product_id},
+                {"$inc": {"reserved": allocated_boxes}, "$set": {"updated_at": now_iso()}},
+                upsert=True
+            )
             deficits.append({
                 "product_id": i.product_id,
                 "product_name": p["name"],
                 "sku": p["sku"],
                 "required_boxes": demanded_boxes,
                 "available_boxes": avail_boxes,
-                "allocated_boxes": 0,
-                "deficit_boxes": demanded_boxes,
+                "allocated_boxes": allocated_boxes,
+                "deficit_boxes": deficit_boxes,
                 "required": demanded_pcs,
-                "available": avail_boxes * qty_per_box,
-                "allocated": 0,
-                "deficit": demanded_pcs,
-                "weight_deficit_kg": round((demanded_pcs / 1000.0) * wt_1000, 3)
+                "available": allocated_pcs,
+                "allocated": allocated_pcs,
+                "deficit": deficit_pcs,
+                "weight_deficit_kg": round((deficit_pcs / 1000.0) * wt_1000, 3)
             })
+        else:
+            allocated_boxes = 0
+            allocated_pcs = 0
+            deficit_boxes = demanded_boxes
+            deficit_pcs = demanded_pcs
+            deficits.append({
+                "product_id": i.product_id,
+                "product_name": p["name"],
+                "sku": p["sku"],
+                "required_boxes": demanded_boxes,
+                "available_boxes": 0,
+                "allocated_boxes": 0,
+                "deficit_boxes": deficit_boxes,
+                "required": demanded_pcs,
+                "available": 0,
+                "allocated": 0,
+                "deficit": deficit_pcs,
+                "weight_deficit_kg": round((deficit_pcs / 1000.0) * wt_1000, 3)
+            })
+
+        total_allocated += allocated_boxes
 
         items_out.append({
             "product_id": i.product_id,
@@ -469,18 +505,18 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
             "size": i.size or p.get("size", ""),
             "quantity": demanded_boxes,
             "quantity_ordered": demanded_boxes,
-            "quantity_allocated": 0,
+            "quantity_allocated": allocated_boxes,
             "quantity_invoiced": 0,
-            "quantity_pending": demanded_boxes,
+            "quantity_pending": deficit_boxes,
             "boxes": demanded_boxes,
-            "boxes_allocated": 0,
+            "boxes_allocated": allocated_boxes,
             "boxes_invoiced": 0,
-            "boxes_pending": demanded_boxes,
+            "boxes_pending": deficit_boxes,
             "qty_per_box": qty_per_box,
             "wt_1000_pcs_kg": wt_1000,
             "total_weight_kg": item_weight,
-            "allocated_weight_kg": 0.0,
-            "pending_replenishment_kg": item_weight,
+            "allocated_weight_kg": round((allocated_pcs / 1000.0) * wt_1000, 3),
+            "pending_replenishment_kg": round((deficit_pcs / 1000.0) * wt_1000, 3),
             "rate": rate,
             "dealer_landing": p.get("dealer_landing", rate),
             "value_before_tax": sub,
@@ -488,9 +524,9 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
             "value_after_tax": tot,
         })
 
-    # Allocation & Order Status: ALL orders start as PENDING requiring Admin Approval before Invoice is issued!
+    # Allocation & Order Status: Stock is reserved, but Order Status is PENDING with NO Invoice until Admin Approval!
     overall_status = "pending"
-    reservation_status = "pending"
+    reservation_status = "reserved" if total_allocated == total_demanded else ("partially_reserved" if total_allocated > 0 else "pending")
 
     order_no = await _order_number()
     invoice_no = None
