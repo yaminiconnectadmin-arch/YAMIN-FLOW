@@ -3,7 +3,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 from db import db, serialize_doc, serialize_docs, now_iso
 from auth import get_current_user, require_admin
-from models import ProductIn, CategoryIn, WarehouseIn, InventoryAdjustIn
+from models import ProductIn, CategoryIn, WarehouseIn, InventoryAdjustIn, InventorySetStockIn
 
 router = APIRouter(tags=["catalog"])
 
@@ -207,6 +207,41 @@ async def adjust_inventory(payload: InventoryAdjustIn, admin: dict = Depends(req
         "actor_id": admin["id"], "actor_email": admin["email"],
         "action": "inventory.adjust", "target": f"{payload.warehouse_id}/{payload.product_id}",
         "meta": {"delta": payload.quantity, "reason": payload.reason},
+        "created_at": now_iso(),
+    })
+    inv = await db.inventory.find_one(key)
+    return serialize_doc(inv)
+
+
+@router.post("/inventory/set-stock")
+async def set_inventory_stock(payload: InventorySetStockIn, admin: dict = Depends(require_admin)):
+    key = {"warehouse_id": payload.warehouse_id, "product_id": payload.product_id}
+    inv = await db.inventory.find_one(key)
+    target_qty = max(0, payload.quantity)
+    
+    update_data = {
+        "quantity": target_qty,
+        "updated_at": now_iso()
+    }
+    if payload.safety_stock is not None and payload.safety_stock >= 0:
+        update_data["safety_stock"] = payload.safety_stock
+
+    if not inv:
+        await db.inventory.insert_one({
+            **key,
+            "quantity": target_qty,
+            "reserved": 0,
+            "safety_stock": payload.safety_stock or 0,
+            "updated_at": now_iso()
+        })
+    else:
+        await db.inventory.update_one(key, {"$set": update_data})
+
+    # Audit
+    await db.audit_logs.insert_one({
+        "actor_id": admin["id"], "actor_email": admin.get("email", "admin"),
+        "action": "inventory.set_stock", "target": f"{payload.warehouse_id}/{payload.product_id}",
+        "meta": {"new_quantity": target_qty, "reason": payload.reason or "admin_manual_override"},
         "created_at": now_iso(),
     })
     inv = await db.inventory.find_one(key)

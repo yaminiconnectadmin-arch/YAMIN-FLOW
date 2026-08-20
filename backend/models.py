@@ -105,6 +105,14 @@ class InventoryAdjustIn(BaseModel):
     reason: Optional[str] = "manual_adjust"
 
 
+class InventorySetStockIn(BaseModel):
+    warehouse_id: str
+    product_id: str
+    quantity: int  # Absolute stock on hand (in boxes)
+    safety_stock: Optional[int] = None
+    reason: Optional[str] = "admin_manual_override"
+
+
 # ---- Dealer / Supplier / CNF ----
 class DealerIn(BaseModel):
     name: str

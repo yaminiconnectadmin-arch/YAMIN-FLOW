@@ -4,13 +4,35 @@ import AppShell from "@/components/layout/AppShell";
 import { PageSection, StatusBadge, EmptyState } from "@/components/common/Common";
 import { ExportButton } from "@/lib/csv";
 import { toast } from "@/components/ui/sonner";
+import { useAuth } from "@/contexts/AuthContext";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 export default function InventoryPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
   const [rows, setRows] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [warehouse, setWarehouse] = useState("");
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
+
+  // Edit stock modal state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedRow, setSelectedRow] = useState(null);
+  const [editQty, setEditQty] = useState(0);
+  const [editSafety, setEditSafety] = useState(0);
+  const [editReason, setEditReason] = useState("Manual stock override");
+  const [savingStock, setSavingStock] = useState(false);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/inventory", { params: { warehouse_id: warehouse } });
+      setRows(data);
+    } catch { toast.error("Failed to load inventory"); }
+    finally { setLoading(false); }
+  };
 
   useEffect(() => {
     (async () => {
@@ -20,15 +42,29 @@ export default function InventoryPage() {
   }, []);
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const { data } = await api.get("/inventory", { params: { warehouse_id: warehouse } });
-        setRows(data);
-      } catch { toast.error("Failed to load inventory"); }
-      finally { setLoading(false); }
-    })();
+    loadData();
   }, [warehouse]);
+
+  const handleSaveStock = async () => {
+    if (!selectedRow) return;
+    setSavingStock(true);
+    try {
+      await api.post("/inventory/set-stock", {
+        warehouse_id: selectedRow.warehouse_id,
+        product_id: selectedRow.product_id,
+        quantity: editQty,
+        safety_stock: editSafety,
+        reason: editReason.trim() || "admin_manual_override"
+      });
+      toast.success(`Inventory updated for ${selectedRow.product_name}: ${editQty} Boxes`);
+      setEditModalOpen(false);
+      loadData();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to update inventory stock");
+    } finally {
+      setSavingStock(false);
+    }
+  };
 
   const filtered = q
     ? rows.filter((r) => (r.product_name || "").toLowerCase().includes(q.toLowerCase()) ||
@@ -47,11 +83,11 @@ export default function InventoryPage() {
     <AppShell title="Inventory" subtitle="Live stock across warehouses">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-6 stagger">
         <div className="kpi-card bg-white p-5 rounded-lg border border-[#E5E7EB] card-shadow">
-          <div className="text-[11px] font-medium uppercase tracking-widest text-[#5C6670]">On-hand Units</div>
+          <div className="text-[11px] font-medium uppercase tracking-widest text-[#5C6670]">On-hand Boxes</div>
           <div className="font-display text-2xl font-bold text-[#06182F] tabular mt-2">{fmt.num(totals.qty)}</div>
         </div>
         <div className="kpi-card bg-white p-5 rounded-lg border border-[#E5E7EB] card-shadow">
-          <div className="text-[11px] font-medium uppercase tracking-widest text-[#5C6670]">Reserved</div>
+          <div className="text-[11px] font-medium uppercase tracking-widest text-[#5C6670]">Reserved (Boxes)</div>
           <div className="font-display text-2xl font-bold text-[#06182F] tabular mt-2">{fmt.num(totals.reserved)}</div>
         </div>
         <div className="kpi-card bg-white p-5 rounded-lg border border-[#E5E7EB] card-shadow">
@@ -85,9 +121,9 @@ export default function InventoryPage() {
                 { key: "product_sku", label: "SKU" },
                 { key: "product_name", label: "Product" },
                 { key: "category", label: "Category" },
-                { key: "quantity", label: "On Hand" },
-                { key: "reserved", label: "Reserved" },
-                { key: "available", label: "Available" },
+                { key: "quantity", label: "On Hand (Boxes)" },
+                { key: "reserved", label: "Reserved (Boxes)" },
+                { key: "available", label: "Available (Boxes)" },
                 { key: "safety_stock", label: "Safety Stock" },
                 { key: "stock_status", label: "Status" },
                 { key: "price", label: "Unit Price" },
@@ -104,9 +140,10 @@ export default function InventoryPage() {
                 <thead>
                   <tr>
                     <th>Warehouse</th><th>SKU</th><th>Product</th><th>Category</th>
-                    <th className="text-right">On Hand</th><th className="text-right">Reserved</th>
+                    <th className="text-right">On Hand (Boxes)</th><th className="text-right">Reserved</th>
                     <th className="text-right">Available</th><th className="text-right">Safety</th>
                     <th className="text-right">Value</th><th>Status</th>
+                    {isAdmin && <th className="text-center">Action</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -116,12 +153,28 @@ export default function InventoryPage() {
                       <td className="font-mono text-xs">{r.product_sku}</td>
                       <td className="font-medium">{r.product_name}</td>
                       <td className="text-[#5C6670]">{r.category}</td>
-                      <td className="text-right tabular">{r.quantity}</td>
+                      <td className="text-right tabular font-semibold text-slate-900">{r.quantity}</td>
                       <td className="text-right tabular text-[#5C6670]">{r.reserved}</td>
-                      <td className="text-right tabular font-semibold">{r.available}</td>
+                      <td className="text-right tabular font-semibold text-emerald-700">{r.available}</td>
                       <td className="text-right tabular text-[#5C6670]">{r.safety_stock}</td>
                       <td className="text-right tabular">{fmt.inr(r.quantity * r.price)}</td>
                       <td><StatusBadge status={r.stock_status} /></td>
+                      {isAdmin && (
+                        <td className="text-center">
+                          <button
+                            onClick={() => {
+                              setSelectedRow(r);
+                              setEditQty(r.quantity || 0);
+                              setEditSafety(r.safety_stock || 0);
+                              setEditReason("Manual stock override");
+                              setEditModalOpen(true);
+                            }}
+                            className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-xs font-bold transition-all shadow-2xs inline-flex items-center gap-1 font-mono"
+                          >
+                            ✏️ Edit Stock
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -129,6 +182,64 @@ export default function InventoryPage() {
             </div>
           )}
       </PageSection>
+
+      {/* Admin Manual Stock Adjustment Modal */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="max-w-md bg-white p-6 border rounded-xl shadow-lg space-y-4">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <span>📦</span> Manual Stock Update (Tally Sync Fallback)
+            </DialogTitle>
+          </DialogHeader>
+          {selectedRow && (
+            <div className="space-y-3 text-xs">
+              <div className="bg-slate-50 border p-3 rounded-lg text-slate-700 space-y-1">
+                <div>Product: <strong className="text-slate-900">{selectedRow.product_name}</strong></div>
+                <div>SKU: <span className="font-mono">{selectedRow.product_sku}</span> • Warehouse: <strong>{selectedRow.warehouse_code} ({selectedRow.warehouse_name})</strong></div>
+                <div>Current Stock: <strong className="font-mono text-amber-700">{selectedRow.quantity} Boxes</strong> ({selectedRow.reserved || 0} Reserved)</div>
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Target On-Hand Stock (Boxes) <span className="text-red-500">*</span></label>
+                <input
+                  type="number"
+                  min="0"
+                  value={editQty}
+                  onChange={(e) => setEditQty(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  className="w-full h-9 px-3 border rounded text-sm font-mono font-bold"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Safety Stock Threshold (Boxes)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={editSafety}
+                  onChange={(e) => setEditSafety(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  className="w-full h-9 px-3 border rounded text-sm font-mono"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Adjustment Reason / Notes</label>
+                <input
+                  type="text"
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  placeholder="e.g. Physical stock count / Tally sync fallback"
+                  className="w-full h-9 px-3 border rounded text-xs"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="flex justify-end gap-2 pt-2 border-t">
+            <button onClick={() => setEditModalOpen(false)} className="h-9 px-4 border rounded text-xs font-semibold">
+              Cancel
+            </button>
+            <button onClick={handleSaveStock} disabled={savingStock} className="h-9 px-4 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded shadow">
+              {savingStock ? "Saving..." : "Save Updated Stock"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

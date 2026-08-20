@@ -904,3 +904,119 @@ async def list_invoices(user: dict = Depends(get_current_user)):
     docs = await db.orders.find(query).sort("created_at", -1).to_list(1000)
     enriched = await _enrich_orders(docs)
     return enriched
+
+
+@router.post("/orders/{order_id}/reallocate")
+async def reallocate_order_stock(order_id: str, admin: dict = Depends(require_admin)):
+    """Admin manually triggers stock re-allocation evaluation against live inventory for an order."""
+    try:
+        oid = ObjectId(order_id)
+        doc = await db.orders.find_one({"_id": oid})
+    except Exception:
+        doc = await db.orders.find_one({"_id": order_id})
+        oid = order_id
+
+    if not doc:
+        raise HTTPException(404, "Order not found")
+
+    wh_id = str(doc.get("warehouse_id", ""))
+    items = doc.get("items", [])
+    deficits = []
+    updated_items = []
+    total_demanded_pcs = 0
+    total_allocated_pcs = 0
+
+    for item in items:
+        p_id = item.get("product_id")
+        q_ord = item.get("quantity_ordered") if item.get("quantity_ordered") is not None else (item.get("quantity") or 0)
+        qty_per_box = item.get("qty_per_box") or 1000
+        demanded_boxes = item.get("boxes") or (int(math.ceil(q_ord / qty_per_box)) if qty_per_box else q_ord)
+        
+        old_allocated_boxes = item.get("boxes_allocated", 0)
+        total_demanded_pcs += q_ord
+
+        inv = await db.inventory.find_one({"warehouse_id": wh_id, "product_id": p_id})
+        on_hand_boxes = inv.get("quantity", 0) if inv else 0
+        reserved_boxes = inv.get("reserved", 0) if inv else 0
+        # Available stock excluding old reservation for this order item
+        avail_boxes = max(0, (on_hand_boxes - reserved_boxes) + old_allocated_boxes)
+
+        if avail_boxes >= demanded_boxes:
+            new_alloc_boxes = demanded_boxes
+            new_alloc_pcs = q_ord
+            def_boxes = 0
+            def_pcs = 0
+        elif avail_boxes > 0:
+            new_alloc_boxes = avail_boxes
+            new_alloc_pcs = new_alloc_boxes * qty_per_box
+            def_boxes = demanded_boxes - new_alloc_boxes
+            def_pcs = max(0, q_ord - new_alloc_pcs)
+            deficits.append({
+                "product_id": p_id,
+                "product_name": item.get("product_name"),
+                "sku": item.get("sku"),
+                "required_boxes": demanded_boxes,
+                "available_boxes": avail_boxes,
+                "allocated_boxes": new_alloc_boxes,
+                "deficit_boxes": def_boxes,
+                "required": q_ord,
+                "allocated": new_alloc_pcs,
+                "deficit": def_pcs,
+            })
+        else:
+            new_alloc_boxes = 0
+            new_alloc_pcs = 0
+            def_boxes = demanded_boxes
+            def_pcs = q_ord
+            deficits.append({
+                "product_id": p_id,
+                "product_name": item.get("product_name"),
+                "sku": item.get("sku"),
+                "required_boxes": demanded_boxes,
+                "available_boxes": 0,
+                "allocated_boxes": 0,
+                "deficit_boxes": def_boxes,
+                "required": q_ord,
+                "allocated": 0,
+                "deficit": def_pcs,
+            })
+
+        # Update reservation delta in inventory
+        box_diff = new_alloc_boxes - old_allocated_boxes
+        if box_diff != 0:
+            await db.inventory.update_one(
+                {"warehouse_id": wh_id, "product_id": p_id},
+                {"$inc": {"reserved": box_diff}, "$set": {"updated_at": now_iso()}},
+                upsert=True
+            )
+
+        total_allocated_pcs += new_alloc_pcs
+
+        item["quantity_allocated"] = new_alloc_pcs
+        item["quantity_pending"] = def_pcs
+        item["boxes_allocated"] = new_alloc_boxes
+        item["boxes_pending"] = def_boxes
+        updated_items.append(item)
+
+    reservation_status = "reserved" if total_allocated_pcs == total_demanded_pcs else ("partially_reserved" if total_allocated_pcs > 0 else "pending")
+
+    await db.orders.update_one(
+        {"_id": doc["_id"]},
+        {"$set": {
+            "items": updated_items,
+            "deficits": deficits,
+            "reservation_status": reservation_status,
+            "updated_at": now_iso()
+        }}
+    )
+
+    await db.audit_logs.insert_one({
+        "actor_id": admin["id"], "actor_email": admin.get("email", "admin"),
+        "action": "order.reallocate", "target": doc.get("order_no"),
+        "meta": {"reservation_status": reservation_status, "deficits_count": len(deficits)},
+        "created_at": now_iso(),
+    })
+
+    updated = await db.orders.find_one({"_id": doc["_id"]})
+    enriched = await _enrich_orders([updated])
+    return enriched[0]

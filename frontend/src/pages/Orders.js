@@ -245,6 +245,21 @@ export default function OrdersPage() {
     }
   };
 
+  const handleReallocateStock = async () => {
+    if (!selected) return;
+    setUpdatingStatus(true);
+    try {
+      const { data } = await api.post(`/orders/${selected.id}/reallocate`);
+      toast.success(`Stock re-allocated from live warehouse inventory! Status: ${data.reservation_status.toUpperCase()}`);
+      setSelected(data);
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to re-allocate stock");
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
   const handleRecordPartialBilling = async () => {
     if (!selected) return;
     setSavingBilling(true);
@@ -965,6 +980,16 @@ export default function OrdersPage() {
                       <span>Update Order Lifecycle</span>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
+                      {isAdmin && selected.reservation_status !== "reserved" && (
+                        <button
+                          onClick={handleReallocateStock}
+                          disabled={updatingStatus}
+                          className="px-3 py-1.5 bg-purple-700 hover:bg-purple-600 text-white rounded font-bold transition-all inline-flex items-center gap-1 shadow"
+                          title="Re-evaluate live warehouse inventory for newly added/replenished stock"
+                        >
+                          <ArrowsClockwise size={14} weight="bold" /> Re-evaluate Stock Allocation
+                        </button>
+                      )}
                       {selected.status === "pending" && (
                         <button
                           onClick={() => updateStatus(selected.id, "approved")}
