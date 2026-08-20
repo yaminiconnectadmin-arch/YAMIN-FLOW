@@ -1031,8 +1031,12 @@ async def list_invoices(user: dict = Depends(get_current_user)):
 
 
 @router.post("/orders/{order_id}/reallocate")
-async def reallocate_order_stock(order_id: str, admin: dict = Depends(require_admin)):
-    """Admin manually triggers stock re-allocation evaluation against live inventory for an order."""
+@router.put("/orders/{order_id}/reallocate")
+@router.patch("/orders/{order_id}/reallocate")
+async def reallocate_order_stock(order_id: str, user: dict = Depends(get_current_user)):
+    """Admin/CNF manually triggers stock re-allocation evaluation against live inventory for an order."""
+    if user["role"] not in ("admin", "cnf", "mnp"):
+        raise HTTPException(403, "Forbidden")
     try:
         oid = ObjectId(order_id)
         doc = await db.orders.find_one({"_id": oid})
@@ -1138,7 +1142,7 @@ async def reallocate_order_stock(order_id: str, admin: dict = Depends(require_ad
     )
 
     await db.audit_logs.insert_one({
-        "actor_id": admin["id"], "actor_email": admin.get("email", "admin"),
+        "actor_id": user["id"], "actor_email": user.get("email", "admin"),
         "action": "order.reallocate", "target": doc.get("order_no"),
         "meta": {"reservation_status": reservation_status, "deficits_count": len(deficits)},
         "created_at": now_iso(),

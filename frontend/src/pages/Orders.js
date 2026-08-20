@@ -250,12 +250,13 @@ export default function OrdersPage() {
     if (!selected) return;
     setUpdatingStatus(true);
     try {
+      const orderId = selected.id || selected._id;
       let res;
       try {
-        res = await api.post(`/orders/${selected.id}/reallocate`);
+        res = await api.post(`/orders/${orderId}/reallocate`);
       } catch (err) {
-        if (err.response?.status === 404) {
-          res = await api.post(`/orders/${selected.id}/warehouse`, { warehouse_id: selected.warehouse_id });
+        if (err.response?.status === 404 || err.response?.status === 405) {
+          res = await api.put(`/orders/${orderId}/warehouse`, { warehouse_id: selected.warehouse_id || "default" });
         } else {
           throw err;
         }
