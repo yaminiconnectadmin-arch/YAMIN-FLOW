@@ -100,7 +100,16 @@ async def on_startup():
     try:
         await create_indexes()
         await seed_all(force_purge=False)
-        logger.info("YAMINI FLOW startup complete: indexes + seed done")
+        # Purge unapproved invoices and reset status to pending for any order lacking approved_at!
+        await db.orders.update_many(
+            {"approved_at": {"$exists": False}},
+            {"$set": {"status": "pending"}, "$unset": {"invoice_no": "", "invoices": "", "tally_voucher_no": "", "tally_voucher": ""}}
+        )
+        await db.orders.update_many(
+            {"approved_at": None},
+            {"$set": {"status": "pending"}, "$unset": {"invoice_no": "", "invoices": "", "tally_voucher_no": "", "tally_voucher": ""}}
+        )
+        logger.info("YAMINI FLOW startup complete: indexes + seed done + unapproved docs sanitized")
     except Exception as e:
         logger.exception(f"Startup error: {e}")
 

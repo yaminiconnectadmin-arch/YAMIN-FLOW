@@ -134,8 +134,10 @@ async def _enrich_orders(docs: list) -> list:
             d["invoices"] = []
             d["status"] = "pending"
             if d.get("_id") and (d.get("invoices") or d.get("invoice_no") or d.get("status") != "pending"):
+                raw_id = d["_id"]
+                oid = ObjectId(raw_id) if ObjectId.is_valid(str(raw_id)) else raw_id
                 await db.orders.update_one(
-                    {"_id": d["_id"]},
+                    {"_id": oid},
                     {"$set": {"status": "pending"}, "$unset": {"invoice_no": "", "invoices": "", "tally_voucher_no": "", "tally_voucher": ""}}
                 )
 
