@@ -203,6 +203,7 @@ export default function DealerBrowse() {
     setPlacing(true);
     try {
       const payload = {
+        dealer_id: user?.id,
         items: cartItems.map((i) => ({
           product_id: i.product.id,
           quantity: i.boxes,

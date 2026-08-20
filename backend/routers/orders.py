@@ -321,10 +321,7 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         if payload.dealer_id:
             dealer_id = payload.dealer_id
         else:
-            # If admin didn't specify a dealer, find first active dealer or self
-            first_dlr = await db.users.find_one({"role": "dealer", "status": "active"})
-            if first_dlr:
-                dealer_id = str(first_dlr["_id"])
+            dealer_id = user["id"]
     elif user["role"] in ("cnf", "mnp"):
         if payload.dealer_id:
             dealer_id = payload.dealer_id

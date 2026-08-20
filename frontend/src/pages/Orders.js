@@ -656,12 +656,12 @@ export default function OrdersPage() {
             const totalOrderedBoxes = selected.items?.reduce((s, i) => s + (i.boxes ?? i.quantity_ordered ?? i.quantity ?? 0), 0) || 0;
             const totalAllocatedBoxes = selected.items?.reduce((s, i) => s + (i.boxes_allocated ?? i.quantity_allocated ?? 0), 0) || 0;
             const totalInvoicedBoxes = selected.items?.reduce((s, i) => s + (i.boxes_invoiced ?? i.quantity_invoiced ?? 0), 0) || 0;
-            const totalPendingBoxes = selected.items?.reduce((s, i) => s + (i.boxes_pending ?? Math.max(0, totalOrderedBoxes - totalAllocatedBoxes)), 0) || 0;
+            const totalPendingBoxes = selected.items?.reduce((s, i) => s + (i.boxes_pending ?? Math.max(0, (i.boxes ?? i.quantity_ordered ?? i.quantity ?? 0) - (i.boxes_allocated ?? i.quantity_allocated ?? 0))), 0) || 0;
 
             const totalOrderedPcs = selected.items?.reduce((s, i) => s + (i.total_pcs ?? ((i.boxes ?? i.quantity_ordered ?? i.quantity ?? 0) * (i.qty_per_box || 1000))), 0) || 0;
             const totalAllocatedPcs = selected.items?.reduce((s, i) => s + (i.allocated_pcs ?? ((i.boxes_allocated ?? i.quantity_allocated ?? 0) * (i.qty_per_box || 1000))), 0) || 0;
             const totalInvoicedPcs = selected.items?.reduce((s, i) => s + (i.invoiced_pcs ?? ((i.boxes_invoiced ?? i.quantity_invoiced ?? 0) * (i.qty_per_box || 1000))), 0) || 0;
-            const totalPendingPcs = selected.items?.reduce((s, i) => s + (i.pending_pcs ?? (totalPendingBoxes * (i.qty_per_box || 1000))), 0) || 0;
+            const totalPendingPcs = selected.items?.reduce((s, i) => s + (i.pending_pcs ?? (Math.max(0, (i.boxes ?? i.quantity_ordered ?? i.quantity ?? 0) - (i.boxes_allocated ?? i.quantity_allocated ?? 0)) * (i.qty_per_box || 1000))), 0) || 0;
 
             const rawFulfillmentPct = totalOrderedBoxes > 0 ? ((totalAllocatedBoxes / totalOrderedBoxes) * 100) : (totalOrderedPcs > 0 ? ((totalAllocatedPcs / totalOrderedPcs) * 100) : 100);
             const fulfillmentPct = (rawFulfillmentPct > 0 && rawFulfillmentPct < 1) ? rawFulfillmentPct.toFixed(1) : Math.min(100, Math.round(rawFulfillmentPct));
