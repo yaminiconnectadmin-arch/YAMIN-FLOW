@@ -124,8 +124,7 @@ async def _enrich_orders(docs: list) -> list:
             d["warehouse_code"] = d.get("warehouse_code") or ""
 
         # Invoice number generation: Only issued AFTER explicit Admin approval!
-        has_invoices = bool(d.get("invoices") and len(d.get("invoices", [])) > 0)
-        is_approved = bool(d.get("approved_at")) or has_invoices or bool(d.get("tally_voucher_no"))
+        is_approved = bool(d.get("approved_at")) or bool(d.get("tally_voucher_no"))
         if is_approved:
             if not d.get("invoice_no"):
                 ord_no = str(d.get("order_no", "ORD-PENDING"))
@@ -189,7 +188,7 @@ async def _enrich_orders(docs: list) -> list:
             total_b_alloc += b_alloc
 
         # Force pending status if order has not been explicitly approved by admin
-        if not d.get("approved_at") and not d.get("invoices"):
+        if not d.get("approved_at") and not d.get("tally_voucher_no"):
             d["status"] = "pending"
 
         # Dynamically correct reservation status for existing orders

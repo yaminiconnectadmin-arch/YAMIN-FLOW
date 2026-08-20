@@ -522,7 +522,7 @@ export default function OrdersPage() {
                     const cCode = o.cnf_code || o.mnp_code;
                     const cName = o.cnf_name || o.mnp_name;
                     const isCnf = o.order_type === "cnf_stock" || (o.dealer_code && o.dealer_code.startsWith("C-"));
-                    const canDownloadInvoice = ["approved", "processing", "shipped", "delivered"].includes(o.status?.toLowerCase());
+                    const canDownloadInvoice = o.status?.toLowerCase() !== "pending" && Boolean(o.approved_at || o.tally_voucher_no) && (o.invoices?.length > 0 || Boolean(o.invoice_no));
 
                     return (
                       <tr key={o.id} data-testid={`order-row-${o.order_no}`}>
