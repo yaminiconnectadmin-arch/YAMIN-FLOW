@@ -158,6 +158,9 @@ async def _enrich_orders(docs: list) -> list:
 
         # Ensure order items have proper quantity and box keys (ALL IN BOXES)
         items = d.get("items") or []
+        total_b_ord = 0
+        total_b_alloc = 0
+
         for item in items:
             b_ord = item.get("boxes") if item.get("boxes") is not None else (item.get("quantity_ordered") if item.get("quantity_ordered") is not None else (item.get("quantity") or 0))
             b_alloc = item.get("boxes_allocated") if item.get("boxes_allocated") is not None else (item.get("quantity_allocated") if item.get("quantity_allocated") is not None else (b_ord if d.get("reservation_status") == "reserved" else 0))
@@ -178,6 +181,18 @@ async def _enrich_orders(docs: list) -> list:
             item["total_pcs"] = b_ord * qty_per_box
             item["allocated_pcs"] = b_alloc * qty_per_box
             item["pending_pcs"] = b_pend * qty_per_box
+
+            total_b_ord += b_ord
+            total_b_alloc += b_alloc
+
+        # Dynamically correct reservation status for existing orders
+        if total_b_ord > 0:
+            if total_b_alloc >= total_b_ord:
+                d["reservation_status"] = "reserved"
+            elif total_b_alloc > 0:
+                d["reservation_status"] = "partially_reserved"
+            else:
+                d["reservation_status"] = "pending"
 
     return out
 
@@ -510,29 +525,15 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
             "value_after_tax": tot,
         })
 
-    # Allocation & Order Status: Dealer orders require Admin Approval before Invoice is issued!
-    is_admin = user["role"] == "admin"
-    if is_admin:
-        overall_status = "approved"
-        reservation_status = "reserved" if total_allocated == total_demanded else ("partially_reserved" if total_allocated > 0 else "pending")
-    else:
-        overall_status = "pending"
-        reservation_status = "reserved" if total_allocated == total_demanded else ("partially_reserved" if total_allocated > 0 else "pending")
+    # Allocation & Order Status: ALL orders start as PENDING requiring Admin Approval before Invoice is issued!
+    overall_status = "pending"
+    reservation_status = "reserved" if total_allocated == total_demanded else ("partially_reserved" if total_allocated > 0 else "pending")
 
     order_no = await _order_number()
-    invoice_no = f"INV-{order_no.replace('ORD-', '')}" if is_admin else None
+    invoice_no = None
     gst_total = round(subtotal * 0.18, 2)
     grand_total = round(subtotal + gst_total, 2)
-
     invoices = []
-    if is_admin:
-        invoices.append({
-            "invoice_no": invoice_no,
-            "date": now_iso()[:10],
-            "amount": grand_total,
-            "linked_by": "admin_order_creation",
-            "items_billed": items_out
-        })
 
     doc = {
         "order_no": order_no,
@@ -647,6 +648,11 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate,
             )
 
     update_fields = {"status": new_status, "updated_at": now_iso()}
+    if new_status == "approved":
+        update_fields["approved_at"] = now_iso()
+        update_fields["approved_by"] = user.get("email", "admin")
+        if not doc.get("invoice_no"):
+            update_fields["invoice_no"] = f"INV-{doc['order_no'].replace('ORD-', '')}"
     if payload.notes is not None:
         update_fields["notes"] = payload.notes
     if payload.carrier is not None:

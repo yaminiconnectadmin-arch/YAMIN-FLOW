@@ -626,7 +626,7 @@ export default function OrdersPage() {
               <DialogTitle className="text-lg font-bold">Order Breakdown: {selected?.order_no}</DialogTitle>
               <div className="text-xs text-slate-500 font-mono mt-0.5 flex items-center gap-2 flex-wrap">
                 <span>Invoice:</span>
-                {["approved", "processing", "shipped", "delivered"].includes(selected?.status?.toLowerCase()) ? (
+                {selected?.status?.toLowerCase() !== "pending" && (selected?.invoice_no || selected?.approved_at || selected?.invoices?.length > 0) ? (
                   <strong className="text-indigo-700 font-mono font-bold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
                     {selected?.invoice_no || `INV-${selected?.order_no?.replace("ORD-", "")}`}
                   </strong>
@@ -638,7 +638,7 @@ export default function OrdersPage() {
                 <span>• Warehouse: <strong>{selected?.warehouse_name ? `${selected.warehouse_name}${selected.warehouse_code ? ` (${selected.warehouse_code})` : ''}` : "Main Warehouse"}</strong></span>
               </div>
             </div>
-            {["approved", "processing", "shipped", "delivered"].includes(selected?.status?.toLowerCase()) ? (
+            {selected?.status?.toLowerCase() !== "pending" && (selected?.approved_at || selected?.invoice_no || selected?.invoices?.length > 0) ? (
               <button
                 onClick={() => setInvoiceModalOrder(selected)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow transition-all"
