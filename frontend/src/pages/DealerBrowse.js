@@ -205,7 +205,7 @@ export default function DealerBrowse() {
       const payload = {
         items: cartItems.map((i) => ({
           product_id: i.product.id,
-          quantity: i.qty,
+          quantity: i.boxes,
           boxes: i.boxes,
           size: i.size,
           qty_per_box: i.qty_per_box,

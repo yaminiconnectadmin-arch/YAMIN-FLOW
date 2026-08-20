@@ -156,27 +156,28 @@ async def _enrich_orders(docs: list) -> list:
             except Exception:
                 pass
 
-        # Ensure order items have proper quantity and box keys
+        # Ensure order items have proper quantity and box keys (ALL IN BOXES)
         items = d.get("items") or []
         for item in items:
-            q_ord = item.get("quantity_ordered") if item.get("quantity_ordered") is not None else (item.get("quantity") or 0)
-            q_inv = item.get("quantity_invoiced") or 0
-            q_alloc = item.get("quantity_allocated") if item.get("quantity_allocated") is not None else (q_ord if (d.get("reservation_status") == "reserved" or d.get("status") in ["approved", "processing", "shipped", "delivered"]) else 0)
-            
-            qty_per_box = item.get("qty_per_box") or 1000
-            b_ord = item.get("boxes") if item.get("boxes") is not None else (int(math.ceil(q_ord / qty_per_box)) if (qty_per_box and q_ord) else q_ord)
-            b_alloc = item.get("boxes_allocated") if item.get("boxes_allocated") is not None else (int(math.ceil(q_alloc / qty_per_box)) if (qty_per_box and q_alloc) else q_alloc)
-            b_inv = item.get("boxes_invoiced") if item.get("boxes_invoiced") is not None else (int(math.floor(q_inv / qty_per_box)) if (qty_per_box and q_inv) else q_inv)
-            b_pend = max(0, b_ord - b_alloc)
+            b_ord = item.get("boxes") if item.get("boxes") is not None else (item.get("quantity_ordered") if item.get("quantity_ordered") is not None else (item.get("quantity") or 0))
+            b_alloc = item.get("boxes_allocated") if item.get("boxes_allocated") is not None else (item.get("quantity_allocated") if item.get("quantity_allocated") is not None else (b_ord if d.get("reservation_status") == "reserved" else 0))
+            b_inv = item.get("boxes_invoiced") if item.get("boxes_invoiced") is not None else (item.get("quantity_invoiced") or 0)
+            b_pend = item.get("boxes_pending") if item.get("boxes_pending") is not None else max(0, b_ord - b_alloc)
 
-            item["quantity_ordered"] = q_ord
-            item["quantity_allocated"] = q_alloc
-            item["quantity_invoiced"] = q_inv
-            item["quantity_pending"] = max(0, q_ord - q_alloc)
+            qty_per_box = item.get("qty_per_box") or 1000
+
             item["boxes"] = b_ord
             item["boxes_allocated"] = b_alloc
             item["boxes_invoiced"] = b_inv
             item["boxes_pending"] = b_pend
+            item["quantity"] = b_ord
+            item["quantity_ordered"] = b_ord
+            item["quantity_allocated"] = b_alloc
+            item["quantity_invoiced"] = b_inv
+            item["quantity_pending"] = b_pend
+            item["total_pcs"] = b_ord * qty_per_box
+            item["allocated_pcs"] = b_alloc * qty_per_box
+            item["pending_pcs"] = b_pend * qty_per_box
 
     return out
 
@@ -402,15 +403,16 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         if not p:
             raise HTTPException(400, f"Product {i.product_id} not found in catalog")
 
-        qty = int(i.quantity)
-        total_demanded += qty
-        qty_per_box = i.qty_per_box or p.get("qty_per_box", 1000)
-        demanded_boxes = i.boxes or (qty if p.get("unit") == "box" else max(1, qty // qty_per_box))
+        qty_per_box = i.qty_per_box or p.get("qty_per_box", 1000) or 1000
+        demanded_boxes = int(i.boxes if (i.boxes and i.boxes > 0) else (i.quantity or 1))
+        demanded_pcs = demanded_boxes * qty_per_box
+        total_demanded += demanded_boxes
+
         wt_1000 = i.wt_1000_pcs_kg or p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000)
-        item_weight = round((qty / 1000.0) * wt_1000, 3)
+        item_weight = round((demanded_pcs / 1000.0) * wt_1000, 3)
         total_weight_kg += item_weight
 
-        # Price computation
+        # Price computation per box
         rate = i.rate or (p.get("wd_landing") if is_cnf_depot else (p.get("dealer_landing") or p.get("price", 0.0)))
         sub = i.value_before_tax if (i.value_before_tax and i.value_before_tax > 0) else round(rate * demanded_boxes, 2)
         gst = i.gst_amount if (i.gst_amount and i.gst_amount > 0) else round(sub * 0.18, 2)
@@ -425,7 +427,7 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
 
         if avail_boxes >= demanded_boxes:
             allocated_boxes = demanded_boxes
-            allocated_pcs = qty
+            allocated_pcs = demanded_pcs
             deficit_boxes = 0
             deficit_pcs = 0
             # Reserve stock in boxes
@@ -438,7 +440,7 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
             allocated_boxes = avail_boxes
             allocated_pcs = allocated_boxes * qty_per_box
             deficit_boxes = demanded_boxes - allocated_boxes
-            deficit_pcs = max(0, qty - allocated_pcs)
+            deficit_pcs = deficit_boxes * qty_per_box
             # Reserve partial stock in boxes
             await db.inventory.update_one(
                 {"warehouse_id": wh_id, "product_id": i.product_id},
@@ -453,7 +455,7 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
                 "available_boxes": avail_boxes,
                 "allocated_boxes": allocated_boxes,
                 "deficit_boxes": deficit_boxes,
-                "required": qty,
+                "required": demanded_pcs,
                 "available": allocated_pcs,
                 "allocated": allocated_pcs,
                 "deficit": deficit_pcs,
@@ -463,7 +465,7 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
             allocated_boxes = 0
             allocated_pcs = 0
             deficit_boxes = demanded_boxes
-            deficit_pcs = qty
+            deficit_pcs = demanded_pcs
             deficits.append({
                 "product_id": i.product_id,
                 "product_name": p["name"],
@@ -472,14 +474,14 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
                 "available_boxes": 0,
                 "allocated_boxes": 0,
                 "deficit_boxes": deficit_boxes,
-                "required": qty,
+                "required": demanded_pcs,
                 "available": 0,
                 "allocated": 0,
                 "deficit": deficit_pcs,
                 "weight_deficit_kg": round((deficit_pcs / 1000.0) * wt_1000, 3)
             })
 
-        total_allocated += allocated_pcs
+        total_allocated += allocated_boxes
 
         items_out.append({
             "product_id": i.product_id,
@@ -487,11 +489,11 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
             "sku": p["sku"],
             "category": p.get("category", ""),
             "size": i.size or p.get("size", ""),
-            "quantity": qty,
-            "quantity_ordered": qty,
-            "quantity_allocated": allocated_pcs,
+            "quantity": demanded_boxes,
+            "quantity_ordered": demanded_boxes,
+            "quantity_allocated": allocated_boxes,
             "quantity_invoiced": 0,
-            "quantity_pending": deficit_pcs,
+            "quantity_pending": deficit_boxes,
             "boxes": demanded_boxes,
             "boxes_allocated": allocated_boxes,
             "boxes_invoiced": 0,
