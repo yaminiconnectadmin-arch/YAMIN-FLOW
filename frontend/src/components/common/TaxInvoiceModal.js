@@ -337,10 +337,18 @@ export default function TaxInvoiceModal({ isOpen, onClose, order, activeInvoice 
               <tbody className="divide-y divide-slate-200">
                 {itemsToRender?.map((item, idx) => {
                   const qtyPerBox = item.qty_per_box || 1000;
-                  const boxes = item.boxes ?? item.boxes_allocated ?? item.quantity_allocated ?? item.quantity ?? 0;
-                  const pcs = item.total_pcs ?? item.allocated_pcs ?? (boxes * qtyPerBox);
-                  const wt = item.allocated_weight_kg || item.total_weight_kg || 0;
-                  const rate = item.rate || item.dealer_landing || (boxes > 0 ? (item.subtotal ? item.subtotal / boxes : 0) : 0);
+                  const totalOrdBoxes = item.boxes ?? item.quantity_ordered ?? item.quantity ?? 0;
+                  const allocBoxes = item.boxes_allocated ?? item.quantity_allocated ?? 0;
+                  
+                  // Billed quantity is strictly allocated/reserved boxes if partial
+                  const boxes = (isPartial && allocBoxes > 0)
+                    ? allocBoxes
+                    : (item.boxes_billed ?? (allocBoxes > 0 ? allocBoxes : totalOrdBoxes));
+                  
+                  const pcs = item.total_pcs ?? (boxes * qtyPerBox);
+                  const wt1000 = item.wt_1000_pcs_kg || 1.0;
+                  const wt = item.allocated_weight_kg || item.total_weight_kg || ((pcs / 1000.0) * wt1000);
+                  const rate = item.rate || item.dealer_landing || (totalOrdBoxes > 0 ? (item.subtotal ? item.subtotal / totalOrdBoxes : 0) : 0);
                   const taxable = item.subtotal ?? (rate * boxes);
                   const gst = item.gst ?? (taxable * 0.18);
                   const total = item.total ?? (taxable + gst);
@@ -350,10 +358,10 @@ export default function TaxInvoiceModal({ isOpen, onClose, order, activeInvoice 
                       <td className="p-2 text-center font-mono text-slate-400">{idx + 1}</td>
                       <td className="p-2">
                         <div className="font-semibold text-slate-900">{item.product_name}</div>
-                        <div className="font-mono text-[10px] text-slate-500">Size: {item.size || item.sku} • Box of {item.qty_per_box || 1000} pcs</div>
+                        <div className="font-mono text-[10px] text-slate-500">Size: {item.size || item.sku} • Box of {qtyPerBox} pcs</div>
                       </td>
                       <td className="p-2 text-center font-mono text-[11px] text-slate-600">73181500</td>
-                      <td className="p-2 text-right font-mono font-semibold">{boxes} Box</td>
+                      <td className="p-2 text-right font-mono font-semibold">{boxes.toLocaleString()} Box</td>
                       <td className="p-2 text-right font-mono text-slate-600">{pcs.toLocaleString()} pcs</td>
                       <td className="p-2 text-right font-mono font-bold text-amber-700">{wt > 0 ? `${wt.toFixed(3)} kg` : "—"}</td>
                       <td className="p-2 text-right font-mono">{fmt.inr(rate)}</td>

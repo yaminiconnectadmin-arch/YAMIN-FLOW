@@ -193,6 +193,24 @@ export default function ProcurementPage() {
   // Official Purchase Order Preview/Print Modal State
   const [poModalOrder, setPoModalOrder] = useState(null);
 
+  // Historical Collation Batch Details Modal State
+  const [selectedCollationBatch, setSelectedCollationBatch] = useState(null);
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [loadingBatchDetails, setLoadingBatchDetails] = useState(false);
+
+  const handleViewBatchDetails = async (b) => {
+    setLoadingBatchDetails(true);
+    setBatchModalOpen(true);
+    try {
+      const { data } = await api.get(`/procurement/collations/${b.batch_no}`);
+      setSelectedCollationBatch(data);
+    } catch (e) {
+      setSelectedCollationBatch(b);
+    } finally {
+      setLoadingBatchDetails(false);
+    }
+  };
+
   // Tab 2: Recommendations state
   const [recs, setRecs] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
@@ -693,17 +711,17 @@ export default function ProcurementPage() {
                 {collations.length === 0 ? (
                   <EmptyState title="No past collations" description="Once orders are collated manually or automatically at 12 AM, batches appear here." />
                 ) : (
-                  <table className="yf-table w-full">
+                  <table className="yf-table w-full text-xs">
                     <thead>
                       <tr>
                         <th>Batch Number</th><th>Triggered By</th><th>Orders Collated</th>
                         <th className="text-right">Total Pieces</th><th className="text-right">Total Converted Weight</th>
-                        <th>Generated Purchase Orders</th><th>Timestamp</th>
+                        <th>Generated Purchase Orders</th><th>Timestamp</th><th className="text-right">Collation Data</th>
                       </tr>
                     </thead>
                     <tbody>
                       {collations.map((b) => (
-                        <tr key={b.id || b.batch_no}>
+                        <tr key={b.id || b.batch_no} className="hover:bg-slate-50">
                           <td className="font-mono font-bold text-[#1D242B]">{b.batch_no}</td>
                           <td>
                             <span className={`px-2.5 py-1 text-xs font-semibold rounded-full ${
@@ -725,6 +743,14 @@ export default function ProcurementPage() {
                             </div>
                           </td>
                           <td className="text-xs text-[#5C6670]">{fmt.datetime(b.created_at)}</td>
+                          <td className="text-right">
+                            <button
+                              onClick={() => handleViewBatchDetails(b)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-sm transition-all"
+                            >
+                              <Eye size={14} weight="bold" /> View Collation Details
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1036,6 +1062,117 @@ export default function ProcurementPage() {
         onClose={() => setPoModalOrder(null)}
         po={poModalOrder}
       />
+
+      {/* Historical Collation Batch Details Modal */}
+      <Dialog open={batchModalOpen} onOpenChange={(v) => !v && setBatchModalOpen(false)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-6 bg-white">
+          <DialogHeader className="border-b pb-3 mb-4 flex flex-row items-center justify-between">
+            <div>
+              <DialogTitle className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                <Scales size={22} className="text-amber-500" />
+                Collation Batch Summary — {selectedCollationBatch?.batch_no}
+              </DialogTitle>
+              <div className="text-xs text-slate-500 font-mono mt-0.5">
+                Triggered By: <strong className="text-slate-800 uppercase">{selectedCollationBatch?.triggered_by || "manual"}</strong> • Created: {selectedCollationBatch?.created_at ? fmt.datetime(selectedCollationBatch.created_at) : "N/A"}
+              </div>
+            </div>
+          </DialogHeader>
+
+          {loadingBatchDetails ? (
+            <div className="p-12 text-center text-slate-500 font-medium text-sm animate-pulse">
+              Loading Collation Batch Product Matrix...
+            </div>
+          ) : selectedCollationBatch ? (
+            <div className="space-y-5">
+              {/* Metric Cards */}
+              <div className="grid grid-cols-4 gap-3 text-xs">
+                <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg">
+                  <div className="text-[10px] font-bold text-amber-800 uppercase">Total Weight</div>
+                  <div className="text-xl font-black text-amber-900 font-mono mt-0.5">{fmt.kg(selectedCollationBatch.total_kg)}</div>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">Total Pieces</div>
+                  <div className="text-xl font-extrabold text-slate-900 font-mono mt-0.5">{fmt.num(selectedCollationBatch.total_pcs)} pcs</div>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">Orders Collated</div>
+                  <div className="text-xl font-extrabold text-slate-900 font-mono mt-0.5">{selectedCollationBatch.orders_count} Orders</div>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-lg">
+                  <div className="text-[10px] font-bold text-emerald-800 uppercase">Supplier POs</div>
+                  <div className="text-sm font-bold text-emerald-900 font-mono mt-1">
+                    {selectedCollationBatch.po_nos?.join(", ") || "—"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Items Matrix */}
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Collated Fastener Products & Weight Breakdown</h4>
+                {(!selectedCollationBatch.items || selectedCollationBatch.items.length === 0) ? (
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded text-center text-xs text-slate-500">
+                    No item breakdown logged for this batch (batch was executed before detailed logging enabled).
+                  </div>
+                ) : (
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-slate-100 border-b text-[10px] font-bold uppercase text-slate-600">
+                        <tr>
+                          <th className="p-2 w-8 text-center">#</th>
+                          <th className="p-2">Product / SKU</th>
+                          <th className="p-2 text-right">Collated Pieces</th>
+                          <th className="p-2 text-right">WT / 1000 PCS</th>
+                          <th className="p-2 text-right">Total Weight (KG)</th>
+                          <th className="p-2">Assigned Supplier</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {selectedCollationBatch.items.map((it, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="p-2 text-center font-mono text-slate-400">{idx + 1}</td>
+                            <td className="p-2">
+                              <div className="font-bold text-slate-900">{it.product_name}</div>
+                              <div className="font-mono text-[10px] text-slate-500">SKU: {it.sku}</div>
+                            </td>
+                            <td className="p-2 text-right font-mono font-semibold">{fmt.num(it.quantity)} pcs</td>
+                            <td className="p-2 text-right font-mono text-slate-600">{(it.weight_per_1000_pcs || 1).toFixed(3)} kg</td>
+                            <td className="p-2 text-right font-mono font-bold text-amber-700">{fmt.kg(it.quantity_kg)}</td>
+                            <td className="p-2 font-medium text-slate-800">{it.supplier_name}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Source Orders Breakdown */}
+              {selectedCollationBatch.orders_breakdown?.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Collated Source Dealer Orders</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedCollationBatch.orders_breakdown.map((ob, idx) => (
+                      <span key={idx} className="bg-slate-100 border border-slate-200 rounded px-2.5 py-1 text-xs font-mono font-semibold text-slate-800 flex items-center gap-1.5">
+                        📦 Order #{ob.order_no} ({ob.dealer_code})
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setBatchModalOpen(false)}
+                  className="h-9 px-4 rounded-md border border-slate-200 text-xs font-semibold hover:bg-slate-50"
+                >
+                  Close Summary
+                </button>
+              </DialogFooter>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

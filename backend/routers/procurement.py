@@ -528,6 +528,28 @@ async def execute_order_collation(triggered_by: str = "manual", actor: Optional[
                 "created_at": now_iso(),
             })
 
+    if total_pcs <= 0 or total_kg <= 0:
+        return {
+            "status": "noop",
+            "batch_no": None,
+            "message": "All pending order items have already been collated into supplier POs.",
+            "orders_count": 0,
+            "po_count": 0,
+            "total_pcs": 0,
+            "total_kg": 0.0
+        }
+
+    # Flatten collated items for historical inspection
+    collated_items_flat = []
+    for sid, items in by_supplier.items():
+        sup_name = supplier_users.get(sid, {}).get("company") or supplier_users.get(sid, {}).get("name", "Assigned Supplier") if sid in supplier_users else "Unassigned Supplier"
+        for it in items:
+            collated_items_flat.append({
+                **it,
+                "supplier_id": sid,
+                "supplier_name": sup_name
+            })
+
     # Mark source orders collated
     order_ids = [o["_id"] for o in uncollated]
     await db.orders.update_many(
@@ -549,6 +571,15 @@ async def execute_order_collation(triggered_by: str = "manual", actor: Optional[
         "total_kg": round(total_kg, 2),
         "po_ids": po_ids,
         "po_nos": po_nos,
+        "items": collated_items_flat,
+        "orders_breakdown": [
+            {
+                "order_no": o.get("order_no", str(o.get("_id", ""))[:8]),
+                "dealer_code": o.get("dealer_code", "D-ASSIGNED"),
+                "dealer_name": o.get("dealer_name", "Distributor"),
+                "status": o.get("status", "processing"),
+            } for o in uncollated
+        ],
         "created_at": now_iso(),
     }
     await db.collations.insert_one(batch_doc)
@@ -576,12 +607,23 @@ async def execute_order_collation(triggered_by: str = "manual", actor: Optional[
     return {
         "status": "success",
         "batch_no": batch_no,
+        "message": f"Collated {len(uncollated)} orders into {len(po_ids)} weight POs ({total_kg:.2f} KG total).",
         "orders_count": len(uncollated),
         "po_count": len(po_ids),
         "po_nos": po_nos,
         "total_pcs": total_pcs,
         "total_kg": round(total_kg, 2),
+        "items": collated_items_flat
     }
+
+
+@router.get("/procurement/collations/{batch_no}")
+async def get_collation_batch_details(batch_no: str, user: dict = Depends(get_current_user)):
+    """Fetch complete collated items matrix, weight breakdown, and source orders for a historical collation batch."""
+    b = await db.collations.find_one({"batch_no": batch_no})
+    if not b:
+        raise HTTPException(404, f"Collation batch {batch_no} not found")
+    return serialize_doc(b)
 
 
 @router.post("/procurement/collate")
