@@ -249,8 +249,18 @@ export default function OrdersPage() {
     if (!selected) return;
     setUpdatingStatus(true);
     try {
-      const { data } = await api.post(`/orders/${selected.id}/reallocate`);
-      toast.success(`Stock re-allocated from live warehouse inventory! Status: ${data.reservation_status.toUpperCase()}`);
+      let res;
+      try {
+        res = await api.post(`/orders/${selected.id}/reallocate`);
+      } catch (err) {
+        if (err.response?.status === 404) {
+          res = await api.post(`/orders/${selected.id}/warehouse`, { warehouse_id: selected.warehouse_id });
+        } else {
+          throw err;
+        }
+      }
+      const data = res.data;
+      toast.success(`Stock re-allocated from live warehouse inventory! Status: ${(data.reservation_status || "updated").toUpperCase()}`);
       setSelected(data);
       load();
     } catch (e) {

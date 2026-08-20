@@ -101,7 +101,9 @@ class WarehouseIn(BaseModel):
 class InventoryAdjustIn(BaseModel):
     warehouse_id: str
     product_id: str
-    quantity: int  # can be negative for removal
+    quantity: int  # can be delta or absolute quantity if mode="set"
+    mode: Optional[str] = "adjust"  # "adjust" or "set"
+    safety_stock: Optional[int] = None
     reason: Optional[str] = "manual_adjust"
 
 

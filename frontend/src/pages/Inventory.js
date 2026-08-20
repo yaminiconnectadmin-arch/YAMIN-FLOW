@@ -49,10 +49,13 @@ export default function InventoryPage() {
     if (!selectedRow) return;
     setSavingStock(true);
     try {
-      await api.post("/inventory/set-stock", {
+      const currentQty = selectedRow.quantity || 0;
+      const delta = editQty - currentQty;
+      await api.post("/inventory/adjust", {
         warehouse_id: selectedRow.warehouse_id,
         product_id: selectedRow.product_id,
-        quantity: editQty,
+        quantity: delta,
+        mode: "set",
         safety_stock: editSafety,
         reason: editReason.trim() || "admin_manual_override"
       });

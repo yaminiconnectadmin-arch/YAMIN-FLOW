@@ -196,17 +196,31 @@ async def list_inventory(warehouse_id: str = "", product_id: str = "",
 async def adjust_inventory(payload: InventoryAdjustIn, admin: dict = Depends(require_admin)):
     key = {"warehouse_id": payload.warehouse_id, "product_id": payload.product_id}
     inv = await db.inventory.find_one(key)
-    if not inv:
-        await db.inventory.insert_one({**key, "quantity": max(0, payload.quantity),
-                                       "reserved": 0, "safety_stock": 0, "updated_at": now_iso()})
+    
+    if payload.mode == "set":
+        new_q = max(0, payload.quantity)
     else:
-        new_q = max(0, inv.get("quantity", 0) + payload.quantity)
-        await db.inventory.update_one(key, {"$set": {"quantity": new_q, "updated_at": now_iso()}})
+        new_q = max(0, (inv.get("quantity", 0) if inv else 0) + payload.quantity)
+
+    update_doc = {"quantity": new_q, "updated_at": now_iso()}
+    if payload.safety_stock is not None and payload.safety_stock >= 0:
+        update_doc["safety_stock"] = payload.safety_stock
+
+    if not inv:
+        await db.inventory.insert_one({
+            **key,
+            "quantity": new_q,
+            "reserved": 0,
+            "safety_stock": payload.safety_stock or 0,
+            "updated_at": now_iso()
+        })
+    else:
+        await db.inventory.update_one(key, {"$set": update_doc})
     # Audit
     await db.audit_logs.insert_one({
-        "actor_id": admin["id"], "actor_email": admin["email"],
+        "actor_id": admin["id"], "actor_email": admin.get("email", "admin"),
         "action": "inventory.adjust", "target": f"{payload.warehouse_id}/{payload.product_id}",
-        "meta": {"delta": payload.quantity, "reason": payload.reason},
+        "meta": {"quantity": payload.quantity, "mode": payload.mode, "reason": payload.reason},
         "created_at": now_iso(),
     })
     inv = await db.inventory.find_one(key)
