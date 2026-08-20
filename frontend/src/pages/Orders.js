@@ -662,7 +662,9 @@ export default function OrdersPage() {
             const totalInvoicedBoxes = selected.items?.reduce((s, i) => s + (i.boxes_invoiced ?? Math.floor((i.quantity_invoiced ?? 0) / (i.qty_per_box || 1000))), 0) || 0;
             const totalPendingBoxes = selected.items?.reduce((s, i) => s + (i.boxes_pending ?? Math.max(0, (i.boxes ?? 0) - (i.boxes_allocated ?? 0))), 0) || 0;
 
-            const fulfillmentPct = totalOrderedBoxes > 0 ? Math.min(100, Math.round((totalAllocatedBoxes / totalOrderedBoxes) * 100)) : (totalOrderedPcs > 0 ? Math.min(100, Math.round((totalAllocatedPcs / totalOrderedPcs) * 100)) : 100);
+            const rawFulfillmentPct = totalOrderedBoxes > 0 ? ((totalAllocatedBoxes / totalOrderedBoxes) * 100) : (totalOrderedPcs > 0 ? ((totalAllocatedPcs / totalOrderedPcs) * 100) : 100);
+            const fulfillmentPct = (rawFulfillmentPct > 0 && rawFulfillmentPct < 1) ? rawFulfillmentPct.toFixed(1) : Math.min(100, Math.round(rawFulfillmentPct));
+            const pendingPct = ((100 - rawFulfillmentPct) > 99 && (100 - rawFulfillmentPct) < 100) ? (100 - rawFulfillmentPct).toFixed(1) : Math.max(0, Math.round(100 - rawFulfillmentPct));
             const isShippedOrDelivered = ["shipped", "delivered"].includes(selected.status?.toLowerCase()) || Boolean(selected.carrier);
 
             return (
@@ -907,7 +909,7 @@ export default function OrdersPage() {
                             {fmt.num(totalPendingBoxes)} Boxes
                           </span>
                           <span className="text-xs text-amber-700 font-bold font-mono">
-                            ({100 - fulfillmentPct}% remaining • {fmt.num(totalPendingPcs)} pcs)
+                            ({pendingPct}% remaining • {fmt.num(totalPendingPcs)} pcs)
                           </span>
                         </div>
                         <p className="text-xs text-slate-600 mt-1 leading-snug">
