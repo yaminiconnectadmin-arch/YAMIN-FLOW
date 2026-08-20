@@ -11,6 +11,36 @@ from models import OrderIn, OrderStatusUpdate, OrderPartialBillingIn, WarehouseA
 router = APIRouter(tags=["orders"])
 
 
+async def _inv_query(wh_id: str, product_id: str):
+    """Fetch inventory doc matching warehouse_id (string or ObjectId) and product_id."""
+    doc = await db.inventory.find_one({"warehouse_id": wh_id, "product_id": product_id})
+    if not doc and ObjectId.is_valid(wh_id):
+        doc = await db.inventory.find_one({"warehouse_id": ObjectId(wh_id), "product_id": product_id})
+    return doc
+
+
+async def _reserve_inv(wh_id: str, product_id: str, delta: int):
+    """Increment/decrement reserved field in inventory, matching both string and ObjectId warehouse_id."""
+    # Try string match first
+    res = await db.inventory.update_one(
+        {"warehouse_id": wh_id, "product_id": product_id},
+        {"$inc": {"reserved": delta}, "$set": {"updated_at": now_iso()}}
+    )
+    if res.matched_count == 0 and ObjectId.is_valid(wh_id):
+        # Try ObjectId match (some docs stored with ObjectId)
+        res = await db.inventory.update_one(
+            {"warehouse_id": ObjectId(wh_id), "product_id": product_id},
+            {"$inc": {"reserved": delta}, "$set": {"updated_at": now_iso()}}
+        )
+    if res.matched_count == 0:
+        # Upsert with string key as fallback
+        await db.inventory.update_one(
+            {"warehouse_id": wh_id, "product_id": product_id},
+            {"$inc": {"reserved": delta}, "$set": {"updated_at": now_iso()}},
+            upsert=True
+        )
+
+
 async def _order_number() -> str:
     count = await db.orders.count_documents({})
     return f"ORD-2026{(count + 1):04d}"
@@ -382,7 +412,7 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
             cand_id = str(cand_wh["_id"])
             stock_score = 0
             for it in payload.items:
-                inv = await db.inventory.find_one({"warehouse_id": cand_id, "product_id": it.product_id})
+                inv = await _inv_query(cand_id, it.product_id)
                 on_hand_boxes = inv.get("quantity", 0) if inv else 0
                 reserved_boxes = inv.get("reserved", 0) if inv else 0
                 avail_boxes = max(0, on_hand_boxes - reserved_boxes)
@@ -443,7 +473,7 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         tot = i.value_after_tax if (i.value_after_tax and i.value_after_tax > 0) else round(sub + gst, 2)
         subtotal += sub
 
-        inv = await db.inventory.find_one({"warehouse_id": wh_id, "product_id": i.product_id})
+        inv = await _inv_query(wh_id, i.product_id)
         on_hand_boxes = inv.get("quantity", 0) if inv else 0
         reserved_boxes = inv.get("reserved", 0) if inv else 0
         avail_boxes = max(0, on_hand_boxes - reserved_boxes)
@@ -454,22 +484,14 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
             deficit_boxes = 0
             deficit_pcs = 0
             # Reserve stock in inventory immediately so stock is locked
-            await db.inventory.update_one(
-                {"warehouse_id": wh_id, "product_id": i.product_id},
-                {"$inc": {"reserved": allocated_boxes}, "$set": {"updated_at": now_iso()}},
-                upsert=True
-            )
+            await _reserve_inv(wh_id, i.product_id, allocated_boxes)
         elif avail_boxes > 0:
             allocated_boxes = avail_boxes
             allocated_pcs = allocated_boxes * qty_per_box
             deficit_boxes = demanded_boxes - allocated_boxes
             deficit_pcs = deficit_boxes * qty_per_box
             # Reserve partial stock in inventory immediately
-            await db.inventory.update_one(
-                {"warehouse_id": wh_id, "product_id": i.product_id},
-                {"$inc": {"reserved": allocated_boxes}, "$set": {"updated_at": now_iso()}},
-                upsert=True
-            )
+            await _reserve_inv(wh_id, i.product_id, allocated_boxes)
             deficits.append({
                 "product_id": i.product_id,
                 "product_name": p["name"],
@@ -674,18 +696,14 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate,
             total_b_ord += demanded_boxes
 
             if existing_alloc == 0 and demanded_boxes > 0:
-                inv = await db.inventory.find_one({"warehouse_id": wh_id, "product_id": p_id})
+                inv = await _inv_query(wh_id, p_id)
                 on_hand = inv.get("quantity", 0) if inv else 0
                 reserved = inv.get("reserved", 0) if inv else 0
                 avail = max(0, on_hand - reserved)
                 alloc = min(avail, demanded_boxes)
 
                 if alloc > 0:
-                    await db.inventory.update_one(
-                        {"warehouse_id": wh_id, "product_id": p_id},
-                        {"$inc": {"reserved": alloc}, "$set": {"updated_at": now_iso()}},
-                        upsert=True
-                    )
+                    await _reserve_inv(wh_id, p_id, alloc)
                 
                 item["quantity_allocated"] = alloc
                 item["boxes_allocated"] = alloc
@@ -1044,7 +1062,7 @@ async def reallocate_order_stock(order_id: str, admin: dict = Depends(require_ad
         old_allocated_boxes = item.get("boxes_allocated") if item.get("boxes_allocated") is not None else (item.get("quantity_allocated") if item.get("quantity_allocated") is not None else (demanded_boxes if doc.get("reservation_status") == "reserved" else 0))
         total_demanded_pcs += demanded_boxes
 
-        inv = await db.inventory.find_one({"warehouse_id": wh_id, "product_id": p_id})
+        inv = await _inv_query(wh_id, p_id)
         on_hand_boxes = inv.get("quantity", 0) if inv else 0
         reserved_boxes = inv.get("reserved", 0) if inv else 0
         # Available stock excluding old reservation for this order item
@@ -1094,11 +1112,7 @@ async def reallocate_order_stock(order_id: str, admin: dict = Depends(require_ad
         # Update reservation delta in inventory
         box_diff = new_alloc_boxes - old_allocated_boxes
         if box_diff != 0:
-            await db.inventory.update_one(
-                {"warehouse_id": wh_id, "product_id": p_id},
-                {"$inc": {"reserved": box_diff}, "$set": {"updated_at": now_iso()}},
-                upsert=True
-            )
+            await _reserve_inv(wh_id, p_id, box_diff)
 
         total_allocated_pcs += new_alloc_boxes
 
