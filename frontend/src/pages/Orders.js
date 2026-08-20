@@ -66,6 +66,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [invoiceModalOrder, setInvoiceModalOrder] = useState(null);
+  const [activeInvoice, setActiveInvoice] = useState(null);
 
   // Fastener Order Placement Modal State
   const [newOrderModalOpen, setNewOrderModalOpen] = useState(false);
@@ -1171,14 +1172,22 @@ export default function OrdersPage() {
                           <div className="font-bold font-mono text-slate-900 flex items-center gap-1.5">
                             <span>Invoice #{inv.invoice_no || "TALLY-INV"}</span>
                             <span className="bg-emerald-50 text-emerald-700 text-[10px] px-1.5 py-0.2 rounded border border-emerald-200">
-                              Synced
+                              Synced Batch #{idx + 1}
                             </span>
                           </div>
                           <div className="text-slate-500 text-[11px] mt-0.5">Date: {inv.date || "Today"} • Billed Items: {inv.items_billed?.length || 1}</div>
                         </div>
-                        <div className="text-right">
+                        <div className="text-right flex flex-col items-end">
                           <div className="font-mono font-bold text-emerald-700 text-sm">{fmt.inr(inv.amount)}</div>
-                          <div className="text-[10px] text-slate-400">via {inv.linked_by || "auto"}</div>
+                          <button
+                            onClick={() => {
+                              setActiveInvoice(inv);
+                              setInvoiceModalOrder(selected);
+                            }}
+                            className="mt-1 px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[11px] font-bold shadow-2xs inline-flex items-center gap-1 font-mono transition-all"
+                          >
+                            <FileText size={13} weight="bold" /> View Batch GST Invoice
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -1504,8 +1513,9 @@ export default function OrdersPage() {
       {/* Tax Invoice Modal for Download / Print */}
       <TaxInvoiceModal
         isOpen={!!invoiceModalOrder}
-        onClose={() => setInvoiceModalOrder(null)}
+        onClose={() => { setInvoiceModalOrder(null); setActiveInvoice(null); }}
         order={invoiceModalOrder}
+        activeInvoice={activeInvoice}
       />
 
       <ReceiptModal

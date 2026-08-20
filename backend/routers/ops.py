@@ -299,8 +299,7 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
         q_month = {
             **order_q,
             "created_at": {"$gte": start_of_month},
-            "status": {"$in": ["delivered", "shipped", "approved"]},
-            "tally_voucher_no": {"$exists": True, "$ne": None}
+            "status": {"$in": ["delivered", "shipped", "approved", "partially_fulfilled", "processing"]}
         }
         agg_month = await db.orders.aggregate([
             {"$match": q_month},
@@ -312,8 +311,7 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
         q_quarter = {
             **order_q,
             "created_at": {"$gte": start_of_quarter},
-            "status": {"$in": ["delivered", "shipped", "approved"]},
-            "tally_voucher_no": {"$exists": True, "$ne": None}
+            "status": {"$in": ["delivered", "shipped", "approved", "partially_fulfilled", "processing"]}
         }
         agg_quarter = await db.orders.aggregate([
             {"$match": q_quarter},
@@ -447,8 +445,7 @@ async def cnfs_summary(admin: dict = Depends(require_admin)):
             agg = await db.orders.aggregate([
                 {"$match": {
                     "dealer_id": {"$in": dealer_ids},
-                    "status": {"$in": ["delivered", "shipped", "approved"]},
-                    "tally_voucher_no": {"$exists": True, "$ne": None}
+                    "status": {"$in": ["delivered", "shipped", "approved", "partially_fulfilled", "processing"]}
                 }},
                 {"$group": {"_id": None, "revenue": {"$sum": "$total"}, "orders": {"$sum": 1}}}
             ]).to_list(1)
@@ -487,8 +484,7 @@ async def cnf_dealer_analytics(user: dict = Depends(require_roles("admin", "cnf"
         agg = await db.orders.aggregate([
             {"$match": {
                 "dealer_id": did,
-                "status": {"$in": ["delivered", "shipped", "approved"]},
-                "tally_voucher_no": {"$exists": True, "$ne": None}
+                "status": {"$in": ["delivered", "shipped", "approved", "partially_fulfilled", "processing"]}
             }},
             {"$group": {"_id": None, "revenue": {"$sum": "$total"}, "orders": {"$sum": 1}}}
         ]).to_list(1)

@@ -651,8 +651,59 @@ async def update_order_status(order_id: str, payload: OrderStatusUpdate,
     if new_status == "approved":
         update_fields["approved_at"] = now_iso()
         update_fields["approved_by"] = user.get("email", "admin")
-        if not doc.get("invoice_no"):
-            update_fields["invoice_no"] = f"INV-{doc['order_no'].replace('ORD-', '')}"
+        
+        # Determine if partial invoice or full invoice
+        items = doc.get("items", [])
+        total_b_ord = sum(i.get("boxes") if i.get("boxes") is not None else (i.get("quantity_ordered") or i.get("quantity") or 0) for i in items)
+        total_b_alloc = sum(i.get("boxes_allocated") if i.get("boxes_allocated") is not None else (i.get("quantity_allocated") or 0) for i in items)
+        
+        is_partial = total_b_alloc < total_b_ord and total_b_alloc > 0
+        inv_no = doc.get("invoice_no") or f"INV-{doc['order_no'].replace('ORD-', '')}{'-P1' if is_partial else ''}"
+        update_fields["invoice_no"] = inv_no
+        
+        # Build batch invoice #1 entry
+        existing_invoices = doc.get("invoices", [])
+        if not existing_invoices:
+            inv_items = []
+            inv_sub = 0.0
+            inv_gst = 0.0
+            inv_tot = 0.0
+            
+            for item in items:
+                b_alloc = item.get("boxes_allocated") if item.get("boxes_allocated") is not None else (item.get("quantity_allocated") or (item.get("boxes") if not is_partial else 0))
+                if b_alloc > 0:
+                    rate = item.get("rate") or item.get("dealer_landing") or 0
+                    sub = round(rate * b_alloc, 2)
+                    gst = round(sub * 0.18, 2)
+                    tot = round(sub + gst, 2)
+                    inv_sub += sub
+                    inv_gst += gst
+                    inv_tot += tot
+                    inv_items.append({
+                        "product_id": item.get("product_id"),
+                        "product_name": item.get("product_name"),
+                        "sku": item.get("sku"),
+                        "size": item.get("size", ""),
+                        "boxes": b_alloc,
+                        "quantity": b_alloc,
+                        "qty_per_box": item.get("qty_per_box", 1000),
+                        "total_pcs": b_alloc * (item.get("qty_per_box", 1000) or 1000),
+                        "rate": rate,
+                        "subtotal": sub,
+                        "gst": gst,
+                        "total": tot
+                    })
+            
+            if inv_items:
+                update_fields["invoices"] = [{
+                    "invoice_no": inv_no,
+                    "date": now_iso()[:10],
+                    "subtotal": round(inv_sub, 2),
+                    "gst": round(inv_gst, 2),
+                    "amount": round(inv_tot, 2),
+                    "linked_by": "admin_approval",
+                    "items_billed": inv_items
+                }]
     if payload.notes is not None:
         update_fields["notes"] = payload.notes
     if payload.carrier is not None:
@@ -732,56 +783,71 @@ async def record_partial_billing(order_id: str, payload: OrderPartialBillingIn,
     bill_map = {b.product_id: b.quantity_to_bill for b in payload.items}
     
     updated_items = []
-    total_billed_now = 0
+    total_subtotal_now = 0.0
+    total_gst_now = 0.0
+    total_billed_now = 0.0
+    items_billed_out = []
     all_completed = True
 
     for it in items:
         pid = it["product_id"]
-        q_ord = it.get("quantity_ordered") or it.get("quantity", 0)
-        q_prev_inv = it.get("quantity_invoiced", 0)
         qty_per_b = it.get("qty_per_box") or 1000
+        b_ord = it.get("boxes") if it.get("boxes") is not None else (it.get("quantity_ordered") or it.get("quantity") or 0)
+        b_prev_inv = it.get("boxes_invoiced") if it.get("boxes_invoiced") is not None else (it.get("quantity_invoiced") or 0)
         
         b_item = next((b for b in payload.items if b.product_id == pid), None)
         if b_item:
-            if b_item.boxes_to_bill is not None and b_item.boxes_to_bill > 0:
-                bill_boxes = b_item.boxes_to_bill
-                bill_qty = bill_boxes * qty_per_b
-            else:
-                bill_qty = b_item.quantity_to_bill
-                bill_boxes = int(math.ceil(bill_qty / qty_per_b)) if qty_per_b else bill_qty
+            bill_boxes = b_item.boxes_to_bill if (b_item.boxes_to_bill is not None and b_item.boxes_to_bill > 0) else (b_item.quantity_to_bill or 0)
         else:
-            bill_qty = 0
             bill_boxes = 0
 
-        new_inv_qty = min(q_ord, q_prev_inv + bill_qty)
-        new_pending = max(0, q_ord - new_inv_qty)
-
-        b_ord = it.get("boxes") or (int(math.ceil(q_ord / qty_per_b)) if qty_per_b else q_ord)
-        b_prev_inv = it.get("boxes_invoiced") or (int(math.floor(q_prev_inv / qty_per_b)) if qty_per_b else q_prev_inv)
         new_inv_boxes = min(b_ord, b_prev_inv + bill_boxes)
         new_pending_boxes = max(0, b_ord - new_inv_boxes)
 
-        if new_pending > 0 or new_pending_boxes > 0:
+        if new_pending_boxes > 0:
             all_completed = False
 
-        it["quantity_invoiced"] = new_inv_qty
-        it["quantity_pending"] = new_pending
         it["boxes_invoiced"] = new_inv_boxes
         it["boxes_pending"] = new_pending_boxes
+        it["quantity_invoiced"] = new_inv_boxes
+        it["quantity_pending"] = new_pending_boxes
         updated_items.append(it)
 
-        # Rate and amount for this batch (rate per box)
-        rate = it.get("rate") or 0
-        total_billed_now += round(rate * bill_boxes * 1.18, 2)
+        if bill_boxes > 0:
+            rate = it.get("rate") or it.get("dealer_landing") or 0
+            sub = round(rate * bill_boxes, 2)
+            gst = round(sub * 0.18, 2)
+            tot = round(sub + gst, 2)
+
+            total_subtotal_now += sub
+            total_gst_now += gst
+            total_billed_now += tot
+
+            items_billed_out.append({
+                "product_id": pid,
+                "product_name": it.get("product_name"),
+                "sku": it.get("sku"),
+                "size": it.get("size", ""),
+                "boxes": bill_boxes,
+                "quantity": bill_boxes,
+                "qty_per_box": qty_per_b,
+                "total_pcs": bill_boxes * qty_per_b,
+                "rate": rate,
+                "subtotal": sub,
+                "gst": gst,
+                "total": tot
+            })
 
     inv_number = payload.invoice_no or f"INV-{doc['order_no'].replace('ORD-', '')}-P{len(doc.get('invoices', [])) + 1}"
     new_invoice_entry = {
         "invoice_no": inv_number,
         "date": now_iso()[:10],
-        "amount": total_billed_now,
+        "subtotal": round(total_subtotal_now, 2),
+        "gst": round(total_gst_now, 2),
+        "amount": round(total_billed_now, 2),
         "linked_by": "admin_partial_billing",
         "notes": payload.notes or "",
-        "items_billed": [{"product_id": b.product_id, "quantity_billed": b.quantity_to_bill} for b in payload.items]
+        "items_billed": items_billed_out
     }
 
     invoices = doc.get("invoices", [])

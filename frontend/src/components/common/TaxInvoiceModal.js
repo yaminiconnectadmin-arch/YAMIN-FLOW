@@ -23,20 +23,23 @@ function numberToWords(num) {
   return `Rupees ${words} Only`;
 }
 
-export default function TaxInvoiceModal({ isOpen, onClose, order }) {
+export default function TaxInvoiceModal({ isOpen, onClose, order, activeInvoice }) {
   const printAreaRef = useRef(null);
 
   if (!order || order.status?.toLowerCase() === "pending") return null;
 
-  const invoiceNo = order.invoice_no || order.tally_voucher_no || `INV-${(order.order_no || "").replace("ORD-", "")}`;
-  const invoiceDate = order.created_at ? fmt.date(order.created_at) : new Date().toLocaleDateString("en-IN");
+  const invObj = activeInvoice || (order.invoices && order.invoices.length > 0 ? order.invoices[order.invoices.length - 1] : null);
+  const invoiceNo = invObj?.invoice_no || order.invoice_no || order.tally_voucher_no || `INV-${(order.order_no || "").replace("ORD-", "")}`;
+  const invoiceDate = invObj?.date ? fmt.date(invObj.date) : (order.created_at ? fmt.date(order.created_at) : new Date().toLocaleDateString("en-IN"));
   const isInterstate = (order.dealer_state || "").toLowerCase().trim() !== "maharashtra" && (order.dealer_state || "").trim() !== "";
   
-  const subtotal = order.subtotal || 0;
-  const gstTotal = order.gst || (subtotal * 0.18);
-  const grandTotal = order.total || (subtotal + gstTotal);
-  const totalWeight = order.items?.reduce((s, i) => s + (i.total_weight_kg || 0), 0) || order.total_weight_kg || 0;
-  const totalBoxes = order.items?.reduce((s, i) => s + (i.boxes_allocated ?? i.boxes ?? i.quantity_allocated ?? i.quantity ?? 0), 0) || 0;
+  const itemsToRender = (invObj?.items_billed && invObj.items_billed.length > 0) ? invObj.items_billed : order.items;
+  const subtotal = invObj?.subtotal ?? itemsToRender?.reduce((s, i) => s + (i.subtotal ?? ((i.rate || i.dealer_landing || 0) * (i.boxes_allocated || i.boxes || 0))), 0) ?? order.subtotal ?? 0;
+  const gstTotal = invObj?.gst ?? (subtotal * 0.18);
+  const grandTotal = invObj?.amount ?? (subtotal + gstTotal);
+  
+  const totalWeight = itemsToRender?.reduce((s, i) => s + (i.total_weight_kg || 0), 0) || order.total_weight_kg || 0;
+  const totalBoxes = itemsToRender?.reduce((s, i) => s + (i.boxes ?? i.boxes_allocated ?? i.quantity_allocated ?? i.quantity ?? 0), 0) || 0;
 
   const handlePrint = () => {
     const printContent = printAreaRef.current ? printAreaRef.current.innerHTML : "";
@@ -290,15 +293,15 @@ export default function TaxInvoiceModal({ isOpen, onClose, order }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {order.items?.map((item, idx) => {
+                {itemsToRender?.map((item, idx) => {
                   const qtyPerBox = item.qty_per_box || 1000;
-                  const boxes = item.boxes_allocated ?? item.boxes ?? item.quantity_allocated ?? item.quantity ?? 0;
-                  const pcs = item.allocated_pcs ?? item.total_pcs ?? (boxes * qtyPerBox);
+                  const boxes = item.boxes ?? item.boxes_allocated ?? item.quantity_allocated ?? item.quantity ?? 0;
+                  const pcs = item.total_pcs ?? item.allocated_pcs ?? (boxes * qtyPerBox);
                   const wt = item.allocated_weight_kg || item.total_weight_kg || 0;
-                  const rate = item.rate || item.dealer_landing || (item.value_before_tax ? (item.value_before_tax / (boxes || 1)) : 0);
-                  const taxable = item.value_before_tax ? (rate * boxes) : (rate * boxes);
-                  const gst = item.gst_amount ? (taxable * 0.18) : (taxable * 0.18);
-                  const total = taxable + gst;
+                  const rate = item.rate || item.dealer_landing || (boxes > 0 ? (item.subtotal ? item.subtotal / boxes : 0) : 0);
+                  const taxable = item.subtotal ?? (rate * boxes);
+                  const gst = item.gst ?? (taxable * 0.18);
+                  const total = item.total ?? (taxable + gst);
 
                   return (
                     <tr key={idx} className="hover:bg-slate-50">
