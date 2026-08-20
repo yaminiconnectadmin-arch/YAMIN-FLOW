@@ -33,13 +33,43 @@ export default function TaxInvoiceModal({ isOpen, onClose, order, activeInvoice 
   const invoiceDate = invObj?.date ? fmt.date(invObj.date) : (order.created_at ? fmt.date(order.created_at) : new Date().toLocaleDateString("en-IN"));
   const isInterstate = (order.dealer_state || "").toLowerCase().trim() !== "maharashtra" && (order.dealer_state || "").trim() !== "";
   
-  const itemsToRender = (invObj?.items_billed && invObj.items_billed.length > 0) ? invObj.items_billed : order.items;
-  const subtotal = invObj?.subtotal ?? itemsToRender?.reduce((s, i) => s + (i.subtotal ?? ((i.rate || i.dealer_landing || 0) * (i.boxes_allocated || i.boxes || 0))), 0) ?? order.subtotal ?? 0;
+  const isPartial = (order.reservation_status === "partially_reserved") || (order.status === "partially_fulfilled") || (order.items?.some(i => (i.boxes_allocated || i.quantity_allocated || 0) < (i.boxes || i.quantity_ordered || i.quantity || 0)));
+
+  const itemsToRender = (invObj?.items_billed && invObj.items_billed.length > 0)
+    ? invObj.items_billed
+    : order.items?.map((item) => {
+        const totalOrdBoxes = item.boxes ?? item.quantity_ordered ?? item.quantity ?? 0;
+        const allocBoxes = item.boxes_allocated ?? item.quantity_allocated ?? 0;
+        // Billed quantity is strictly allocated/reserved boxes if partial, or total if 100% reserved
+        const boxesBilled = (isPartial && allocBoxes > 0) ? allocBoxes : (allocBoxes > 0 ? allocBoxes : totalOrdBoxes);
+        const qtyPerBox = item.qty_per_box || 1000;
+        const pcsBilled = boxesBilled * qtyPerBox;
+        const wt1000 = item.wt_1000_pcs_kg || 1.0;
+        const wtBilled = (pcsBilled / 1000.0) * wt1000;
+        const rate = item.rate || item.dealer_landing || (totalOrdBoxes > 0 ? (item.subtotal ? item.subtotal / totalOrdBoxes : 0) : 0);
+        const taxable = rate * boxesBilled;
+        const gst = taxable * 0.18;
+        const total = taxable + gst;
+
+        return {
+          ...item,
+          boxes_billed: boxesBilled,
+          total_ord_boxes: totalOrdBoxes,
+          total_pcs: pcsBilled,
+          total_weight_kg: wtBilled,
+          rate,
+          subtotal: taxable,
+          gst,
+          total
+        };
+      });
+
+  const subtotal = invObj?.subtotal ?? itemsToRender?.reduce((s, i) => s + (i.subtotal || 0), 0) ?? 0;
   const gstTotal = invObj?.gst ?? (subtotal * 0.18);
   const grandTotal = invObj?.amount ?? (subtotal + gstTotal);
   
-  const totalWeight = itemsToRender?.reduce((s, i) => s + (i.total_weight_kg || 0), 0) || order.total_weight_kg || 0;
-  const totalBoxes = itemsToRender?.reduce((s, i) => s + (i.boxes ?? i.boxes_allocated ?? i.quantity_allocated ?? i.quantity ?? 0), 0) || 0;
+  const totalWeight = itemsToRender?.reduce((s, i) => s + (i.total_weight_kg || 0), 0) || 0;
+  const totalBoxes = itemsToRender?.reduce((s, i) => s + (i.boxes_billed || i.boxes || 0), 0) || 0;
 
   const handlePrint = () => {
     const printContent = printAreaRef.current ? printAreaRef.current.innerHTML : "";
@@ -247,6 +277,18 @@ export default function TaxInvoiceModal({ isOpen, onClose, order, activeInvoice 
               </div>
             </div>
           </div>
+
+          {isPartial && (
+            <div className="border border-amber-300 bg-amber-50 rounded p-2.5 text-xs text-amber-900 font-medium flex items-center justify-between">
+              <div>
+                <strong className="font-bold text-amber-950 uppercase tracking-wide">⚡ Partial Fulfillment Tax Invoice (Part 1):</strong><br />
+                This invoice is issued strictly for the <strong>{totalBoxes} Reserved Boxes</strong> ready for immediate dispatch.
+              </div>
+              <div className="text-right font-mono font-bold text-amber-800 text-[11px] bg-amber-200/70 px-2 py-1 rounded">
+                Pending Part To Be Invoiced On Replenishment
+              </div>
+            </div>
+          )}
 
           {/* Billed To & Shipped To Grid */}
           <div className="grid grid-cols-2 gap-4 border border-slate-200 rounded p-3 bg-slate-50 text-xs">
