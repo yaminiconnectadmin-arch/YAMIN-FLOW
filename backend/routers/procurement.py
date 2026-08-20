@@ -193,12 +193,18 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
         has_pending_items = False
         for item in o.get("items", []):
             pid = item["product_id"]
-            qty_per_b = item.get("qty_per_box") or 1000
-            q_ord = item.get("boxes") if item.get("boxes") is not None else (item.get("quantity_ordered") or item.get("quantity", 0))
-            q_alloc = item.get("boxes_allocated") if item.get("boxes_allocated") is not None else (item.get("quantity_allocated") or 0)
-            q_deficit_boxes = item.get("boxes_pending") if item.get("boxes_pending") is not None else item.get("quantity_pending")
-            if q_deficit_boxes is None:
-                q_deficit_boxes = max(0, q_ord - q_alloc)
+            qty_per_b = int(item.get("qty_per_box") or 1000)
+            
+            # Use unit normalizers
+            q_ord = int(item.get("boxes") if item.get("boxes") is not None and int(item.get("boxes", 0)) > 0 else (item.get("quantity_ordered") if item.get("quantity_ordered") is not None else item.get("quantity", 0)))
+            if q_ord >= 10000 and q_ord % qty_per_b == 0:
+                q_ord = q_ord // qty_per_b
+                
+            q_alloc = int(item.get("boxes_allocated") if item.get("boxes_allocated") is not None else (item.get("quantity_allocated") or 0))
+            if q_alloc >= 10000 and q_alloc % qty_per_b == 0:
+                q_alloc = q_alloc // qty_per_b
+                
+            q_deficit_boxes = max(0, q_ord - q_alloc)
             
             if q_deficit_boxes > 0:
                 has_pending_items = True

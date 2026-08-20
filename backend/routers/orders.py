@@ -1030,6 +1030,32 @@ async def list_invoices(user: dict = Depends(get_current_user)):
     return enriched
 
 
+def _get_item_boxes(item: dict) -> int:
+    qty_per_b = int(item.get("qty_per_box") or 1000)
+    if item.get("boxes") is not None and int(item.get("boxes", 0)) > 0:
+        raw = int(item["boxes"])
+    else:
+        raw = int(item.get("quantity_ordered") if item.get("quantity_ordered") is not None else item.get("quantity", 0))
+    if raw >= 10000 and raw % qty_per_b == 0:
+        return raw // qty_per_b
+    return raw
+
+def _get_item_alloc_boxes(item: dict) -> int:
+    qty_per_b = int(item.get("qty_per_box") or 1000)
+    if item.get("boxes_allocated") is not None:
+        raw = int(item["boxes_allocated"])
+    else:
+        raw = int(item.get("quantity_allocated") or 0)
+    if raw >= 10000 and raw % qty_per_b == 0:
+        return raw // qty_per_b
+    return raw
+
+def _get_item_pending_boxes(item: dict) -> int:
+    ord_b = _get_item_boxes(item)
+    alloc_b = _get_item_alloc_boxes(item)
+    return max(0, ord_b - alloc_b)
+
+
 @router.post("/orders/{order_id}/reallocate")
 @router.put("/orders/{order_id}/reallocate")
 @router.patch("/orders/{order_id}/reallocate")
@@ -1056,11 +1082,11 @@ async def reallocate_order_stock(order_id: str, user: dict = Depends(get_current
 
     for item in items:
         p_id = item.get("product_id")
-        qty_per_box = item.get("qty_per_box") or 1000
-        demanded_boxes = item.get("boxes") if item.get("boxes") is not None else (item.get("quantity_ordered") if item.get("quantity_ordered") is not None else (item.get("quantity") or 0))
+        qty_per_box = int(item.get("qty_per_box") or 1000)
+        demanded_boxes = _get_item_boxes(item)
         demanded_pcs = demanded_boxes * qty_per_box
         
-        old_allocated_boxes = item.get("boxes_allocated") if item.get("boxes_allocated") is not None else (item.get("quantity_allocated") if item.get("quantity_allocated") is not None else (demanded_boxes if doc.get("reservation_status") == "reserved" else 0))
+        old_allocated_boxes = _get_item_alloc_boxes(item)
         total_demanded_pcs += demanded_boxes
 
         inv = await _inv_query(wh_id, p_id)
