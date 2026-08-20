@@ -185,6 +185,10 @@ async def _enrich_orders(docs: list) -> list:
             total_b_ord += b_ord
             total_b_alloc += b_alloc
 
+        # Force pending status if order has not been explicitly approved by admin
+        if not d.get("approved_at") and not d.get("invoices"):
+            d["status"] = "pending"
+
         # Dynamically correct reservation status for existing orders
         if total_b_ord > 0:
             if total_b_alloc >= total_b_ord:

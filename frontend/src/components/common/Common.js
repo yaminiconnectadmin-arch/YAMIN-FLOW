@@ -35,7 +35,8 @@ export function KPICard({ label, value, trend, hint, icon: Icon, format = "num",
 
 export function StatusBadge({ status }) {
   const map = {
-    delivered: "badge-success", approved: "badge-info", pending: "badge-warning",
+    delivered: "badge-success", approved: "badge-info",
+    pending: "bg-amber-100 text-amber-900 border border-amber-300 font-bold",
     shipped: "badge-info", cancelled: "badge-error", reserved: "badge-brand",
     partially_fulfilled: "bg-amber-100 text-amber-800 border border-amber-300",
     processing: "badge-warning",
@@ -47,7 +48,9 @@ export function StatusBadge({ status }) {
   };
   const s = status?.toLowerCase() || "";
   const cls = map[s] || "badge-neutral";
-  const label = s === "partially_fulfilled" ? "PARTIALLY FULFILLED" : status;
+  const label =
+    s === "pending" ? "APPROVAL PENDING" :
+    s === "partially_fulfilled" ? "PARTIALLY FULFILLED" : status;
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${cls}`} data-testid={`status-badge-${status}`}>
       {label}
