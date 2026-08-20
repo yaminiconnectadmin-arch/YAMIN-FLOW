@@ -152,10 +152,10 @@ async def upsert_weight_matrix_item(payload: WeightMatrixItem, admin: dict = Dep
 # ================== UNCOLLATED ORDERS SUMMARY ==================
 @router.get("/procurement/uncollated-summary")
 async def get_uncollated_summary(user: dict = Depends(get_current_user)):
-    """Analyze pending/approved orders that haven't been collated into weight-based supplier POs."""
+    """Analyze pending/approved/partially_fulfilled orders that haven't been fully collated into weight-based supplier POs."""
     uncollated = await db.orders.find({
-        "status": {"$in": ["pending", "approved"]},
-        "collated": {"$ne": True}
+        "status": {"$in": ["pending", "approved", "partially_fulfilled"]},
+        "$or": [{"collated": {"$ne": True}}, {"quantity_pending": {"$gt": 0}}]
     }).to_list(2000)
 
     total_orders = len(uncollated)
@@ -340,10 +340,10 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
 
 # ================== CORE COLLATION ENGINE ==================
 async def execute_order_collation(triggered_by: str = "manual", actor: Optional[dict] = None) -> dict:
-    """Core logic: aggregates uncollated orders, computes kg weight, creates grouped supplier POs, marks orders collated."""
+    """Core logic: aggregates uncollated/partially-fulfilled orders, computes kg weight, creates grouped supplier POs."""
     uncollated = await db.orders.find({
-        "status": {"$in": ["pending", "approved"]},
-        "collated": {"$ne": True}
+        "status": {"$in": ["pending", "approved", "partially_fulfilled"]},
+        "$or": [{"collated": {"$ne": True}}, {"quantity_pending": {"$gt": 0}}]
     }).to_list(5000)
 
     if not uncollated:
@@ -550,12 +550,17 @@ async def procurement_recommendations(admin: dict = Depends(get_current_user)):
         agg[pid]["quantity"] += i.get("quantity", 0)
         agg[pid]["reserved"] += i.get("reserved", 0)
 
-    # Pending demand from pending orders
-    pending_orders = await db.orders.find({"status": {"$in": ["pending", "approved"]}}).to_list(1000)
+    # Pending demand from pending / partially_fulfilled orders — count DEFICIT only, not full quantity
+    pending_orders = await db.orders.find({"status": {"$in": ["pending", "approved", "partially_fulfilled"]}}).to_list(1000)
     demand = {}
     for o in pending_orders:
         for item in o.get("items", []):
-            demand[item["product_id"]] = demand.get(item["product_id"], 0) + item["quantity"]
+            q_ord = item.get("quantity_ordered") or item.get("quantity", 0)
+            q_alloc = item.get("quantity_allocated") or 0
+            q_deficit = item.get("quantity_pending")
+            if q_deficit is None:
+                q_deficit = max(0, q_ord - q_alloc)
+            demand[item["product_id"]] = demand.get(item["product_id"], 0) + q_deficit
 
     recs = []
     for pid, p in prods.items():
@@ -605,8 +610,8 @@ async def _po_number() -> str:
 async def approve_supplier_po(payload: ApproveSupplierPOIn, admin: dict = Depends(require_admin)):
     """Approve collated items for a single supplier, generate official PO, update source orders, and create WhatsApp redirection."""
     uncollated = await db.orders.find({
-        "status": {"$in": ["pending", "approved"]},
-        "collated": {"$ne": True}
+        "status": {"$in": ["pending", "approved", "partially_fulfilled"]},
+        "$or": [{"collated": {"$ne": True}}, {"quantity_pending": {"$gt": 0}}]
     }).to_list(5000)
 
     if not uncollated:
