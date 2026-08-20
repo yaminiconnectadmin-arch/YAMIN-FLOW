@@ -49,14 +49,12 @@ export default function InventoryPage() {
     if (!selectedRow) return;
     setSavingStock(true);
     try {
-      const currentQty = selectedRow.quantity || 0;
-      const delta = editQty - currentQty;
       await api.post("/inventory/adjust", {
         warehouse_id: selectedRow.warehouse_id,
         product_id: selectedRow.product_id,
-        quantity: delta,
+        quantity: Number(editQty),
         mode: "set",
-        safety_stock: editSafety,
+        safety_stock: Number(editSafety),
         reason: editReason.trim() || "admin_manual_override"
       });
       toast.success(`Inventory updated for ${selectedRow.product_name}: ${editQty} Boxes`);

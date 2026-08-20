@@ -192,10 +192,16 @@ async def list_inventory(warehouse_id: str = "", product_id: str = "",
     return out
 
 
+async def _find_inv_doc(wh_id: str, product_id: str):
+    doc = await db.inventory.find_one({"warehouse_id": wh_id, "product_id": product_id})
+    if not doc and ObjectId.is_valid(wh_id):
+        doc = await db.inventory.find_one({"warehouse_id": ObjectId(wh_id), "product_id": product_id})
+    return doc
+
+
 @router.post("/inventory/adjust")
 async def adjust_inventory(payload: InventoryAdjustIn, admin: dict = Depends(require_admin)):
-    key = {"warehouse_id": payload.warehouse_id, "product_id": payload.product_id}
-    inv = await db.inventory.find_one(key)
+    inv = await _find_inv_doc(payload.warehouse_id, payload.product_id)
     
     if payload.mode == "set":
         new_q = max(0, payload.quantity)
@@ -208,29 +214,44 @@ async def adjust_inventory(payload: InventoryAdjustIn, admin: dict = Depends(req
 
     if not inv:
         await db.inventory.insert_one({
-            **key,
+            "warehouse_id": payload.warehouse_id,
+            "product_id": payload.product_id,
             "quantity": new_q,
             "reserved": 0,
             "safety_stock": payload.safety_stock or 0,
             "updated_at": now_iso()
         })
     else:
-        await db.inventory.update_one(key, {"$set": update_doc})
+        await db.inventory.update_one({"_id": inv["_id"]}, {"$set": update_doc})
+
+    # Auto-reevaluate pending/partially_fulfilled orders so newly added stock is allocated immediately
+    try:
+        from routers.orders import reallocate_order_stock
+        active_orders = await db.orders.find({
+            "status": {"$in": ["pending", "approved", "partially_fulfilled"]}
+        }).to_list(100)
+        for o in active_orders:
+            try:
+                await reallocate_order_stock(str(o["_id"]), admin)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     # Audit
     await db.audit_logs.insert_one({
         "actor_id": admin["id"], "actor_email": admin.get("email", "admin"),
         "action": "inventory.adjust", "target": f"{payload.warehouse_id}/{payload.product_id}",
-        "meta": {"quantity": payload.quantity, "mode": payload.mode, "reason": payload.reason},
+        "meta": {"quantity": payload.quantity, "mode": payload.mode, "reason": payload.reason, "new_quantity": new_q},
         "created_at": now_iso(),
     })
-    inv = await db.inventory.find_one(key)
+    inv = await _find_inv_doc(payload.warehouse_id, payload.product_id)
     return serialize_doc(inv)
 
 
 @router.post("/inventory/set-stock")
 async def set_inventory_stock(payload: InventorySetStockIn, admin: dict = Depends(require_admin)):
-    key = {"warehouse_id": payload.warehouse_id, "product_id": payload.product_id}
-    inv = await db.inventory.find_one(key)
+    inv = await _find_inv_doc(payload.warehouse_id, payload.product_id)
     target_qty = max(0, payload.quantity)
     
     update_data = {
@@ -242,14 +263,29 @@ async def set_inventory_stock(payload: InventorySetStockIn, admin: dict = Depend
 
     if not inv:
         await db.inventory.insert_one({
-            **key,
+            "warehouse_id": payload.warehouse_id,
+            "product_id": payload.product_id,
             "quantity": target_qty,
             "reserved": 0,
             "safety_stock": payload.safety_stock or 0,
             "updated_at": now_iso()
         })
     else:
-        await db.inventory.update_one(key, {"$set": update_data})
+        await db.inventory.update_one({"_id": inv["_id"]}, {"$set": update_data})
+
+    # Auto-reevaluate pending/partially_fulfilled orders
+    try:
+        from routers.orders import reallocate_order_stock
+        active_orders = await db.orders.find({
+            "status": {"$in": ["pending", "approved", "partially_fulfilled"]}
+        }).to_list(100)
+        for o in active_orders:
+            try:
+                await reallocate_order_stock(str(o["_id"]), admin)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     # Audit
     await db.audit_logs.insert_one({
@@ -258,5 +294,5 @@ async def set_inventory_stock(payload: InventorySetStockIn, admin: dict = Depend
         "meta": {"new_quantity": target_qty, "reason": payload.reason or "admin_manual_override"},
         "created_at": now_iso(),
     })
-    inv = await db.inventory.find_one(key)
+    inv = await _find_inv_doc(payload.warehouse_id, payload.product_id)
     return serialize_doc(inv)
