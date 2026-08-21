@@ -1270,15 +1270,49 @@ async def update_order_reallocation_setting(order_id: str, payload: dict, user: 
     return enriched[0]
 
 
+@router.post("/orders/{order_id}/request-urgency")
+async def request_order_urgency(order_id: str, payload: dict = Body(default={}), user: dict = Depends(get_current_user)):
+    """Dealer requests priority stock allocation / urges admin dispatch for a pending order."""
+    try:
+        oid = ObjectId(order_id)
+        doc = await db.orders.find_one({"_id": oid})
+    except Exception:
+        doc = await db.orders.find_one({"_id": order_id})
+        oid = order_id
+
+    if not doc:
+        raise HTTPException(404, "Order not found")
+
+    await db.orders.update_one(
+        {"_id": doc["_id"]},
+        {"$set": {
+            "urgency_flag": True,
+            "urgent_requested_at": now_iso(),
+            "urgency_notes": payload.get("notes", "Dealer requested priority stock allocation"),
+            "updated_at": now_iso()
+        }}
+    )
+
+    await db.audit_logs.insert_one({
+        "actor_id": user["id"], "actor_email": user.get("email", "dealer"),
+        "action": "order.request_urgency", "target": doc.get("order_no"),
+        "created_at": now_iso(),
+    })
+
+    updated = await db.orders.find_one({"_id": doc["_id"]})
+    enriched = await _enrich_orders([updated])
+    return enriched[0]
+
+
 @router.post("/orders/batch-reallocate")
 async def batch_reallocate_pending_orders(user: dict = Depends(get_current_user)):
-    """Batch re-evaluate and reallocate available stock for all pending backorders sequentially."""
+    """Batch re-evaluate and reallocate available stock for all pending backorders sequentially (urgent orders first)."""
     if user["role"] not in ("admin", "cnf", "mnp"):
         raise HTTPException(403, "Forbidden")
 
     pending_orders = await db.orders.find({
         "status": {"$in": ["pending", "approved", "partially_fulfilled"]}
-    }).sort("created_at", 1).to_list(500)
+    }).sort([("urgency_flag", -1), ("created_at", 1)]).to_list(500)
 
     reallocated_count = 0
     fulfilled_orders = []

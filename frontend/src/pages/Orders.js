@@ -10,7 +10,7 @@ import { toast } from "@/components/ui/sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Eye, Plus, Stack, Printer, FileText, CheckCircle, Clock, Truck, Package, ArrowsClockwise, Warehouse, Hourglass, Sparkle, Lightning } from "@phosphor-icons/react";
+import { Eye, Plus, Stack, Printer, FileText, CheckCircle, Clock, Truck, Package, ArrowsClockwise, Warehouse, Hourglass, Sparkle, Lightning, Flame } from "@phosphor-icons/react";
 import ReceiptModal from "@/components/common/ReceiptModal";
 import TaxInvoiceModal from "@/components/common/TaxInvoiceModal";
 
@@ -103,6 +103,22 @@ export default function OrdersPage() {
       toast.error(e.response?.data?.detail || "Failed to batch reallocate pending orders");
     } finally {
       setBatchReallocating(false);
+    }
+  const [requestingUrgency, setRequestingUrgency] = useState(false);
+
+  const handleRequestUrgency = async () => {
+    if (!selected) return;
+    setRequestingUrgency(true);
+    try {
+      const orderId = selected.id || selected._id;
+      const { data } = await api.post(`/orders/${orderId}/request-urgency`);
+      setSelected(data);
+      toast.success("Priority stock allocation request sent to Admin & Warehouse team!");
+      load(false);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to submit priority request");
+    } finally {
+      setRequestingUrgency(false);
     }
   };
 
@@ -436,6 +452,10 @@ export default function OrdersPage() {
   };
 
   const isAdmin = user?.role === "admin";
+  const isCnf = user?.role === "cnf";
+  const isMnp = user?.role === "mnp";
+  const isDealer = user?.role === "dealer";
+  const canManageReallocation = isAdmin || isCnf || isMnp;
 
   const pendingBackorders = orders.filter((o) => {
     if (o.status === "partially_fulfilled" || o.reservation_status === "partially_reserved" || o.status === "pending") return true;
@@ -1319,76 +1339,109 @@ export default function OrdersPage() {
                 </div>
               )}
 
-              {/* Inventory Stock Re-allocation Engine Policy & Controls Card */}
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Lightning size={20} className="text-amber-500 font-bold" weight="fill" />
-                    <div>
-                      <div className="font-extrabold text-xs uppercase tracking-wider text-slate-900">
-                        Stock Re-allocation Engine Policy
+              {/* Inventory Stock Re-allocation Engine Policy & Controls Card (Admin / CNF / MNP Only) */}
+              {canManageReallocation && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Lightning size={20} className="text-amber-500 font-bold" weight="fill" />
+                      <div>
+                        <div className="font-extrabold text-xs uppercase tracking-wider text-slate-900">
+                          Stock Re-allocation Engine Policy
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-mono">
+                          Control how refreshed warehouse inventory is reserved & billed for this order
+                        </div>
                       </div>
-                      <div className="text-[11px] text-slate-500 font-mono">
-                        Control how refreshed warehouse inventory is reserved & billed for this order
-                      </div>
+                    </div>
+
+                    {/* Toggle Switch */}
+                    <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg p-1 shadow-xs">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleAutoReallocate(true)}
+                        disabled={updatingStatus}
+                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
+                          selected.auto_reallocate !== false
+                            ? "bg-amber-500 text-white shadow-xs"
+                            : "text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        ⚡ Auto Reallocate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleAutoReallocate(false)}
+                        disabled={updatingStatus}
+                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
+                          selected.auto_reallocate === false
+                            ? "bg-slate-900 text-white shadow-xs"
+                            : "text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        ✋ Manual Only
+                      </button>
                     </div>
                   </div>
 
-                  {/* Toggle Switch */}
-                  <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg p-1 shadow-xs">
+                  <div className="pt-2 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div className="flex-1">
+                      {selected.auto_reallocate !== false ? (
+                        <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
+                          <span>✅</span>
+                          <span><strong>Automatic Mode Active:</strong> Whenever stock is added to inventory, system automatically allocates pending boxes and generates next part bill.</span>
+                        </span>
+                      ) : (
+                        <span className="text-amber-800 font-semibold flex items-center gap-1.5">
+                          <span>🔒</span>
+                          <span><strong>Manual Mode Active:</strong> Stock updates will NOT automatically reserve inventory for this order until you explicitly click Reallocate.</span>
+                        </span>
+                      )}
+                    </div>
+
                     <button
                       type="button"
-                      onClick={() => handleToggleAutoReallocate(true)}
+                      onClick={handleReallocateStock}
                       disabled={updatingStatus}
-                      className={`px-3 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
-                        selected.auto_reallocate !== false
-                          ? "bg-amber-500 text-white shadow-xs"
-                          : "text-slate-600 hover:bg-slate-100"
-                      }`}
+                      className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm flex-shrink-0"
                     >
-                      ⚡ Auto Reallocate
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleAutoReallocate(false)}
-                      disabled={updatingStatus}
-                      className={`px-3 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
-                        selected.auto_reallocate === false
-                          ? "bg-slate-900 text-white shadow-xs"
-                          : "text-slate-600 hover:bg-slate-100"
-                      }`}
-                    >
-                      ✋ Manual Only
+                      <ArrowsClockwise size={14} className={updatingStatus ? "animate-spin" : ""} />
+                      {updatingStatus ? "Reallocating..." : "Trigger Stock Reallocation Now"}
                     </button>
                   </div>
                 </div>
+              )}
 
-                <div className="pt-2 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                  <div className="flex-1">
-                    {selected.auto_reallocate !== false ? (
-                      <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
-                        <span>✅</span>
-                        <span><strong>Automatic Mode Active:</strong> Whenever stock is added to inventory, system automatically allocates pending boxes and generates next part bill.</span>
-                      </span>
-                    ) : (
-                      <span className="text-amber-800 font-semibold flex items-center gap-1.5">
-                        <span>🔒</span>
-                        <span><strong>Manual Mode Active:</strong> Stock updates will NOT automatically reserve inventory for this order until you explicitly click Reallocate.</span>
-                      </span>
-                    )}
+              {/* Dealer Priority Stock Allocation Request Card */}
+              {isDealer && selected.reservation_status !== "reserved" && selected.status !== "approved" && (
+                <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300 rounded-xl p-4 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="font-extrabold text-xs text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                        <Flame size={18} className="text-amber-600 font-bold" weight="fill" />
+                        Priority Stock Allocation Request
+                      </div>
+                      <div className="text-[11px] text-slate-600 mt-0.5">
+                        Need this fastener order dispatched urgently? Urge the Admin & Warehouse team to prioritize your order as soon as new stock arrives.
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleRequestUrgency}
+                      disabled={requestingUrgency || selected.urgency_flag}
+                      className={`px-4 py-2 rounded-lg text-xs font-black shadow-sm flex items-center gap-1.5 transition-all flex-shrink-0 ${
+                        selected.urgency_flag
+                          ? "bg-amber-100 text-amber-900 border border-amber-300 cursor-default font-mono"
+                          : "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white"
+                      }`}
+                    >
+                      <Flame size={14} weight="fill" />
+                      {selected.urgency_flag ? "✓ Priority Requested" : "🔥 Request Priority Dispatch"}
+                    </button>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={handleReallocateStock}
-                    disabled={updatingStatus}
-                    className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm flex-shrink-0"
-                  >
-                    <ArrowsClockwise size={14} className={updatingStatus ? "animate-spin" : ""} />
-                    {updatingStatus ? "Reallocating..." : "Trigger Stock Reallocation Now"}
-                  </button>
                 </div>
-              </div>
+              )}
 
               <div className="flex justify-between items-center bg-[#1D242B] text-white p-4 rounded-lg">
                 <div>
