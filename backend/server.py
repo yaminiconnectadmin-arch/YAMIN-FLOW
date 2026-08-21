@@ -57,6 +57,20 @@ async def global_exception_handler(request: Request, exc: Exception):
             "Access-Control-Allow-Credentials": "true"
         }
     )
+from models import LoginInput
+from routers.auth_router import login as auth_login_func
+
+@app.post("/auth/login")
+@app.post("/auth/login/")
+@app.post("/api/auth/login")
+@app.post("/api/auth/login/")
+@app.post("/login")
+@app.post("/login/")
+@app.post("/api/login")
+@app.post("/api/login/")
+async def universal_login_endpoint(payload: LoginInput, request: Request, response: Response):
+    return await auth_login_func(payload, request, response)
+
 @app.get("/")
 @app.get("/api")
 @app.get("/api/")
