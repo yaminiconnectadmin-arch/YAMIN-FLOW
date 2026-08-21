@@ -433,6 +433,8 @@ export default function OrdersPage() {
     }
   };
 
+  const isAdmin = user?.role === "admin";
+
   const pendingBackorders = orders.filter((o) => {
     if (o.status === "partially_fulfilled" || o.reservation_status === "partially_reserved" || o.status === "pending") return true;
     return (o.items || []).some((i) => {
