@@ -54,6 +54,13 @@ export default class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
+      const err = this.state.error;
+      const isChunkError =
+        err?.name === "ChunkLoadError" ||
+        err?.message?.includes("Loading chunk") ||
+        err?.message?.includes("Failed to fetch dynamically imported module") ||
+        err?.message?.includes("Importing a module script failed");
+
       return (
         <div className="min-h-screen flex items-center justify-center bg-[#06182F] p-6 text-white">
           <div className="max-w-md w-full bg-[#0A2540] border border-white/10 rounded-2xl p-8 text-center shadow-2xl space-y-5">
@@ -61,9 +68,13 @@ export default class ErrorBoundary extends React.Component {
               <WarningCircle size={36} weight="bold" />
             </div>
             <div>
-              <h2 className="text-xl font-bold font-display">New Version Available</h2>
+              <h2 className="text-xl font-bold font-display">
+                {isChunkError ? "New Version Available" : "Application Notice"}
+              </h2>
               <p className="text-sm text-white/70 mt-2">
-                A new version of Yamini Flow was deployed. Please reload the page to apply the latest updates.
+                {isChunkError
+                  ? "A new version of Yamini Flow was deployed. Please reload to apply the latest updates."
+                  : err?.message || "An unexpected interface state occurred. Click below to refresh your session."}
               </p>
             </div>
             <button
@@ -71,7 +82,7 @@ export default class ErrorBoundary extends React.Component {
               className="w-full h-11 rounded-lg bg-[#F28C18] hover:bg-[#E07D10] text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg transition-all"
             >
               <ArrowsClockwise size={18} weight="bold" />
-              Reload Application
+              {isChunkError ? "Reload Application" : "Reset & Reload Application"}
             </button>
           </div>
         </div>

@@ -193,9 +193,22 @@ async def list_inventory(warehouse_id: str = "", product_id: str = "",
 
 
 async def _find_inv_doc(wh_id: str, product_id: str):
-    doc = await db.inventory.find_one({"warehouse_id": wh_id, "product_id": product_id})
-    if not doc and ObjectId.is_valid(wh_id):
-        doc = await db.inventory.find_one({"warehouse_id": ObjectId(wh_id), "product_id": product_id})
+    """Fetch inventory doc matching warehouse_id and product_id (both string and ObjectId)."""
+    pids = [product_id]
+    if ObjectId.is_valid(str(product_id)):
+        pids.append(ObjectId(str(product_id)))
+
+    wids = [wh_id] if wh_id else []
+    if wh_id and ObjectId.is_valid(str(wh_id)):
+        wids.append(ObjectId(str(wh_id)))
+
+    q = {"product_id": {"$in": pids}}
+    if wids:
+        q["warehouse_id"] = {"$in": wids}
+
+    doc = await db.inventory.find_one(q)
+    if not doc:
+        doc = await db.inventory.find_one({"product_id": {"$in": pids}})
     return doc
 
 
