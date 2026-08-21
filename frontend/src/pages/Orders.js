@@ -87,6 +87,8 @@ export default function OrdersPage() {
   const [selectedProductId, setSelectedProductId] = useState("");
   const [boxCount, setBoxCount] = useState(10);
   const [cart, setCart] = useState({});
+  const [placing, setPlacing] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
   // Main View Tabs & Batch Re-allocation State
   const [orderTab, setOrderTab] = useState("all"); // "all" | "pending_replenishment"
   const [batchReallocating, setBatchReallocating] = useState(false);
