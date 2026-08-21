@@ -95,16 +95,17 @@ app.include_router(v1)
 
 @app.on_event("startup")
 async def on_startup():
-    try:
-        await create_indexes()
-        await seed_all(force_purge=False)
-        await db.orders.update_many(
-            {"$or": [{"approved_at": {"$exists": False}}, {"approved_at": None}]},
-            {"$set": {"status": "pending"}, "$unset": {"invoice_no": "", "invoices": "", "tally_voucher_no": "", "tally_voucher": ""}}
-        )
-        logger.info("YAMINI FLOW startup complete: indexes + seed done + unapproved docs sanitized")
-    except Exception as e:
-        logger.exception(f"Startup error: {e}")
+    if not os.environ.get("VERCEL"):
+        try:
+            await create_indexes()
+            await seed_all(force_purge=False)
+            await db.orders.update_many(
+                {"$or": [{"approved_at": {"$exists": False}}, {"approved_at": None}]},
+                {"$set": {"status": "pending"}, "$unset": {"invoice_no": "", "invoices": "", "tally_voucher_no": "", "tally_voucher": ""}}
+            )
+            logger.info("YAMINI FLOW startup complete: indexes + seed done + unapproved docs sanitized")
+        except Exception as e:
+            logger.exception(f"Startup error: {e}")
 
     # Start 12 AM Auto-Collation Scheduler (only in standalone mode, not serverless)
     if not os.environ.get("VERCEL"):

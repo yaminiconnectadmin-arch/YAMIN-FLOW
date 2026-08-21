@@ -29,10 +29,10 @@ mongo_url = os.environ.get("MONGO_URL", DEFAULT_MONGO_URL)
 db_name = os.environ.get("DB_NAME", "yamini_flow")
 
 MONGO_KWARGS = {
-    "serverSelectionTimeoutMS": 3000,
-    "connectTimeoutMS": 3000,
-    "maxPoolSize": 50,
-    "minPoolSize": 5,
+    "serverSelectionTimeoutMS": 5000,
+    "connectTimeoutMS": 5000,
+    "maxPoolSize": 20,
+    "minPoolSize": 0,
     "maxIdleTimeMS": 30000,
     "retryWrites": True,
 }
