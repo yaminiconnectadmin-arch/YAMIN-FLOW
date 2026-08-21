@@ -24,6 +24,30 @@ STATE_ABBR_MAP = {
 }
 
 
+def _abbreviate_business_name(name_str: str, default_prefix: str = "DS") -> str:
+    if not name_str or not name_str.strip():
+        return default_prefix
+    clean_name = name_str.strip()
+    words = [w for w in clean_name.replace("-", " ").replace("/", " ").split() if w]
+    if len(words) >= 2:
+        return "".join(w[0].upper() for w in words[:4])
+    word = words[0]
+    if word.lower() == "codeverse":
+        return "CVS"
+    uppers = [c for c in word if c.isupper()]
+    if len(uppers) >= 2:
+        return "".join(uppers[:3])
+    first_char = word[0].upper()
+    vowels = set("AEIOUaeiou")
+    consonants = [c.upper() for c in word[1:] if c.isalpha() and c not in vowels]
+    if len(consonants) >= 2:
+        return first_char + consonants[0] + consonants[1]
+    elif len(consonants) == 1:
+        return first_char + consonants[0]
+    else:
+        return word[:3].upper()
+
+
 async def _generate_partner_code(company: str, name: str, state: str, prefix: str = "D", role: str = "dealer") -> str:
     st_clean = (state or "").strip().lower()
     st_code = STATE_ABBR_MAP.get(st_clean)
@@ -34,18 +58,14 @@ async def _generate_partner_code(company: str, name: str, state: str, prefix: st
             st_code = "IN"
 
     src = (company or name or ("CNF" if role in ["cnf", "mnp"] else "DIST")).strip()
-    words = [w for w in src.replace("-", " ").split() if w]
-    if len(words) >= 2:
-        initials = "".join(w[0].upper() for w in words[:3])
-    elif words:
-        initials = words[0][:2].upper()
-    else:
-        initials = "CF" if role in ["cnf", "mnp"] else "DS"
+    default_pre = "CF" if role in ["cnf", "mnp"] else "DS"
+    initials = _abbreviate_business_name(src, default_pre)
 
     base_count = await db.users.count_documents({"role": {"$in": [role, "cnf", "mnp"] if role in ["cnf", "mnp"] else [role]}})
-    idx = 100 + base_count + 1
+    idx = base_count + 1
     while True:
-        code = f"{prefix}-{initials}-{st_code}-{idx}"
+        num_str = f"{idx:03d}"
+        code = f"{prefix}-{initials}-{st_code}-{num_str}"
         exists = await db.users.find_one({"$or": [{"user_code": code}, {"login_id": code}]})
         if not exists:
             return code

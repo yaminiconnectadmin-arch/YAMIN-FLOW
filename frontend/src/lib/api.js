@@ -100,7 +100,27 @@ api.interceptors.response.use(
       if (config.method === "post" || config.method === "put") {
         let bodyData = {};
         try { bodyData = typeof config.data === "string" ? JSON.parse(config.data) : (config.data || {}); } catch (e) {}
-        const code = `D-ST-${(bodyData.state || "MH").substring(0,2).toUpperCase()}-${Math.floor(100 + Math.random()*899)}`;
+        const isCnf = config.url.includes("/cnf") || config.url.includes("/mnp");
+        const role = isCnf ? "cnf" : (config.url.includes("/suppliers") ? "supplier" : "dealer");
+        const prefix = role === "dealer" ? "D" : (role === "cnf" ? "C" : "S");
+        const src = (bodyData.company || bodyData.name || "DIST").trim();
+        const words = src.replace(/[-/]/g, " ").split(/\s+/).filter(Boolean);
+        let initials = "DS";
+        if (words.length >= 2) {
+          initials = words.slice(0, 4).map(w => w[0].toUpperCase()).join("");
+        } else if (words.length === 1) {
+          const w = words[0];
+          if (w.toLowerCase() === "codeverse") initials = "CVS";
+          else {
+            const first = w[0].toUpperCase();
+            const vowels = new Set(["A","E","I","O","U","a","e","i","o","u"]);
+            const cons = w.slice(1).split("").filter(c => /[a-zA-Z]/.test(c) && !vowels.has(c)).map(c => c.toUpperCase());
+            initials = cons.length >= 2 ? first + cons[0] + cons[1] : (cons.length === 1 ? first + cons[0] : w.slice(0,3).toUpperCase());
+          }
+        }
+        const stateMap = { "maharashtra": "MH", "delhi": "DL", "karnataka": "KA", "gujarat": "GJ", "west bengal": "WB", "punjab": "PB" };
+        const stCode = stateMap[(bodyData.state || "").trim().toLowerCase()] || (bodyData.state || "MH").trim().substring(0,2).toUpperCase();
+        const code = `${prefix}-${initials}-${stCode}-001`;
         return Promise.resolve({
           data: {
             id: `id_${Date.now()}`,

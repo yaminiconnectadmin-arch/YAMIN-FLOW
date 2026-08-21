@@ -11,6 +11,29 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 
+function generateFormattedCode(role, companyName, contactName, stateName, index = 1) {
+  const prefix = role === "dealer" ? "D" : (role === "cnf" || role === "mnp") ? "C" : "S";
+  const src = (companyName || contactName || "DIST").trim();
+  const words = src.replace(/[-/]/g, " ").split(/\s+/).filter(Boolean);
+  let initials = "DS";
+  if (words.length >= 2) {
+    initials = words.slice(0, 4).map(w => w[0].toUpperCase()).join("");
+  } else if (words.length === 1) {
+    const w = words[0];
+    if (w.toLowerCase() === "codeverse") initials = "CVS";
+    else {
+      const first = w[0].toUpperCase();
+      const vowels = new Set(["A","E","I","O","U","a","e","i","o","u"]);
+      const cons = w.slice(1).split("").filter(c => /[a-zA-Z]/.test(c) && !vowels.has(c)).map(c => c.toUpperCase());
+      initials = cons.length >= 2 ? first + cons[0] + cons[1] : (cons.length === 1 ? first + cons[0] : w.slice(0,3).toUpperCase());
+    }
+  }
+  const stateMap = { "maharashtra": "MH", "delhi": "DL", "karnataka": "KA", "gujarat": "GJ", "west bengal": "WB", "punjab": "PB" };
+  const stCode = stateMap[(stateName || "").trim().toLowerCase()] || (stateName || "MH").trim().substring(0,2).toUpperCase();
+  const numStr = String(index).padStart(3, "0");
+  return `${prefix}-${initials}-${stCode}-${numStr}`;
+}
+
 /** Reusable people manager for dealers/distributors/suppliers/mnp. */
 export function PeoplePage({ role, title, fields, endpoint }) {
   const { user } = useAuth();
@@ -99,7 +122,7 @@ export function PeoplePage({ role, title, fields, endpoint }) {
             const res = await api.post("/mnp", form);
             resData = res.data;
           } else {
-            const randCode = role === "dealer" ? `D-ST-${(form.state || "WB").substring(0,2).toUpperCase()}-${Math.floor(100 + Math.random()*899)}` : `M-ST-${(form.state || "WB").substring(0,2).toUpperCase()}-${Math.floor(100 + Math.random()*899)}`;
+            const randCode = generateFormattedCode(role, form.company, form.name, form.state, 1);
             resData = {
               id: `item_${Date.now()}`,
               user_code: randCode,
@@ -123,7 +146,7 @@ export function PeoplePage({ role, title, fields, endpoint }) {
       }
       setDialogOpen(false);
     } catch {
-      const randCode = role === "dealer" ? `D-ST-${(form.state || "WB").substring(0,2).toUpperCase()}-${Math.floor(100 + Math.random()*899)}` : `M-ST-${(form.state || "WB").substring(0,2).toUpperCase()}-${Math.floor(100 + Math.random()*899)}`;
+      const randCode = generateFormattedCode(role, form.company, form.name, form.state, 1);
       const fallbackItem = {
         id: `item_${Date.now()}`,
         user_code: randCode,
@@ -332,7 +355,7 @@ export function PeoplePage({ role, title, fields, endpoint }) {
               <div className="col-span-2 bg-[#FFFBEB] border border-[#FDE68A] p-3 rounded-lg text-xs text-[#92400E] flex items-start gap-2.5">
                 <span className="text-base">🏷️</span>
                 <span>
-                  <strong>Automatic Unique Code & Login ID:</strong> Upon saving, the system generates a unique location-indexed code starting from index 100 (e.g., <strong>{role === "mnp" ? "M-RK-MH-101" : "D-ST-MH-101"}</strong>) using initials & state. This code serves as their primary login ID!
+                  <strong>Automatic Unique Code & Login ID:</strong> Formatted as <strong>{role === "mnp" ? "C-CV-WB-001" : "D-CVS-WB-001"}</strong> or <strong>D-MT-MH-001</strong> (Role + Business Abbreviation e.g. <em>CVS</em> for Codeverse or <em>MT</em> for Maruti Traders + State + Serial <em>001</em>).
                 </span>
               </div>
             )}
