@@ -79,13 +79,23 @@ async def list_products(q: str = "", category: str = "", status: str = "",
                          user: dict = Depends(get_current_user)):
     query = {}
     if q:
-        query["$or"] = [{"name": {"$regex": q, "$options": "i"}}, {"sku": {"$regex": q, "$options": "i"}}]
-    if category:
-        query["category"] = category
+        query["$or"] = [
+            {"name": {"$regex": q, "$options": "i"}},
+            {"sku": {"$regex": q, "$options": "i"}},
+            {"size": {"$regex": q, "$options": "i"}},
+            {"size_mm": {"$regex": q, "$options": "i"}}
+        ]
+    if category and category.strip().lower() != "all":
+        cat_clean = category.replace("CSK ", "").replace(" (Zinc)", "").replace("Screws", "").strip()
+        query["$or"] = [
+            {"category": {"$regex": cat_clean, "$options": "i"}},
+            {"category_section": {"$regex": cat_clean, "$options": "i"}}
+        ]
     if status:
         query["status"] = status
-    docs = await db.products.find(query).sort("name", 1).to_list(1000)
+    docs = await db.products.find(query).sort([("sr_no", 1), ("sku", 1)]).to_list(1000)
     return serialize_docs(docs)
+
 
 
 @router.get("/products/{product_id}")
