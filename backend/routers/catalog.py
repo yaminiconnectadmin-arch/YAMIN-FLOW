@@ -191,8 +191,15 @@ async def list_inventory(warehouse_id: str = "", product_id: str = "",
         s["product_name"] = p.get("name") if p else "-"
         s["product_sku"] = p.get("sku") if p else "-"
         s["category"] = p.get("category") if p else "-"
-        s["unit"] = p.get("unit") if p else "pcs"
+        s["unit"] = p.get("unit") if p else "box"
         s["price"] = p.get("price", 0) if p else 0
+        s["mrp"] = p.get("mrp") if p else p.get("price", 0) if p else 0
+        s["dealer_landing"] = p.get("dealer_landing") if p else p.get("cost", 0) if p else 0
+        s["qty_per_box"] = p.get("qty_per_box") if p else 1000
+        s["wt_1000_pcs_kg"] = p.get("wt_1000_pcs_kg") if p else 0.0
+        s["size"] = p.get("size") if p else ""
+        s["size_mm"] = p.get("size_mm") if p else ""
+        s["sr_no"] = p.get("sr_no") if p else None
         s["warehouse_name"] = w.get("name") if w else "-"
         s["warehouse_code"] = w.get("code") if w else "-"
         s["available"] = max(0, s.get("quantity", 0) - s.get("reserved", 0))
