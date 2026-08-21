@@ -433,7 +433,15 @@ export default function OrdersPage() {
     }
   };
 
-  const isAdmin = user?.role === "admin";
+  const pendingBackorders = orders.filter((o) => {
+    if (o.status === "partially_fulfilled" || o.reservation_status === "partially_reserved" || o.status === "pending") return true;
+    return (o.items || []).some((i) => {
+      const pB = i.boxes_pending !== undefined ? i.boxes_pending : (i.quantity_pending || 0);
+      return pB > 0;
+    });
+  });
+
+  const displayedOrders = orderTab === "pending_replenishment" ? pendingBackorders : orders;
 
   return (
     <AppShell
