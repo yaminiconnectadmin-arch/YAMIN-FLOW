@@ -1085,23 +1085,23 @@ async def reallocate_order_stock(order_id: str, user: dict = Depends(get_current
     wh_id = str(doc.get("warehouse_id", ""))
     items = doc.get("items", [])
     deficits = []
-    updated_items = []
-    total_demanded_pcs = 0
-    total_allocated_pcs = 0
+    newly_billed_items = []
+    total_new_subtotal = 0.0
+    total_new_gst = 0.0
+    total_new_amount = 0.0
 
     for item in items:
         p_id = item.get("product_id")
         qty_per_box = int(item.get("qty_per_box") or 1000)
         demanded_boxes = _get_item_boxes(item)
         demanded_pcs = demanded_boxes * qty_per_box
-        
+
         old_allocated_boxes = _get_item_alloc_boxes(item)
         total_demanded_pcs += demanded_boxes
 
         inv = await _inv_query(wh_id, p_id)
         on_hand_boxes = inv.get("quantity", 0) if inv else 0
         reserved_boxes = inv.get("reserved", 0) if inv else 0
-        # Available stock excluding old reservation for this order item
         avail_boxes = max(0, (on_hand_boxes - reserved_boxes) + old_allocated_boxes)
 
         if avail_boxes >= demanded_boxes:
@@ -1145,6 +1145,32 @@ async def reallocate_order_stock(order_id: str, user: dict = Depends(get_current
                 "deficit": def_pcs,
             })
 
+        # Calculate newly allocated boxes in this replenishment run for invoice generation
+        newly_alloc_delta = max(0, new_alloc_boxes - old_allocated_boxes)
+        if newly_alloc_delta > 0:
+            item_val = float(item.get("value_before_tax") or item.get("subtotal") or 0.0)
+            unit_sub = item_val / max(1, demanded_boxes)
+            sub = newly_alloc_delta * unit_sub
+            gst = sub * 0.18
+            tot = sub * 1.18
+
+            total_new_subtotal += sub
+            total_new_gst += gst
+            total_new_amount += tot
+
+            newly_billed_items.append({
+                "product_id": p_id,
+                "product_name": item.get("product_name"),
+                "sku": item.get("sku"),
+                "boxes": newly_alloc_delta,
+                "quantity": newly_alloc_delta,
+                "qty_per_box": qty_per_box,
+                "total_pcs": newly_alloc_delta * qty_per_box,
+                "subtotal": round(sub, 2),
+                "gst": round(gst, 2),
+                "total": round(tot, 2)
+            })
+
         # Update reservation delta in inventory
         box_diff = new_alloc_boxes - old_allocated_boxes
         if box_diff != 0:
@@ -1164,6 +1190,25 @@ async def reallocate_order_stock(order_id: str, user: dict = Depends(get_current
         item["pending_pcs"] = def_pcs
         updated_items.append(item)
 
+    # Generate part invoice batch if new stock was allocated in this run
+    existing_invoices = doc.get("invoices", []) or []
+    if newly_billed_items and total_new_amount > 0:
+        batch_num = len(existing_invoices) + 1
+        ord_no_clean = str(doc.get("order_no", "ORD")).replace("ORD-", "")
+        new_inv_no = f"INV-{ord_no_clean}-P{batch_num}"
+
+        new_invoice = {
+            "invoice_no": new_inv_no,
+            "date": now_iso()[:10],
+            "subtotal": round(total_new_subtotal, 2),
+            "gst": round(total_new_gst, 2),
+            "amount": round(total_new_amount, 2),
+            "linked_by": "replenishment_auto_reallocate",
+            "notes": f"Part Invoice Batch #{batch_num} issued on stock replenishment allocation",
+            "items_billed": newly_billed_items
+        }
+        existing_invoices.append(new_invoice)
+
     reservation_status = "reserved" if total_allocated_pcs == total_demanded_pcs else ("partially_reserved" if total_allocated_pcs > 0 else "pending")
 
     new_status = doc.get("status", "pending")
@@ -1179,6 +1224,7 @@ async def reallocate_order_stock(order_id: str, user: dict = Depends(get_current
         {"$set": {
             "items": updated_items,
             "deficits": deficits,
+            "invoices": existing_invoices,
             "status": new_status,
             "reservation_status": reservation_status,
             "updated_at": now_iso()
