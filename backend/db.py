@@ -85,6 +85,11 @@ class DummyCollection:
         return DummyRes()
     async def count_documents(self, *args, **kwargs):
         return 0
+    def aggregate(self, *args, **kwargs):
+        class DummyAggCursor:
+            async def to_list(self, length=None):
+                return []
+        return DummyAggCursor()
     async def drop_index(self, *args, **kwargs):
         pass
     async def create_index(self, *args, **kwargs):
@@ -179,6 +184,13 @@ class SafeCollectionProxy:
         except Exception as e:
             logger.warning(f"MongoDB count_documents exception: {e}")
             return await self.dummy.count_documents(*args, **kwargs)
+
+    def aggregate(self, *args, **kwargs):
+        try:
+            return self.real_coll.aggregate(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"MongoDB aggregate exception: {e}")
+            return self.dummy.aggregate(*args, **kwargs)
 
     async def create_index(self, *args, **kwargs):
         try:
