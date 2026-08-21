@@ -14,7 +14,7 @@ import {
 import PurchaseOrderModal from "@/components/common/PurchaseOrderModal";
 
 // ===================== ITEM ACCORDION ROW =====================
-function ItemAccordionRow({ it, idx, fmt, extraBuffer = 0, onUpdateBuffer }) {
+function ItemAccordionRow({ it, idx, fmt, customBoxes, onUpdateBoxes }) {
   const [open, setOpen] = useState(false);
   const statusColors = {
     pending: "bg-amber-100 text-amber-800 border-amber-300",
@@ -24,15 +24,11 @@ function ItemAccordionRow({ it, idx, fmt, extraBuffer = 0, onUpdateBuffer }) {
   };
 
   const baseBoxes = Math.round(it.demanded_boxes ?? (it.recommended_pcs / 1000) ?? 0);
-  const totalProcureBoxes = baseBoxes + (extraBuffer || 0);
+  const effectiveBoxes = customBoxes !== undefined ? customBoxes : baseBoxes;
   const qtyPerBox = it.qty_per_box || 1000;
-  const totalProcurePcs = totalProcureBoxes * qtyPerBox;
+  const calculatedPcs = effectiveBoxes * qtyPerBox;
   const wt1000 = Number(it.wt_1000_pcs_kg) || 1.0;
-  const totalProcureKg = roundKg((totalProcurePcs / 1000.0) * wt1000);
-
-  function roundKg(val) {
-    return Math.round(val * 1000) / 1000;
-  }
+  const calculatedKg = Math.round(((calculatedPcs / 1000.0) * wt1000) * 1000) / 1000;
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -64,32 +60,31 @@ function ItemAccordionRow({ it, idx, fmt, extraBuffer = 0, onUpdateBuffer }) {
           </div>
         </div>
 
-        {/* Admin Buffer Input */}
-        {onUpdateBuffer && (
-          <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 p-1 rounded-lg" onClick={(e) => e.stopPropagation()}>
-            <span className="text-[10px] font-bold uppercase text-amber-800 px-1">+ Admin Buffer:</span>
+        {/* Editable Deficit Boxes Input */}
+        {onUpdateBoxes && (
+          <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-300 px-2.5 py-1.5 rounded-lg shadow-xs" onClick={(e) => e.stopPropagation()}>
+            <span className="text-[10px] font-black uppercase text-amber-900">Procure Deficit:</span>
             <input
               type="number"
               min="0"
-              value={extraBuffer || ""}
-              placeholder="+0"
-              onChange={(e) => onUpdateBuffer(it.product_id, parseInt(e.target.value, 10) || 0)}
-              className="w-16 h-7 px-1.5 rounded text-xs font-mono font-bold border border-amber-300 bg-white text-amber-950 focus:outline-none text-right shadow-inner"
+              value={effectiveBoxes}
+              onChange={(e) => onUpdateBoxes(it.product_id, parseInt(e.target.value, 10) || 0)}
+              className="w-20 h-7 px-2 rounded text-sm font-mono font-black border border-amber-400 bg-white text-amber-950 text-right shadow-inner focus:ring-2 focus:ring-amber-500 focus:outline-none"
             />
-            <span className="text-[10px] font-bold text-amber-700 pr-1">Boxes</span>
+            <span className="text-xs font-bold text-amber-900 font-mono">Boxes</span>
           </div>
         )}
 
         {/* Key Metrics */}
         <div className="hidden sm:flex items-center gap-5 text-right flex-shrink-0">
           <div>
-            <div className="text-[10px] font-bold uppercase text-slate-400">Demanded Deficit</div>
-            <div className="text-sm font-black text-slate-900 font-mono">{fmt.num(totalProcureBoxes)} Boxes</div>
-            <div className="text-[10px] text-slate-400 font-mono">({fmt.num(totalProcurePcs)} pcs)</div>
+            <div className="text-[10px] font-bold uppercase text-slate-400">Engine Calculated PCS</div>
+            <div className="text-sm font-black text-slate-900 font-mono">{fmt.num(calculatedPcs)} pcs</div>
+            <div className="text-[10px] text-slate-400 font-mono">({effectiveBoxes} Box × {qtyPerBox})</div>
           </div>
           <div>
             <div className="text-[10px] font-bold uppercase text-amber-600">Total Weight</div>
-            <div className="text-base font-black text-amber-700 font-mono">{fmt.kg(totalProcureKg)}</div>
+            <div className="text-base font-black text-amber-700 font-mono">{fmt.kg(calculatedKg)}</div>
           </div>
           <div>
             <div className="text-[10px] font-bold uppercase text-blue-500">WT / 1000 PCS</div>
@@ -217,12 +212,12 @@ export default function ProcurementPage() {
   const [collating, setCollating] = useState(false);
   const [approvingSupplierId, setApprovingSupplierId] = useState(null);
   const [supplierPhoneOverrides, setSupplierPhoneOverrides] = useState({});
-  const [adminBufferBoxes, setAdminBufferBoxes] = useState({});
+  const [customDeficitBoxes, setCustomDeficitBoxes] = useState({});
 
-  const handleUpdateBuffer = (productId, extraCount) => {
-    setAdminBufferBoxes((prev) => ({
+  const handleUpdateDeficitBoxes = (productId, count) => {
+    setCustomDeficitBoxes((prev) => ({
       ...prev,
-      [productId]: Math.max(0, extraCount)
+      [productId]: Math.max(0, count)
     }));
   };
 
@@ -740,8 +735,8 @@ export default function ProcurementPage() {
                           it={it}
                           idx={idx}
                           fmt={fmt}
-                          extraBuffer={adminBufferBoxes[it.product_id] || 0}
-                          onUpdateBuffer={handleUpdateBuffer}
+                          customBoxes={customDeficitBoxes[it.product_id]}
+                          onUpdateBoxes={handleUpdateDeficitBoxes}
                         />
                       ))}
                     </div>
