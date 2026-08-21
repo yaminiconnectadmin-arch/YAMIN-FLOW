@@ -14,7 +14,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.options("/login")
+@router.options("/login/")
 @router.post("/login")
+@router.post("/login/")
 async def login(payload: LoginInput, request: Request, response: Response):
     ident = (payload.login_id or payload.user_code or payload.username or payload.email or "").strip()
     if not ident:

@@ -27,7 +27,7 @@ logger = logging.getLogger("yamini_flow")
 
 from fastapi.middleware.gzip import GZipMiddleware
 
-app = FastAPI(title="YAMINI FLOW", version="2.0.2")
+app = FastAPI(title="YAMINI FLOW", version="2.0.2", redirect_slashes=False)
 
 # GZip Compression for API response speed optimization
 app.add_middleware(GZipMiddleware, minimum_size=500)
