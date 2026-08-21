@@ -38,17 +38,32 @@ MONGO_KWARGS = {
     "retryWrites": True,
 }
 
-try:
-    import certifi
-    ca = certifi.where()
-    _client = AsyncIOMotorClient(mongo_url, tlsCAFile=ca, **MONGO_KWARGS)
-except Exception:
-    try:
-        _client = AsyncIOMotorClient(mongo_url, tlsAllowInvalidCertificates=True, **MONGO_KWARGS)
-    except Exception:
-        _client = AsyncIOMotorClient(mongo_url, **MONGO_KWARGS)
+_client = None
 
-db = _client[db_name]
+def get_db():
+    global _client
+    if _client is None:
+        try:
+            import certifi
+            ca = certifi.where()
+            _client = AsyncIOMotorClient(mongo_url, tlsCAFile=ca, **MONGO_KWARGS)
+        except Exception:
+            try:
+                _client = AsyncIOMotorClient(mongo_url, tlsAllowInvalidCertificates=True, **MONGO_KWARGS)
+            except Exception:
+                _client = AsyncIOMotorClient(mongo_url, **MONGO_KWARGS)
+    return _client[db_name]
+
+
+class LazyDatabase:
+    def __getattr__(self, name):
+        return getattr(get_db(), name)
+
+    def __getitem__(self, name):
+        return get_db()[name]
+
+
+db = LazyDatabase()
 
 
 
