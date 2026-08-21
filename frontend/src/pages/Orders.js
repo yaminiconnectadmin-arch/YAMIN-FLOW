@@ -499,6 +499,32 @@ export default function OrdersPage() {
         )}
       </div>
 
+      {/* Alert Banner on All Orders view when pending backorders exist */}
+      {orderTab === "all" && pendingBackorders.length > 0 && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 mb-4 flex items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold flex-shrink-0">
+              <Hourglass size={18} weight="fill" />
+            </div>
+            <div>
+              <div className="font-extrabold text-xs text-amber-950">
+                {pendingBackorders.length} Order(s) Pending Stock Replenishment
+              </div>
+              <div className="text-[11px] text-amber-800 font-medium">
+                New stock arrived in inventory? Click to open the Backorder Queue and auto-fulfill pending items from live stock.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setOrderTab("pending_replenishment")}
+            className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-black shadow-xs flex items-center gap-1.5 transition-all flex-shrink-0"
+          >
+            <Hourglass size={14} weight="fill" />
+            Open Backorder Queue ({pendingBackorders.length})
+          </button>
+        </div>
+      )}
+
       {/* Pending Replenishment Queue Description Banner */}
       {orderTab === "pending_replenishment" && (
         <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/60 rounded-xl p-4 mb-4 space-y-2">
