@@ -1,10 +1,9 @@
 {
   "version": 2,
-  "regions": ["iad1"],
-  "builds": [
+  "rewrites": [
     {
-      "src": "api/index.py",
-      "use": "@vercel/python"
+      "source": "/(.*)",
+      "destination": "/api/index.py"
     }
   ],
   "headers": [
@@ -16,12 +15,6 @@
         { "key": "Access-Control-Allow-Methods", "value": "GET,OPTIONS,PATCH,DELETE,POST,PUT" },
         { "key": "Access-Control-Allow-Headers", "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization" }
       ]
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "api/index.py"
     }
   ]
 }
