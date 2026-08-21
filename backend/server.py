@@ -97,8 +97,8 @@ async def reset_prod_db():
         await create_indexes()
     except Exception:
         pass
-    await seed_all(force_purge=True)
-    return {"status": "ok", "message": "Demo data purged. Production admin reset to admin@yaminiconnect.com"}
+    await seed_all(force_purge=False)
+    return {"status": "ok", "message": "Production indexes and master schema refreshed."}
 
 
 # Mount all routers on root app directly (for stripped paths)

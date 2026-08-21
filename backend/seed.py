@@ -27,18 +27,8 @@ async def _upsert_user(email: str, password: str, name: str, role: str, extra: d
 
 
 async def seed_all(force_purge: bool = False):
-    if force_purge:
-        # Purge all legacy demo users except admin@yaminiconnect.com
-        await db.users.delete_many({"email": {"$ne": "admin@yaminiconnect.com"}})
-        # Purge all mock orders, POs, logs, notifications, collations
-        await db.orders.delete_many({})
-        await db.purchase_orders.delete_many({})
-        await db.tally_sync_logs.delete_many({})
-        await db.tally_webhook_events.delete_many({})
-        await db.audit_logs.delete_many({})
-        await db.notifications.delete_many({})
-        await db.collations.delete_many({})
-        await db.inventory.delete_many({})
+    # Live data protection: never purge user-created records
+    pass
 
     # Admin
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@yaminiconnect.com")
