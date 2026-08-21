@@ -104,6 +104,8 @@ export default function OrdersPage() {
     } finally {
       setBatchReallocating(false);
     }
+  };
+
   const [requestingUrgency, setRequestingUrgency] = useState(false);
 
   const handleRequestUrgency = async () => {
@@ -208,7 +210,8 @@ export default function OrdersPage() {
     if (!selected || !reassignWhId) return;
     setReassigningWh(true);
     try {
-      const { data } = await api.put(`/orders/${selected.id}/warehouse`, { warehouse_id: reassignWhId });
+      const targetId = selected._id || selected.id;
+      const { data } = await api.put(`/orders/${targetId}/warehouse`, { warehouse_id: reassignWhId });
       setSelected(data);
       toast.success(`Fulfillment hub updated to ${data.warehouse_name} (${data.warehouse_code}) & inventory reallocated`);
       load(false);
@@ -226,7 +229,7 @@ export default function OrdersPage() {
       const { data } = await api.patch(`/orders/${orderId}/status`, payload);
       toast.success(`Order ${data.order_no} status updated to ${newStatus.toUpperCase()}`);
       load();
-      if (selected?.id === orderId) setSelected(data);
+      if ((selected?._id || selected?.id) === orderId) setSelected(data);
       setDispatchModalOpen(false);
     } catch (e) { 
       toast.error(e.response?.data?.detail || "Failed to update order status"); 
@@ -262,7 +265,8 @@ export default function OrdersPage() {
 
     setUpdatingStatus(true);
     try {
-      const { data } = await api.patch(`/orders/${selected.id}/status`, payload);
+      const targetId = selected._id || selected.id;
+      const { data } = await api.patch(`/orders/${targetId}/status`, payload);
       toast.success(
         isEditDeliveryMode
           ? `Delivery timeframe updated: ${daysNum}-day countdown refreshed!`
@@ -282,8 +286,8 @@ export default function OrdersPage() {
     if (!selected) return;
     setUpdatingStatus(true);
     try {
-      const orderId = selected.id || selected._id;
-      const res = await api.patch(`/orders/${orderId}/reallocation-setting`, {
+      const targetId = selected._id || selected.id;
+      const res = await api.patch(`/orders/${targetId}/reallocation-setting`, {
         auto_reallocate: autoReallocBool
       });
       setSelected(res.data);
@@ -300,8 +304,8 @@ export default function OrdersPage() {
     if (!selected) return;
     setUpdatingStatus(true);
     try {
-      const orderId = selected.id || selected._id;
-      const res = await api.post(`/orders/${orderId}/reallocate`);
+      const targetId = selected._id || selected.id;
+      const res = await api.post(`/orders/${targetId}/reallocate`);
       const data = res.data;
       toast.success(`Stock re-allocated from live warehouse inventory! Status: ${(data.reservation_status || "updated").toUpperCase()}`);
       setSelected(data);

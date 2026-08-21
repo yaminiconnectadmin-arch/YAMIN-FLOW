@@ -1076,11 +1076,13 @@ async def reallocate_order_stock(order_id: str, user: dict = Depends(get_current
         oid = ObjectId(order_id)
         doc = await db.orders.find_one({"_id": oid})
     except Exception:
-        doc = await db.orders.find_one({"_id": order_id})
-        oid = order_id
+        doc = None
 
     if not doc:
-        raise HTTPException(404, "Order not found")
+        doc = await db.orders.find_one({"$or": [{"_id": order_id}, {"order_no": order_id}]})
+
+    if not doc:
+        raise HTTPException(404, f"Order {order_id} not found")
 
     wh_id = str(doc.get("warehouse_id", ""))
     items = doc.get("items", [])
