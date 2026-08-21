@@ -42,7 +42,21 @@ app.add_middleware(
 )
 
 
-# Root level health & status handlers
+import json
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Unhandled exception: {exc}")
+    origin = request.headers.get("origin", "*")
+    return Response(
+        content=json.dumps({"detail": str(exc) or "Internal server error"}),
+        status_code=500,
+        media_type="application/json",
+        headers={
+            "Access-Control-Allow-Origin": origin if origin else "*",
+            "Access-Control-Allow-Credentials": "true"
+        }
+    )
 @app.get("/")
 @app.get("/api")
 @app.get("/api/")
