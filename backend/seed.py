@@ -190,15 +190,7 @@ async def seed_all(force_purge: bool = False):
                 })
         await db.inventory.insert_many(inv_docs)
 
-    # Write credentials file
-    try:
-        os.makedirs("/app/memory", exist_ok=True)
-        with open("/app/memory/test_credentials.md", "w") as f:
-            f.write("# YAMINI FLOW — Production Admin Credentials\n\n")
-            f.write("## Admin\n- Email: admin@yaminiconnect.com\n- Password: Admin@yamini12\n- Role: admin\n\n")
-            f.write("## Auth Endpoints\n- POST /api/auth/login\n- POST /api/auth/register (admin only)\n- GET /api/auth/me\n- POST /api/auth/logout\n")
-    except Exception:
-        pass
+    # Skip filesystem writes in serverless environment
 
 
 async def create_indexes():
