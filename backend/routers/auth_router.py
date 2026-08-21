@@ -31,19 +31,7 @@ async def login(payload: LoginInput, request: Request, response: Response):
     ident_lower = ident.lower()
     is_admin_ident = ident_lower in ["admin", "admin@yaminiconnect.com", "admin@yaminiflow.com", "admin-101", "system admin", "arpan"]
 
-    try:
-        await db.login_attempts.delete_many({})
-    except Exception:
-        pass
-
-    user = await db.users.find_one({"$or": [
-        {"email": rgx},
-        {"login_id": rgx},
-        {"user_code": rgx},
-        {"username": rgx},
-        {"employee_id": rgx}
-    ]})
-    
+    user = None
     try:
         if is_admin_ident:
             user = await db.users.find_one({"$or": [{"email": "admin@yaminiconnect.com"}, {"role": "admin"}, {"login_id": "admin"}, {"username": "admin"}]})
@@ -72,6 +60,14 @@ async def login(payload: LoginInput, request: Request, response: Response):
                 user["role"] = "admin"
                 user["admin_role"] = "super_admin"
                 user["allowed_tabs"] = ["all"]
+        else:
+            user = await db.users.find_one({"$or": [
+                {"email": rgx},
+                {"login_id": rgx},
+                {"user_code": rgx},
+                {"username": rgx},
+                {"employee_id": rgx}
+            ]})
     except Exception as e:
         logger.error(f"DB lookup exception in login: {e}")
         if is_admin_ident:
