@@ -142,9 +142,10 @@ export default function OrdersPage() {
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const { data } = await api.get("/orders", { params: { status } });
-      setOrders(data);
-    } catch { 
+      const params = status && status !== "all" ? { status } : {};
+      const { data } = await api.get("/orders", { params });
+      setOrders(Array.isArray(data) ? data : []);
+    } catch (err) { 
       if (showLoading) toast.error("Failed to load orders"); 
     } finally { 
       if (showLoading) setLoading(false); 

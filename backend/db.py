@@ -24,8 +24,10 @@ def _validate_object_id(v: Any) -> str:
 PyObjectId = Annotated[str, BeforeValidator(_validate_object_id)]
 
 
-DEFAULT_MONGO_URL = "mongodb+srv://yaminiconnectadmin_db_user:yaminiconnect111@cluster0.1ri5dnj.mongodb.net/yamini_flow?appName=Cluster0"
-mongo_url = os.environ.get("MONGO_URL", DEFAULT_MONGO_URL)
+DEFAULT_SRV_URL = "mongodb+srv://yaminiconnectadmin_db_user:yaminiconnect111@cluster0.1ri5dnj.mongodb.net/yamini_flow?appName=Cluster0"
+DEFAULT_DIRECT_URL = "mongodb://yaminiconnectadmin_db_user:yaminiconnect111@ac-1ri5dnj-shard-00-00.1ri5dnj.mongodb.net:27017,ac-1ri5dnj-shard-00-01.1ri5dnj.mongodb.net:27017,ac-1ri5dnj-shard-00-02.1ri5dnj.mongodb.net:27017/yamini_flow?ssl=true&replicaSet=atlas-1ri5dnj-shard-0&authSource=admin"
+DEFAULT_MONGO_URL = DEFAULT_DIRECT_URL
+mongo_url = os.environ.get("MONGO_URL", DEFAULT_DIRECT_URL)
 db_name = os.environ.get("DB_NAME", "yamini_flow")
 
 MONGO_KWARGS = {

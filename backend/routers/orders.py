@@ -285,7 +285,7 @@ async def list_orders(status: str = "", dealer_id: str = "",
         if dealer_id:
             query["dealer_id"] = dealer_id
 
-    if status:
+    if status and status.lower() not in ("all", "any", "*", ""):
         query["status"] = status
 
     docs = await db.orders.find(query).sort("created_at", -1).to_list(2000)
