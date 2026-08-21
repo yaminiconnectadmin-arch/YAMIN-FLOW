@@ -275,10 +275,11 @@ async def get_uncollated_summary(user: dict = Depends(get_current_user)):
             }
         avail = inv_agg.get(pid, 0)
         safety = p.get("safety_stock", 0)
-        procure_pcs = deficit_pcs
-        procure_boxes = demanded_boxes_map.get(pid, 0)
-        wt_1000 = p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0) or 1.0
-        req_kg = round((procure_pcs / 1000.0) * wt_1000, 4)
+        procure_boxes = int(round(demanded_boxes_map.get(pid, 0)))
+        qty_per_b = int(p.get("qty_per_box") or 1000)
+        procure_pcs = procure_boxes * qty_per_b
+        wt_1000 = float(p.get("wt_1000_pcs_kg", 0.0) or (p.get("weight_kg", 0.0) * 1000.0) or 1.0)
+        req_kg = round((procure_pcs / 1000.0) * wt_1000, 3)
 
         sid = p.get("primary_supplier_id")
         sup = suppliers.get(str(sid)) if sid else None

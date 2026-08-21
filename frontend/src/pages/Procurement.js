@@ -14,7 +14,7 @@ import {
 import PurchaseOrderModal from "@/components/common/PurchaseOrderModal";
 
 // ===================== ITEM ACCORDION ROW =====================
-function ItemAccordionRow({ it, idx, fmt }) {
+function ItemAccordionRow({ it, idx, fmt, extraBuffer = 0, onUpdateBuffer }) {
   const [open, setOpen] = useState(false);
   const statusColors = {
     pending: "bg-amber-100 text-amber-800 border-amber-300",
@@ -22,12 +22,24 @@ function ItemAccordionRow({ it, idx, fmt }) {
     partially_fulfilled: "bg-blue-100 text-blue-800 border-blue-300",
     processing: "bg-purple-100 text-purple-800 border-purple-300",
   };
+
+  const baseBoxes = Math.round(it.demanded_boxes ?? (it.recommended_pcs / 1000) ?? 0);
+  const totalProcureBoxes = baseBoxes + (extraBuffer || 0);
+  const qtyPerBox = it.qty_per_box || 1000;
+  const totalProcurePcs = totalProcureBoxes * qtyPerBox;
+  const wt1000 = Number(it.wt_1000_pcs_kg) || 1.0;
+  const totalProcureKg = roundKg((totalProcurePcs / 1000.0) * wt1000);
+
+  function roundKg(val) {
+    return Math.round(val * 1000) / 1000;
+  }
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       {/* Summary Row — clickable */}
-      <button
+      <div
         onClick={() => setOpen((o) => !o)}
-        className="w-full text-left px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors group"
+        className="w-full text-left px-5 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors cursor-pointer group"
       >
         {/* Index */}
         <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-[11px] font-black flex items-center justify-center flex-shrink-0">
@@ -52,20 +64,36 @@ function ItemAccordionRow({ it, idx, fmt }) {
           </div>
         </div>
 
+        {/* Admin Buffer Input */}
+        {onUpdateBuffer && (
+          <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 p-1 rounded-lg" onClick={(e) => e.stopPropagation()}>
+            <span className="text-[10px] font-bold uppercase text-amber-800 px-1">+ Admin Buffer:</span>
+            <input
+              type="number"
+              min="0"
+              value={extraBuffer || ""}
+              placeholder="+0"
+              onChange={(e) => onUpdateBuffer(it.product_id, parseInt(e.target.value, 10) || 0)}
+              className="w-16 h-7 px-1.5 rounded text-xs font-mono font-bold border border-amber-300 bg-white text-amber-950 focus:outline-none text-right shadow-inner"
+            />
+            <span className="text-[10px] font-bold text-amber-700 pr-1">Boxes</span>
+          </div>
+        )}
+
         {/* Key Metrics */}
         <div className="hidden sm:flex items-center gap-5 text-right flex-shrink-0">
           <div>
-            <div className="text-[10px] font-bold uppercase text-slate-400">Demanded Boxes</div>
-            <div className="text-sm font-black text-slate-900 font-mono">{fmt.num(it.demanded_boxes || (it.recommended_pcs / 1000))} Boxes</div>
-            <div className="text-[10px] text-slate-400 font-mono">({fmt.num(it.demanded_pcs || it.recommended_pcs)} pcs)</div>
+            <div className="text-[10px] font-bold uppercase text-slate-400">Demanded Deficit</div>
+            <div className="text-sm font-black text-slate-900 font-mono">{fmt.num(totalProcureBoxes)} Boxes</div>
+            <div className="text-[10px] text-slate-400 font-mono">({fmt.num(totalProcurePcs)} pcs)</div>
           </div>
           <div>
             <div className="text-[10px] font-bold uppercase text-amber-600">Total Weight</div>
-            <div className="text-base font-black text-amber-700 font-mono">{fmt.kg(it.recommended_weight_kg)}</div>
+            <div className="text-base font-black text-amber-700 font-mono">{fmt.kg(totalProcureKg)}</div>
           </div>
           <div>
             <div className="text-[10px] font-bold uppercase text-blue-500">WT / 1000 PCS</div>
-            <div className="text-xs font-bold text-blue-700 font-mono">{Number(it.wt_1000_pcs_kg).toFixed(3)} kg</div>
+            <div className="text-xs font-bold text-blue-700 font-mono">{wt1000.toFixed(3)} kg</div>
           </div>
         </div>
 
@@ -75,7 +103,7 @@ function ItemAccordionRow({ it, idx, fmt }) {
         }`}>
           {open ? <CaretDown size={14} weight="bold" /> : <CaretRight size={14} weight="bold" />}
         </div>
-      </button>
+      </div>
 
       {/* Expanded Drill-Down */}
       {open && (
@@ -189,6 +217,14 @@ export default function ProcurementPage() {
   const [collating, setCollating] = useState(false);
   const [approvingSupplierId, setApprovingSupplierId] = useState(null);
   const [supplierPhoneOverrides, setSupplierPhoneOverrides] = useState({});
+  const [adminBufferBoxes, setAdminBufferBoxes] = useState({});
+
+  const handleUpdateBuffer = (productId, extraCount) => {
+    setAdminBufferBoxes((prev) => ({
+      ...prev,
+      [productId]: Math.max(0, extraCount)
+    }));
+  };
 
   // Official Purchase Order Preview/Print Modal State
   const [poModalOrder, setPoModalOrder] = useState(null);
@@ -699,7 +735,14 @@ export default function ProcurementPage() {
                   ) : (
                     <div className="space-y-2">
                       {uncollatedSummary.items.map((it, idx) => (
-                        <ItemAccordionRow key={it.product_id} it={it} idx={idx} fmt={fmt} />
+                        <ItemAccordionRow
+                          key={it.product_id}
+                          it={it}
+                          idx={idx}
+                          fmt={fmt}
+                          extraBuffer={adminBufferBoxes[it.product_id] || 0}
+                          onUpdateBuffer={handleUpdateBuffer}
+                        />
                       ))}
                     </div>
                   )}
