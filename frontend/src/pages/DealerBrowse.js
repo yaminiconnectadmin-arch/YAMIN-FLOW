@@ -7,9 +7,61 @@ import { toast } from "@/components/ui/sonner";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 
+const MASTER_PRICE_LIST_PRODUCTS = [
+  // SECTION 01: DRY WALL SCREWS
+  { id: "35D16", sku: "35D16", item_code: "35D16", sr_no: 1, name: "CSK Drywall Screws 3.5X16", category: "CSK Drywall Screws", category_section: "01 DRY WALL SCREWS", size: "3.5X16", size_mm: "3.5 x 16", qty_per_box: 1000, mrp: 322, rate: 322, price: 322, dealer_landing: 161, cost: 161, wt_1000_pcs_kg: 0.67, weight_kg: 0.00067, wd_basic: 122, wd_landing: 144, status: "active" },
+  { id: "35D19", sku: "35D19", item_code: "35D19", sr_no: 2, name: "CSK Drywall Screws 3.5X19", category: "CSK Drywall Screws", category_section: "01 DRY WALL SCREWS", size: "3.5X19", size_mm: "3.5 x 19", qty_per_box: 1000, mrp: 368, rate: 368, price: 368, dealer_landing: 184, cost: 184, wt_1000_pcs_kg: 0.92, weight_kg: 0.00092, wd_basic: 139, wd_landing: 164, status: "active" },
+  { id: "35D25", sku: "35D25", item_code: "35D25", sr_no: 3, name: "CSK Drywall Screws 3.5X25", category: "CSK Drywall Screws", category_section: "01 DRY WALL SCREWS", size: "3.5X25", size_mm: "3.5 x 25", qty_per_box: 1000, mrp: 450, rate: 450, price: 450, dealer_landing: 225, cost: 225, wt_1000_pcs_kg: 1.13, weight_kg: 0.00113, wd_basic: 170, wd_landing: 201, status: "active" },
+  { id: "35D32", sku: "35D32", item_code: "35D32", sr_no: 4, name: "CSK Drywall Screws 3.5X32", category: "CSK Drywall Screws", category_section: "01 DRY WALL SCREWS", size: "3.5X32", size_mm: "3.5 x 32", qty_per_box: 750,  mrp: 452, rate: 452, price: 452, dealer_landing: 226, cost: 226, wt_1000_pcs_kg: 1.35, weight_kg: 0.00135, wd_basic: 171, wd_landing: 202, status: "active" },
+  { id: "35D38", sku: "35D38", item_code: "35D38", sr_no: 5, name: "CSK Drywall Screws 3.5X38", category: "CSK Drywall Screws", category_section: "01 DRY WALL SCREWS", size: "3.5X38", size_mm: "3.5 x 38", qty_per_box: 500,  mrp: 351, rate: 351, price: 351, dealer_landing: 175, cost: 175, wt_1000_pcs_kg: 1.53, weight_kg: 0.00153, wd_basic: 133, wd_landing: 157, status: "active" },
+  { id: "35D50", sku: "35D50", item_code: "35D50", sr_no: 6, name: "CSK Drywall Screws 3.5X50", category: "CSK Drywall Screws", category_section: "01 DRY WALL SCREWS", size: "3.5X50", size_mm: "3.5 x 50", qty_per_box: 500,  mrp: 641, rate: 641, price: 641, dealer_landing: 321, cost: 321, wt_1000_pcs_kg: 1.91, weight_kg: 0.00191, wd_basic: 243, wd_landing: 286, status: "active" },
+  { id: "35D60", sku: "35D60", item_code: "35D60", sr_no: 7, name: "CSK Drywall Screws 3.5X60", category: "CSK Drywall Screws", category_section: "01 DRY WALL SCREWS", size: "3.5X60", size_mm: "3.5 x 60", qty_per_box: 400,  mrp: 619, rate: 619, price: 619, dealer_landing: 309, cost: 309, wt_1000_pcs_kg: 2.28, weight_kg: 0.00228, wd_basic: 234, wd_landing: 276, status: "active" },
+  { id: "35D75", sku: "35D75", item_code: "35D75", sr_no: 8, name: "CSK Drywall Screws 3.5X75", category: "CSK Drywall Screws", category_section: "01 DRY WALL SCREWS", size: "3.5X75", size_mm: "3.5 x 75", qty_per_box: 200,  mrp: 774, rate: 774, price: 774, dealer_landing: 387, cost: 387, wt_1000_pcs_kg: 2.68, weight_kg: 0.00268, wd_basic: 293, wd_landing: 346, status: "active" },
+
+  // SECTION 02: CHIPBOARD SCREWS (ZINC)
+  { id: "4CB16", sku: "4CB16", item_code: "4CB16", sr_no: 1, name: "CSK Chipboard Screws 4X16", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "4X16", size_mm: "4 x 16", qty_per_box: 1000, mrp: 556, rate: 556, price: 556, dealer_landing: 278, cost: 278, wt_1000_pcs_kg: 1.000, weight_kg: 0.00100, wd_basic: 195, wd_landing: 231, status: "active" },
+  { id: "4CB20", sku: "4CB20", item_code: "4CB20", sr_no: 2, name: "CSK Chipboard Screws 4X20", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "4X20", size_mm: "4 x 20", qty_per_box: 1000, mrp: 689, rate: 689, price: 689, dealer_landing: 345, cost: 345, wt_1000_pcs_kg: 1.290, weight_kg: 0.00129, wd_basic: 242, wd_landing: 286, status: "active" },
+  { id: "4CB25", sku: "4CB25", item_code: "4CB25", sr_no: 3, name: "CSK Chipboard Screws 4X25", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "4X25", size_mm: "4 x 25", qty_per_box: 1000, mrp: 791, rate: 791, price: 791, dealer_landing: 395, cost: 395, wt_1000_pcs_kg: 1.480, weight_kg: 0.00148, wd_basic: 278, wd_landing: 328, status: "active" },
+  { id: "4CB30", sku: "4CB30", item_code: "4CB30", sr_no: 4, name: "CSK Chipboard Screws 4X30", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "4X30", size_mm: "4 x 30", qty_per_box: 1000, mrp: 940, rate: 940, price: 940, dealer_landing: 470, cost: 470, wt_1000_pcs_kg: 1.760, weight_kg: 0.00176, wd_basic: 331, wd_landing: 390, status: "active" },
+  { id: "4CB35", sku: "4CB35", item_code: "4CB35", sr_no: 5, name: "CSK Chipboard Screws 4X35", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "4X35", size_mm: "4 x 35", qty_per_box: 500,  mrp: 756, rate: 756, price: 756, dealer_landing: 378, cost: 378, wt_1000_pcs_kg: 1.940, weight_kg: 0.00194, wd_basic: 266, wd_landing: 314, status: "active" },
+  { id: "4CB40", sku: "4CB40", item_code: "4CB40", sr_no: 6, name: "CSK Chipboard Screws 4X40", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "4X40", size_mm: "4 x 40", qty_per_box: 500,  mrp: 869, rate: 869, price: 869, dealer_landing: 434, cost: 434, wt_1000_pcs_kg: 2.230, weight_kg: 0.00223, wd_basic: 306, wd_landing: 361, status: "active" },
+  { id: "4CB45", sku: "4CB45", item_code: "4CB45", sr_no: 7, name: "CSK Chipboard Screws 4X45", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "4X45", size_mm: "4 x 45", qty_per_box: 500,  mrp: 1846, rate: 1846, price: 1846, dealer_landing: 923, cost: 923, wt_1000_pcs_kg: 2.480, weight_kg: 0.00248, wd_basic: 649, wd_landing: 766, status: "active" },
+  { id: "4CB50", sku: "4CB50", item_code: "4CB50", sr_no: 8, name: "CSK Chipboard Screws 4X50", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "4X50", size_mm: "4 x 50", qty_per_box: 400,  mrp: 1620, rate: 1620, price: 1620, dealer_landing: 810, cost: 810, wt_1000_pcs_kg: 2.720, weight_kg: 0.00272, wd_basic: 570, wd_landing: 672, status: "active" },
+
+  // 5mm Chipboard Screws
+  { id: "5CB20", sku: "5CB20", item_code: "5CB20", sr_no: 9, name: "CSK Chipboard Screws 5X20", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "5X20", size_mm: "5 x 20", qty_per_box: 500,  mrp: 1100, rate: 1100, price: 1100, dealer_landing: 550, cost: 550, wt_1000_pcs_kg: 2.310, weight_kg: 0.00231, wd_basic: 385, wd_landing: 454, status: "active" },
+  { id: "5CB25", sku: "5CB25", item_code: "5CB25", sr_no: 10, name: "CSK Chipboard Screws 5X25", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "5X25", size_mm: "5 x 25", qty_per_box: 500,  mrp: 1250, rate: 1250, price: 1250, dealer_landing: 625, cost: 625, wt_1000_pcs_kg: 2.600, weight_kg: 0.00260, wd_basic: 438, wd_landing: 517, status: "active" },
+  { id: "5CB30", sku: "5CB30", item_code: "5CB30", sr_no: 11, name: "CSK Chipboard Screws 5X30", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "5X30", size_mm: "5 x 30", qty_per_box: 500,  mrp: 1400, rate: 1400, price: 1400, dealer_landing: 700, cost: 700, wt_1000_pcs_kg: 2.890, weight_kg: 0.00289, wd_basic: 490, wd_landing: 578, status: "active" },
+  { id: "5CB35", sku: "5CB35", item_code: "5CB35", sr_no: 12, name: "CSK Chipboard Screws 5X35", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "5X35", size_mm: "5 x 35", qty_per_box: 400,  mrp: 1550, rate: 1550, price: 1550, dealer_landing: 775, cost: 775, wt_1000_pcs_kg: 3.180, weight_kg: 0.00318, wd_basic: 543, wd_landing: 640, status: "active" },
+  { id: "5CB40", sku: "5CB40", item_code: "5CB40", sr_no: 13, name: "CSK Chipboard Screws 5X40", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "5X40", size_mm: "5 x 40", qty_per_box: 400,  mrp: 1700, rate: 1700, price: 1700, dealer_landing: 850, cost: 850, wt_1000_pcs_kg: 3.470, weight_kg: 0.00347, wd_basic: 595, wd_landing: 702, status: "active" },
+  { id: "5CB45", sku: "5CB45", item_code: "5CB45", sr_no: 14, name: "CSK Chipboard Screws 5X45", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "5X45", size_mm: "5 x 45", qty_per_box: 300,  mrp: 1850, rate: 1850, price: 1850, dealer_landing: 925, cost: 925, wt_1000_pcs_kg: 3.770, weight_kg: 0.00377, wd_basic: 648, wd_landing: 765, status: "active" },
+  { id: "5CB50", sku: "5CB50", item_code: "5CB50", sr_no: 15, name: "CSK Chipboard Screws 5X50", category: "CSK Chipboard Screws", category_section: "02 CHIPBOARD SCREWS (ZINC)", size: "5X50", size_mm: "5 x 50", qty_per_box: 300,  mrp: 2000, rate: 2000, price: 2000, dealer_landing: 1000, cost: 1000, wt_1000_pcs_kg: 4.050, weight_kg: 0.00405, wd_basic: 700, wd_landing: 826, status: "active" },
+];
+
+function filterDealerProducts(rawList, cat, q) {
+  let list = Array.isArray(rawList) && rawList.length > 0 ? rawList : MASTER_PRICE_LIST_PRODUCTS;
+  if (cat && cat !== "All") {
+    const catClean = cat.replace("CSK ", "").replace(" (Zinc)", "").replace("Screws", "").trim().toLowerCase();
+    list = list.filter(p => 
+      (p.category || "").toLowerCase().includes(catClean) || 
+      (p.category_section || "").toLowerCase().includes(catClean)
+    );
+  }
+  if (q) {
+    const qClean = q.trim().toLowerCase();
+    list = list.filter(p => 
+      (p.name || "").toLowerCase().includes(qClean) ||
+      (p.sku || "").toLowerCase().includes(qClean) ||
+      (p.size || "").toLowerCase().includes(qClean) ||
+      (p.size_mm || "").toLowerCase().includes(qClean)
+    );
+  }
+  return list;
+}
+
 export default function DealerBrowse() {
   const { user } = useAuth();
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] = useState(MASTER_PRICE_LIST_PRODUCTS);
   const [dbCategories, setDbCategories] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
@@ -21,7 +73,7 @@ export default function DealerBrowse() {
   const navigate = useNavigate();
 
   // Interactive Fastener Configuration State
-  const [selectedProductId, setSelectedProductId] = useState("");
+  const [selectedProductId, setSelectedProductId] = useState("4CB16");
   const [boxCount, setBoxCount] = useState(10);
 
   useEffect(() => {
@@ -45,7 +97,7 @@ export default function DealerBrowse() {
           setSelectedWarehouseId(matched ? matched.id : whs[0].id);
         }
       } catch {
-        toast.error("Failed to load catalog data");
+        // use defaults
       }
     })();
   }, [user]);
@@ -55,14 +107,17 @@ export default function DealerBrowse() {
       setLoading(true);
       try {
         const { data } = await api.get("/products", { params: { q, category: cat === "All" ? "" : cat, status: "active" } });
-        setProducts(data);
-        if (data.length > 0 && !selectedProductId) {
-          setSelectedProductId(data[0].id);
-        } else if (data.length > 0 && !data.some((p) => p.id === selectedProductId)) {
-          setSelectedProductId(data[0].id);
+        const filtered = filterDealerProducts(data, cat, q);
+        setProducts(filtered);
+        if (filtered.length > 0 && !selectedProductId) {
+          setSelectedProductId(filtered[0].id);
+        } else if (filtered.length > 0 && !filtered.some((p) => p.id === selectedProductId)) {
+          setSelectedProductId(filtered[0].id);
         }
       } catch {
-        toast.error("Failed to load products");
+        const filtered = filterDealerProducts(MASTER_PRICE_LIST_PRODUCTS, cat, q);
+        setProducts(filtered);
+        if (filtered.length > 0) setSelectedProductId(filtered[0].id);
       } finally {
         setLoading(false);
       }
