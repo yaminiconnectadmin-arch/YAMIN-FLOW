@@ -87,8 +87,22 @@ export default function OrdersPage() {
   const [selectedProductId, setSelectedProductId] = useState("");
   const [boxCount, setBoxCount] = useState(10);
   const [cart, setCart] = useState({});
-  const [placing, setPlacing] = useState(false);
-  const [updatingStatus, setUpdatingStatus] = useState(false);
+  // Main View Tabs & Batch Re-allocation State
+  const [orderTab, setOrderTab] = useState("all"); // "all" | "pending_replenishment"
+  const [batchReallocating, setBatchReallocating] = useState(false);
+
+  const handleBatchReallocatePendingOrders = async () => {
+    setBatchReallocating(true);
+    try {
+      const res = await api.post("/orders/batch-reallocate");
+      toast.success(res.data.message || "Batch re-allocation complete!");
+      await load(false);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to batch reallocate pending orders");
+    } finally {
+      setBatchReallocating(false);
+    }
+  };
 
   // Partial Billing Modal State
   const [partialBillModalOpen, setPartialBillModalOpen] = useState(false);
@@ -445,8 +459,65 @@ export default function OrdersPage() {
         )
       }
     >
+      {/* Main Orders View Tabs */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-3 mb-4">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setOrderTab("all")}
+            className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-2 ${
+              orderTab === "all"
+                ? "bg-slate-900 text-white shadow-sm"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            <Package size={16} weight="bold" />
+            <span>All Orders ({orders.length})</span>
+          </button>
+
+          <button
+            onClick={() => setOrderTab("pending_replenishment")}
+            className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-2 ${
+              orderTab === "pending_replenishment"
+                ? "bg-amber-500 text-white shadow-sm"
+                : "bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100"
+            }`}
+          >
+            <Hourglass size={16} weight="fill" />
+            <span>Pending Replenishment Queue ({pendingBackorders.length})</span>
+          </button>
+        </div>
+
+        {orderTab === "pending_replenishment" && (
+          <button
+            onClick={handleBatchReallocatePendingOrders}
+            disabled={batchReallocating || pendingBackorders.length === 0}
+            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-black shadow-md flex items-center gap-2 transition-all disabled:opacity-50"
+          >
+            <Sparkle size={18} weight="fill" className={batchReallocating ? "animate-spin" : ""} />
+            {batchReallocating ? "Evaluating Live Warehouse Inventory..." : "⚡ Batch Re-allocate All Pending Orders"}
+          </button>
+        )}
+      </div>
+
+      {/* Pending Replenishment Queue Description Banner */}
+      {orderTab === "pending_replenishment" && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/60 rounded-xl p-4 mb-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
+                <Hourglass size={18} className="text-amber-600" weight="fill" />
+                Pending Replenishment & Backorder Allocation Queue
+              </h3>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Orders waiting for incoming supplier stock replenishment. Click <strong>"⚡ Batch Re-allocate All Pending Orders"</strong> to evaluate refreshed live inventory and auto-fulfill pending items. 100% fulfilled orders are automatically removed from this list.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <PageSection
-        title={`${orders.length} orders listed`}
+        title={`${displayedOrders.length} orders listed`}
         actions={
           <div className="flex items-center gap-2">
             <select value={status} onChange={(e) => setStatus(e.target.value)}
@@ -486,12 +557,14 @@ export default function OrdersPage() {
         }
       >
         {loading ? <div className="p-8 text-center text-sm text-[#5C6670]">Loading orders…</div>
-          : orders.length === 0 ? (
+          : displayedOrders.length === 0 ? (
             <div className="py-8 text-center space-y-4">
               <EmptyState
-                title="No orders found"
+                title={orderTab === "pending_replenishment" ? "No pending backorders" : "No orders found"}
                 description={
-                  isAdmin
+                  orderTab === "pending_replenishment"
+                    ? "All distributor and CNF orders are 100% fulfilled and allocated from live stock!"
+                    : isAdmin
                     ? "Click '+ Create Admin Order' to configure and submit an order on behalf of a distributor or depot."
                     : "You have not placed any fastener orders yet."
                 }
@@ -527,7 +600,7 @@ export default function OrdersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {orders.map((o) => {
+                  {displayedOrders.map((o) => {
                     const totalWeight = o.items?.reduce((s, i) => s + (i.total_weight_kg || 0), 0) || o.total_weight_kg || 0;
                     const cCode = o.cnf_code || o.mnp_code;
                     const cName = o.cnf_name || o.mnp_name;

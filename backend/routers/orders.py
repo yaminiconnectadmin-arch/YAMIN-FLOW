@@ -1041,23 +1041,22 @@ async def list_invoices(user: dict = Depends(get_current_user)):
 
 
 def _get_item_boxes(item: dict) -> int:
-    qty_per_b = int(item.get("qty_per_box") or 1000)
     if item.get("boxes") is not None and int(item.get("boxes", 0)) > 0:
-        raw = int(item["boxes"])
-    else:
-        raw = int(item.get("quantity_ordered") if item.get("quantity_ordered") is not None else item.get("quantity", 0))
+        return int(item["boxes"])
+    qty_per_b = int(item.get("qty_per_box") or 1000)
+    raw = int(item.get("quantity_ordered") if item.get("quantity_ordered") is not None else item.get("quantity", 0))
     if raw >= 10000 and raw % qty_per_b == 0:
         return raw // qty_per_b
     return raw
 
 def _get_item_alloc_boxes(item: dict) -> int:
-    qty_per_b = int(item.get("qty_per_box") or 1000)
     if item.get("boxes_allocated") is not None:
-        raw = int(item["boxes_allocated"])
-    else:
-        raw = int(item.get("quantity_allocated") or 0)
+        return int(item["boxes_allocated"])
+    qty_per_b = int(item.get("qty_per_box") or 1000)
+    raw = int(item.get("quantity_allocated") or 0)
     if raw >= 10000 and raw % qty_per_b == 0:
         return raw // qty_per_b
+    return raw
     return raw
 
 def _get_item_pending_boxes(item: dict) -> int:
@@ -1223,3 +1222,44 @@ async def update_order_reallocation_setting(order_id: str, payload: dict, user: 
     updated = await db.orders.find_one({"_id": doc["_id"]})
     enriched = await _enrich_orders([updated])
     return enriched[0]
+
+
+@router.post("/orders/batch-reallocate")
+async def batch_reallocate_pending_orders(user: dict = Depends(get_current_user)):
+    """Batch re-evaluate and reallocate available stock for all pending backorders sequentially."""
+    if user["role"] not in ("admin", "cnf", "mnp"):
+        raise HTTPException(403, "Forbidden")
+
+    pending_orders = await db.orders.find({
+        "status": {"$in": ["pending", "approved", "partially_fulfilled"]}
+    }).sort("created_at", 1).to_list(500)
+
+    reallocated_count = 0
+    fulfilled_orders = []
+    partially_fulfilled_orders = []
+
+    for o in pending_orders:
+        oid_str = str(o["_id"])
+        items = o.get("items", [])
+        has_pending = any((_get_item_boxes(i) - _get_item_alloc_boxes(i)) > 0 for i in items)
+        if not has_pending:
+            continue
+
+        try:
+            res = await reallocate_order_stock(oid_str, user)
+            reallocated_count += 1
+            if res.get("reservation_status") == "reserved" or res.get("status") == "approved":
+                fulfilled_orders.append(res.get("order_no", oid_str[:8]))
+            else:
+                partially_fulfilled_orders.append(res.get("order_no", oid_str[:8]))
+        except Exception as e:
+            print(f"Error reallocating order {oid_str}: {e}")
+
+    return {
+        "status": "success",
+        "total_evaluated": len(pending_orders),
+        "reallocated_count": reallocated_count,
+        "fulfilled_orders": fulfilled_orders,
+        "partially_fulfilled_orders": partially_fulfilled_orders,
+        "message": f"Evaluated live stock against {reallocated_count} pending backorders. {len(fulfilled_orders)} 100% fulfilled."
+    }
