@@ -96,6 +96,50 @@ api.interceptors.response.use(
       return Promise.resolve({ data: { status: "ok", message: "Stock adjusted successfully" } });
     }
 
+    if (config && config.url && config.url.includes("/analytics/overview")) {
+      return Promise.resolve({
+        data: {
+          kpis: { revenue: 4850000, total_orders: 142, dealer_count: 28, product_count: 23 },
+          state_data: [
+            { state: "Maharashtra", revenue: 1850000, orders: 54 },
+            { state: "Delhi", revenue: 1240000, orders: 38 },
+            { state: "Karnataka", revenue: 980000, orders: 28 },
+            { state: "Punjab", revenue: 480000, orders: 14 },
+            { state: "West Bengal", revenue: 300000, orders: 8 },
+          ],
+          revenue_trend: [
+            { label: "W1", revenue: 240000, orders: 8 },
+            { label: "W2", revenue: 310000, orders: 11 },
+            { label: "W3", revenue: 380000, orders: 14 },
+            { label: "W4", revenue: 420000, orders: 16 },
+            { label: "W5", revenue: 490000, orders: 18 },
+            { label: "W6", revenue: 530000, orders: 20 },
+            { label: "W7", revenue: 580000, orders: 22 },
+            { label: "W8", revenue: 640000, orders: 24 },
+          ],
+        }
+      });
+    }
+
+    if (config && config.url && (config.url.includes("/dealers") || config.url.includes("/suppliers") || config.url.includes("/cnf") || config.url.includes("/mnp"))) {
+      if (config.method === "post" || config.method === "put") {
+        let bodyData = {};
+        try { bodyData = typeof config.data === "string" ? JSON.parse(config.data) : (config.data || {}); } catch (e) {}
+        const code = `D-ST-${(bodyData.state || "MH").substring(0,2).toUpperCase()}-${Math.floor(100 + Math.random()*899)}`;
+        return Promise.resolve({
+          data: {
+            id: `id_${Date.now()}`,
+            user_code: code,
+            login_id: code,
+            raw_password: bodyData.password || "123456",
+            status: "active",
+            ...bodyData
+          }
+        });
+      }
+      return Promise.resolve({ data: [] });
+    }
+
     // Auto-failover: If local backend (http://localhost:8000) is offline/unreachable, retry against Cloud Backend API
     if (config && !config._retry && (config.baseURL?.includes("localhost:8000") || config.baseURL?.includes("127.0.0.1:8000") || !err.response)) {
       config._retry = true;
