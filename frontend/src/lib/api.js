@@ -1,19 +1,11 @@
 import axios from "axios";
 
+const CLOUD_BACKEND_URL = "https://yaminiflow-backend.vercel.app";
+
 const isBrowser = typeof window !== "undefined";
 const isLocal = isBrowser && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-const rawUrl = process.env.REACT_APP_BACKEND_URL;
 
-let backendUrl = "";
-if (rawUrl && rawUrl !== "undefined" && rawUrl.trim() !== "") {
-  backendUrl = rawUrl.trim();
-} else if (isLocal) {
-  backendUrl = "http://localhost:8000";
-} else {
-  backendUrl = ""; // Same-origin proxy via Vercel rewrites (/api/...)
-}
-
-export const API_BASE = backendUrl ? `${backendUrl.replace(/\/$/, "")}/api` : "/api";
+export const API_BASE = isLocal ? "http://localhost:8000/api" : `${CLOUD_BACKEND_URL}/api`;
 
 export const api = axios.create({
   baseURL: API_BASE,
