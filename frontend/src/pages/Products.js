@@ -9,6 +9,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+const emptyProduct = {
+  sku: "", name: "", category: "CSK Chipboard Screws", size: "", item_code: "",
+  description: "", unit: "box", weight_kg: 0.001, wt_1000_pcs_kg: 1.0, qty_per_box: 1000,
+  price: 0, cost: 0, dealer_landing: 0, wd_basic: 0, wd_landing: 0,
+  gst: 18, hsn: "7318", moq: 1, safety_stock: 10, lead_time_days: 5, status: "active",
+};
 
 const MASTER_PRICE_LIST_PRODUCTS = [
   // SECTION 01: DRY WALL SCREWS
