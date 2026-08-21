@@ -19,7 +19,7 @@ class LoginInput(BaseModel):
 
 class RegisterInput(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=1, max_length=8)
+    password: str = Field(min_length=1)
     name: str
     role: Role
     phone: Optional[str] = None
