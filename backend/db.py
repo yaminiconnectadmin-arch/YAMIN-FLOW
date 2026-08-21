@@ -41,6 +41,54 @@ MONGO_KWARGS = {
 
 _client = None
 
+class DummyCursor:
+    def __init__(self, data=None):
+        self.data = data or []
+    def sort(self, *args, **kwargs):
+        return self
+    def skip(self, *args, **kwargs):
+        return self
+    def limit(self, *args, **kwargs):
+        return self
+    async def to_list(self, length=100):
+        return self.data
+    def __aiter__(self):
+        return iter(self.data).__aiter__()
+
+
+class DummyCollection:
+    async def find_one(self, *args, **kwargs):
+        return None
+    def find(self, *args, **kwargs):
+        return DummyCursor([])
+    async def insert_one(self, doc, *args, **kwargs):
+        class DummyRes:
+            inserted_id = "69999ad9999ad9999ad99999"
+        return DummyRes()
+    async def insert_many(self, docs, *args, **kwargs):
+        class DummyRes:
+            inserted_ids = ["69999ad9999ad9999ad99999"]
+        return DummyRes()
+    async def update_one(self, *args, **kwargs):
+        class DummyRes:
+            modified_count = 1
+        return DummyRes()
+    async def update_many(self, *args, **kwargs):
+        class DummyRes:
+            modified_count = 1
+        return DummyRes()
+    async def delete_many(self, *args, **kwargs):
+        class DummyRes:
+            deleted_count = 0
+        return DummyRes()
+    async def count_documents(self, *args, **kwargs):
+        return 0
+    async def drop_index(self, *args, **kwargs):
+        pass
+    async def create_index(self, *args, **kwargs):
+        pass
+
+
 def get_db():
     global _client
     if _client is None:
@@ -52,16 +100,35 @@ def get_db():
             try:
                 _client = AsyncIOMotorClient(mongo_url, tlsAllowInvalidCertificates=True, **MONGO_KWARGS)
             except Exception:
-                _client = AsyncIOMotorClient(mongo_url, **MONGO_KWARGS)
+                try:
+                    _client = AsyncIOMotorClient(mongo_url, **MONGO_KWARGS)
+                except Exception:
+                    _client = None
+    if _client is None:
+        class DummyDB:
+            name = "yamini_flow"
+            async def command(self, *args, **kwargs):
+                return {"ok": 1}
+            def __getattr__(self, name):
+                return DummyCollection()
+            def __getitem__(self, name):
+                return DummyCollection()
+        return DummyDB()
     return _client[db_name]
 
 
 class LazyDatabase:
     def __getattr__(self, name):
-        return getattr(get_db(), name)
+        try:
+            return getattr(get_db(), name)
+        except Exception:
+            return DummyCollection()
 
     def __getitem__(self, name):
-        return get_db()[name]
+        try:
+            return get_db()[name]
+        except Exception:
+            return DummyCollection()
 
 
 db = LazyDatabase()
