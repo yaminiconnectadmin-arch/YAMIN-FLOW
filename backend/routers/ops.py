@@ -115,7 +115,10 @@ async def tally_webhook(request: Request, token: str = ""):
     if not events:
         raise HTTPException(status_code=400, detail="No voucher found in payload")
 
-    source_ip = request.client.host if request.client else "unknown"
+    try:
+        source_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if (request.client and hasattr(request.client, "host")) else "unknown")
+    except Exception:
+        source_ip = "unknown"
     saved = await persist_events(events, source_ip)
 
     # Auto-link Sales vouchers to Yamini orders

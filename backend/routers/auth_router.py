@@ -25,13 +25,7 @@ async def login(payload: LoginInput, request: Request, response: Response):
     ident = (payload.login_id or payload.user_code or payload.username or payload.email or "").strip()
     if not ident:
         raise HTTPException(status_code=400, detail="Login ID or Email is required")
-        
-    ip = request.client.host if request.client else "unknown"
-    identifier = f"{ip}:{ident.lower()}"
 
-    # Flexible case-insensitive search by email, login_id, user_code, username, or employee_id
-    import re
-    rgx = {"$regex": f"^{re.escape(ident)}$", "$options": "i"}
     ident_lower = ident.lower()
     is_admin_ident = ident_lower in ["admin", "admin@yaminiconnect.com", "admin@yaminiflow.com", "admin-101", "system admin", "arpan"]
 
@@ -60,8 +54,14 @@ async def login(payload: LoginInput, request: Request, response: Response):
         return {
             "access_token": access_token,
             "token_type": "bearer",
-            "user": user_data
+            "user": user_data,
         }
+
+    try:
+        ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if (request.client and hasattr(request.client, "host")) else "unknown")
+    except Exception:
+        ip = "unknown"
+    identifier = f"{ip}:{ident_lower}"
 
     user = None
     try:
