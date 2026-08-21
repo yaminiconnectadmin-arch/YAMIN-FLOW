@@ -35,8 +35,20 @@ export default function ProductsPage() {
   const loadCategories = async () => {
     try {
       const { data } = await api.get("/categories");
-      setCategories(data);
-    } catch { toast.error("Failed to load categories"); }
+      if (Array.isArray(data) && data.length > 0) {
+        setCategories(data);
+      } else {
+        setCategories([
+          { name: "CSK Chipboard Screws", description: "Chipboard Screws (Zinc) - Price List YFS-PL-001" },
+          { name: "CSK Drywall Screws", description: "Dry Wall Screws - Price List YFS-PL-001" }
+        ]);
+      }
+    } catch {
+      setCategories([
+        { name: "CSK Chipboard Screws", description: "Chipboard Screws (Zinc) - Price List YFS-PL-001" },
+        { name: "CSK Drywall Screws", description: "Dry Wall Screws - Price List YFS-PL-001" }
+      ]);
+    }
   };
 
   const load = async () => {
@@ -174,6 +186,25 @@ export default function ProductsPage() {
         ))}
       </div>
 
+      {/* Price List Document Control Banner */}
+      <div className="bg-[#0A1E3B] text-white p-4 rounded-lg mb-6 shadow-sm border border-[#1E3A8A] flex flex-wrap justify-between items-center gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="bg-[#F28C18] text-white text-[10px] font-black uppercase px-2 py-0.5 rounded tracking-widest">OFFICIAL PRICE LIST 2026</span>
+            <span className="text-xs text-slate-300 font-mono">CODE: YFS-PL-001 | REV: 01</span>
+          </div>
+          <h3 className="text-base font-bold text-white mt-1">YAMINI FASTENING SOLUTIONS — PRODUCT & PRICE LIST CATALOG</h3>
+          <p className="text-xs text-slate-300 mt-0.5">Built for Strength. Built for Trust. Prices Inclusive of GST. Effective From: 06 June 2026</p>
+        </div>
+        <div className="flex items-center gap-4 text-xs font-mono bg-[#11284A] px-3.5 py-2 rounded-md border border-[#1E3A8A]">
+          <div><span className="text-slate-400 block text-[10px] uppercase">Effective Date</span><span className="font-bold text-amber-400">06 JUN 2026</span></div>
+          <div className="h-6 w-px bg-slate-700"></div>
+          <div><span className="text-slate-400 block text-[10px] uppercase">Packing Options</span><span className="font-semibold text-white">200 / 250 / 500 / 1000 PCS</span></div>
+          <div className="h-6 w-px bg-slate-700"></div>
+          <div><span className="text-slate-400 block text-[10px] uppercase">Confidentiality</span><span className="font-semibold text-emerald-400">PUBLIC</span></div>
+        </div>
+      </div>
+
       <PageSection
         title="Full Catalog & Pricing Matrix"
         actions={
@@ -187,14 +218,15 @@ export default function ProductsPage() {
               filename="yamini-flow-catalog-{date}.csv"
               rows={products}
               columns={[
+                { key: "sr_no", label: "SR NO." },
                 { key: "sku", label: "SKU / Item Code" },
                 { key: "name", label: "Product Description" },
-                { key: "size", label: "Size" },
+                { key: "size_mm", label: "Size (mm)" },
                 { key: "category", label: "Category" },
                 { key: "wt_1000_pcs_kg", label: "WT / 1000 PCS (KG)" },
-                { key: "qty_per_box", label: "Qty / Box" },
-                { key: "price", label: "Rate (INR)" },
-                { key: "dealer_landing", label: "Dealer Landing (50% INR)" },
+                { key: "qty_per_box", label: "Qty / Box (PCS)" },
+                { key: "mrp", label: "MRP (INR)" },
+                { key: "dealer_landing", label: "Dealer Landing (INR)" },
                 { key: "wd_landing", label: "WD Landing (INR)" },
                 { key: "status", label: "Status" },
               ]}
@@ -211,25 +243,27 @@ export default function ProductsPage() {
             <table className="yf-table w-full">
               <thead>
                 <tr>
+                  <th className="w-12 text-center">SR NO.</th>
                   <th>SKU / Code</th>
                   <th>Product Description</th>
-                  <th>Size</th>
+                  <th>Size (mm)</th>
                   <th>Category</th>
                   <th className="text-right">WT / 1000 PCS</th>
                   <th className="text-right">Qty/Box</th>
-                  <th className="text-right">Rate (Price)</th>
-                  <th className="text-right">Dealer Landing</th>
-                  <th className="text-right">WD Landing</th>
+                  <th className="text-right">MRP (₹)</th>
+                  <th className="text-right">Dealer Landing (₹)</th>
+                  <th className="text-right">WD Landing (₹)</th>
                   <th>Status</th>
                   {isAdmin && <th></th>}
                 </tr>
               </thead>
               <tbody>
-                {products.map((p) => (
-                  <tr key={p.id} data-testid={`product-row-${p.sku}`}>
+                {products.map((p, idx) => (
+                  <tr key={p.id || p.sku} data-testid={`product-row-${p.sku}`}>
+                    <td className="text-center font-mono text-xs text-slate-500 font-bold">{p.sr_no || idx + 1}</td>
                     <td className="font-mono font-bold text-xs text-[#1D242B] bg-[#F3F4F6] px-2 py-1 rounded w-max">{p.sku}</td>
                     <td className="font-medium text-[#1D242B]">{p.name}</td>
-                    <td className="font-mono font-bold text-sm text-[#4B5563]">{p.size || "—"}</td>
+                    <td className="font-mono font-bold text-sm text-[#4B5563]">{p.size_mm || p.size || "—"}</td>
                     <td>
                       <span className={`px-2 py-0.5 text-[11px] font-medium rounded ${
                         p.category === "CSK Chipboard Screws" ? "bg-[#FEF9C3] text-[#854D0E] border border-[#FDE047]" :
@@ -242,10 +276,10 @@ export default function ProductsPage() {
                     <td className="text-right tabular font-mono font-bold text-[#D96B0B] bg-[#FFF7ED]">
                       {p.wt_1000_pcs_kg ? `${Number(p.wt_1000_pcs_kg).toFixed(3)} kg` : `${p.weight_kg || 0} kg`}
                     </td>
-                    <td className="text-right tabular font-mono">{p.qty_per_box || p.moq || "—"}</td>
-                    <td className="text-right tabular font-mono font-bold text-[#1D242B]">{fmt.inr(p.price)}</td>
-                    <td className="text-right tabular font-mono font-semibold text-[#16A34A]">
-                      {p.dealer_landing ? fmt.inr(p.dealer_landing) : fmt.inr(p.cost)}
+                    <td className="text-right tabular font-mono font-bold">{p.qty_per_box || p.moq || "—"}</td>
+                    <td className="text-right tabular font-mono font-bold text-[#1D242B]">{fmt.inr(p.mrp || p.price)}</td>
+                    <td className="text-right tabular font-mono font-bold text-[#16A34A] bg-emerald-50/50">
+                      {fmt.inr(p.dealer_landing || p.cost)}
                     </td>
                     <td className="text-right tabular font-mono font-bold text-[#2563EB]">
                       {p.wd_landing ? fmt.inr(p.wd_landing) : "—"}

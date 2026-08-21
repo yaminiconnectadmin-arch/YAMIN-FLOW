@@ -87,7 +87,7 @@ async def seed_all(force_purge: bool = False):
                                         "state": "Punjab", "gstin": "03AAACN5678E1Z1", "lead_time_days": 7})
 
     # Categories
-    categories = ["Electronics", "Appliances", "Hardware", "Furniture", "CSK Chipboard Screws", "CSK Drywall Screws"]
+    categories = ["CSK Chipboard Screws", "CSK Drywall Screws"]
     for c in categories:
         await db.categories.update_one({"name": c}, {"$setOnInsert": {"name": c, "description": f"{c} category", "created_at": now_iso()}}, upsert=True)
 
@@ -105,33 +105,34 @@ async def seed_all(force_purge: bool = False):
 
     warehouses = await db.warehouses.find({}).to_list(100)
 
-    # Total Weight Matrix data (23 sizes of CSK Chipboard & Drywall Screws)
+    # Total Weight Matrix data (Price List YFS-PL-001 - Effective 06 June 2026)
     matrix_data = [
-        # CSK CHIPBOARD SCREWS
-        {"category": "CSK Chipboard Screws", "size": "4X16", "wt_1000_pcs_kg": 1.000, "qty_per_box": 1000, "rate": 556, "dealer_landing": 278, "item_code": "4CB16", "wd_basic": 195, "wd_landing": 231},
-        {"category": "CSK Chipboard Screws", "size": "4X20", "wt_1000_pcs_kg": 1.290, "qty_per_box": 1000, "rate": 689, "dealer_landing": 345, "item_code": "4CB20", "wd_basic": 242, "wd_landing": 286},
-        {"category": "CSK Chipboard Screws", "size": "4X25", "wt_1000_pcs_kg": 1.480, "qty_per_box": 1000, "rate": 791, "dealer_landing": 395, "item_code": "4CB25", "wd_basic": 278, "wd_landing": 328},
-        {"category": "CSK Chipboard Screws", "size": "4X30", "wt_1000_pcs_kg": 1.760, "qty_per_box": 1000, "rate": 940, "dealer_landing": 470, "item_code": "4CB30", "wd_basic": 331, "wd_landing": 390},
-        {"category": "CSK Chipboard Screws", "size": "4X35", "wt_1000_pcs_kg": 1.940, "qty_per_box": 500, "rate": 756, "dealer_landing": 378, "item_code": "4CB35", "wd_basic": 266, "wd_landing": 314},
-        {"category": "CSK Chipboard Screws", "size": "4X40", "wt_1000_pcs_kg": 2.230, "qty_per_box": 500, "rate": 869, "dealer_landing": 434, "item_code": "4CB40", "wd_basic": 306, "wd_landing": 361},
-        {"category": "CSK Chipboard Screws", "size": "4X45", "wt_1000_pcs_kg": 2.480, "qty_per_box": 500, "rate": 1846, "dealer_landing": 923, "item_code": "4CB45", "wd_basic": 649, "wd_landing": 766},
-        {"category": "CSK Chipboard Screws", "size": "4X50", "wt_1000_pcs_kg": 2.720, "qty_per_box": 400, "rate": 1620, "dealer_landing": 810, "item_code": "4CB50", "wd_basic": 570, "wd_landing": 672},
-        {"category": "CSK Chipboard Screws", "size": "5X20", "wt_1000_pcs_kg": 2.310, "qty_per_box": 500, "rate": 1100, "dealer_landing": 550, "item_code": "5CB20", "wd_basic": 385, "wd_landing": 454},
-        {"category": "CSK Chipboard Screws", "size": "5X25", "wt_1000_pcs_kg": 2.600, "qty_per_box": 500, "rate": 1250, "dealer_landing": 625, "item_code": "5CB25", "wd_basic": 438, "wd_landing": 517},
-        {"category": "CSK Chipboard Screws", "size": "5X30", "wt_1000_pcs_kg": 2.890, "qty_per_box": 500, "rate": 1400, "dealer_landing": 700, "item_code": "5CB30", "wd_basic": 490, "wd_landing": 578},
-        {"category": "CSK Chipboard Screws", "size": "5X35", "wt_1000_pcs_kg": 3.180, "qty_per_box": 400, "rate": 1550, "dealer_landing": 775, "item_code": "5CB35", "wd_basic": 543, "wd_landing": 640},
-        {"category": "CSK Chipboard Screws", "size": "5X40", "wt_1000_pcs_kg": 3.470, "qty_per_box": 400, "rate": 1700, "dealer_landing": 850, "item_code": "5CB40", "wd_basic": 595, "wd_landing": 702},
-        {"category": "CSK Chipboard Screws", "size": "5X45", "wt_1000_pcs_kg": 3.770, "qty_per_box": 300, "rate": 1850, "dealer_landing": 925, "item_code": "5CB45", "wd_basic": 648, "wd_landing": 765},
-        {"category": "CSK Chipboard Screws", "size": "5X50", "wt_1000_pcs_kg": 4.050, "qty_per_box": 300, "rate": 2000, "dealer_landing": 1000, "item_code": "5CB50", "wd_basic": 700, "wd_landing": 826},
-        # CSK DRYWALL SCREWS
-        {"category": "CSK Drywall Screws", "size": "3.5X16", "wt_1000_pcs_kg": 0.67, "qty_per_box": 1000, "rate": 322, "dealer_landing": 161, "item_code": "35D16", "wd_basic": 122, "wd_landing": 144},
-        {"category": "CSK Drywall Screws", "size": "3.5X19", "wt_1000_pcs_kg": 0.92, "qty_per_box": 1000, "rate": 368, "dealer_landing": 184, "item_code": "35D19", "wd_basic": 139, "wd_landing": 164},
-        {"category": "CSK Drywall Screws", "size": "3.5X25", "wt_1000_pcs_kg": 1.13, "qty_per_box": 1000, "rate": 450, "dealer_landing": 225, "item_code": "35D25", "wd_basic": 170, "wd_landing": 201},
-        {"category": "CSK Drywall Screws", "size": "3.5X32", "wt_1000_pcs_kg": 1.35, "qty_per_box": 750, "rate": 452, "dealer_landing": 226, "item_code": "35D32", "wd_basic": 171, "wd_landing": 202},
-        {"category": "CSK Drywall Screws", "size": "3.5X38", "wt_1000_pcs_kg": 1.53, "qty_per_box": 500, "rate": 351, "dealer_landing": 175, "item_code": "35D38", "wd_basic": 133, "wd_landing": 157},
-        {"category": "CSK Drywall Screws", "size": "3.5X50", "wt_1000_pcs_kg": 1.91, "qty_per_box": 500, "rate": 641, "dealer_landing": 321, "item_code": "35D50", "wd_basic": 243, "wd_landing": 286},
-        {"category": "CSK Drywall Screws", "size": "3.5X60", "wt_1000_pcs_kg": 2.28, "qty_per_box": 400, "rate": 619, "dealer_landing": 309, "item_code": "35D60", "wd_basic": 234, "wd_landing": 276},
-        {"category": "CSK Drywall Screws", "size": "3.5X75", "wt_1000_pcs_kg": 2.68, "qty_per_box": 200, "rate": 774, "dealer_landing": 387, "item_code": "35D75", "wd_basic": 293, "wd_landing": 346},
+        # SECTION 01: DRY WALL SCREWS
+        {"sr_no": 1, "category": "CSK Drywall Screws", "category_section": "01 DRY WALL SCREWS", "size": "3.5X16", "size_mm": "3.5 x 16", "wt_1000_pcs_kg": 0.67, "qty_per_box": 1000, "rate": 322, "mrp": 322, "price": 322, "dealer_landing": 161, "cost": 161, "item_code": "35D16", "wd_basic": 122, "wd_landing": 144},
+        {"sr_no": 2, "category": "CSK Drywall Screws", "category_section": "01 DRY WALL SCREWS", "size": "3.5X19", "size_mm": "3.5 x 19", "wt_1000_pcs_kg": 0.92, "qty_per_box": 1000, "rate": 368, "mrp": 368, "price": 368, "dealer_landing": 184, "cost": 184, "item_code": "35D19", "wd_basic": 139, "wd_landing": 164},
+        {"sr_no": 3, "category": "CSK Drywall Screws", "category_section": "01 DRY WALL SCREWS", "size": "3.5X25", "size_mm": "3.5 x 25", "wt_1000_pcs_kg": 1.13, "qty_per_box": 1000, "rate": 450, "mrp": 450, "price": 450, "dealer_landing": 225, "cost": 225, "item_code": "35D25", "wd_basic": 170, "wd_landing": 201},
+        {"sr_no": 4, "category": "CSK Drywall Screws", "category_section": "01 DRY WALL SCREWS", "size": "3.5X32", "size_mm": "3.5 x 32", "wt_1000_pcs_kg": 1.35, "qty_per_box": 750,  "rate": 452, "mrp": 452, "price": 452, "dealer_landing": 226, "cost": 226, "item_code": "35D32", "wd_basic": 171, "wd_landing": 202},
+        {"sr_no": 5, "category": "CSK Drywall Screws", "category_section": "01 DRY WALL SCREWS", "size": "3.5X38", "size_mm": "3.5 x 38", "wt_1000_pcs_kg": 1.53, "qty_per_box": 500,  "rate": 351, "mrp": 351, "price": 351, "dealer_landing": 175, "cost": 175, "item_code": "35D38", "wd_basic": 133, "wd_landing": 157},
+        {"sr_no": 6, "category": "CSK Drywall Screws", "category_section": "01 DRY WALL SCREWS", "size": "3.5X50", "size_mm": "3.5 x 50", "wt_1000_pcs_kg": 1.91, "qty_per_box": 500,  "rate": 641, "mrp": 641, "price": 641, "dealer_landing": 321, "cost": 321, "item_code": "35D50", "wd_basic": 243, "wd_landing": 286},
+        {"sr_no": 7, "category": "CSK Drywall Screws", "category_section": "01 DRY WALL SCREWS", "size": "3.5X60", "size_mm": "3.5 x 60", "wt_1000_pcs_kg": 2.28, "qty_per_box": 400,  "rate": 619, "mrp": 619, "price": 619, "dealer_landing": 309, "cost": 309, "item_code": "35D60", "wd_basic": 234, "wd_landing": 276},
+        {"sr_no": 8, "category": "CSK Drywall Screws", "category_section": "01 DRY WALL SCREWS", "size": "3.5X75", "size_mm": "3.5 x 75", "wt_1000_pcs_kg": 2.68, "qty_per_box": 200,  "rate": 774, "mrp": 774, "price": 774, "dealer_landing": 387, "cost": 387, "item_code": "35D75", "wd_basic": 293, "wd_landing": 346},
+
+        # SECTION 02: CHIPBOARD SCREWS (ZINC)
+        {"sr_no": 1, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "4X16", "size_mm": "4 x 16", "wt_1000_pcs_kg": 1.000, "qty_per_box": 1000, "rate": 556, "mrp": 556, "price": 556, "dealer_landing": 278, "cost": 278, "item_code": "4CB16", "wd_basic": 195, "wd_landing": 231},
+        {"sr_no": 2, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "4X20", "size_mm": "4 x 20", "wt_1000_pcs_kg": 1.290, "qty_per_box": 1000, "rate": 689, "mrp": 689, "price": 689, "dealer_landing": 345, "cost": 345, "item_code": "4CB20", "wd_basic": 242, "wd_landing": 286},
+        {"sr_no": 3, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "4X25", "size_mm": "4 x 25", "wt_1000_pcs_kg": 1.480, "qty_per_box": 1000, "rate": 791, "mrp": 791, "price": 791, "dealer_landing": 395, "cost": 395, "item_code": "4CB25", "wd_basic": 278, "wd_landing": 328},
+        {"sr_no": 4, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "4X30", "size_mm": "4 x 30", "wt_1000_pcs_kg": 1.760, "qty_per_box": 1000, "rate": 940, "mrp": 940, "price": 940, "dealer_landing": 470, "cost": 470, "item_code": "4CB30", "wd_basic": 331, "wd_landing": 390},
+        {"sr_no": 5, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "4X35", "size_mm": "4 x 35", "wt_1000_pcs_kg": 1.940, "qty_per_box": 500,  "rate": 756, "mrp": 756, "price": 756, "dealer_landing": 378, "cost": 378, "item_code": "4CB35", "wd_basic": 266, "wd_landing": 314},
+        {"sr_no": 6, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "4X40", "size_mm": "4 x 40", "wt_1000_pcs_kg": 2.230, "qty_per_box": 500,  "rate": 869, "mrp": 869, "price": 869, "dealer_landing": 434, "cost": 434, "item_code": "4CB40", "wd_basic": 306, "wd_landing": 361},
+        {"sr_no": 7, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "4X45", "size_mm": "4 x 45", "wt_1000_pcs_kg": 2.480, "qty_per_box": 500,  "rate": 1846, "mrp": 1846, "price": 1846, "dealer_landing": 923, "cost": 923, "item_code": "4CB45", "wd_basic": 649, "wd_landing": 766},
+        {"sr_no": 8, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "4X50", "size_mm": "4 x 50", "wt_1000_pcs_kg": 2.720, "qty_per_box": 400,  "rate": 1620, "mrp": 1620, "price": 1620, "dealer_landing": 810, "cost": 810, "item_code": "4CB50", "wd_basic": 570, "wd_landing": 672},
+        {"sr_no": 9, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "5X20", "size_mm": "5 x 20", "wt_1000_pcs_kg": 2.310, "qty_per_box": 500,  "rate": 1100, "mrp": 1100, "price": 1100, "dealer_landing": 550, "cost": 550, "item_code": "5CB20", "wd_basic": 385, "wd_landing": 454},
+        {"sr_no": 10, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "5X25", "size_mm": "5 x 25", "wt_1000_pcs_kg": 2.600, "qty_per_box": 500,  "rate": 1250, "mrp": 1250, "price": 1250, "dealer_landing": 625, "cost": 625, "item_code": "5CB25", "wd_basic": 438, "wd_landing": 517},
+        {"sr_no": 11, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "5X30", "size_mm": "5 x 30", "wt_1000_pcs_kg": 2.890, "qty_per_box": 500,  "rate": 1400, "mrp": 1400, "price": 1400, "dealer_landing": 700, "cost": 700, "item_code": "5CB30", "wd_basic": 490, "wd_landing": 578},
+        {"sr_no": 12, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "5X35", "size_mm": "5 x 35", "wt_1000_pcs_kg": 3.180, "qty_per_box": 400,  "rate": 1550, "mrp": 1550, "price": 1550, "dealer_landing": 775, "cost": 775, "item_code": "5CB35", "wd_basic": 543, "wd_landing": 640},
+        {"sr_no": 13, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "5X40", "size_mm": "5 x 40", "wt_1000_pcs_kg": 3.470, "qty_per_box": 400,  "rate": 1700, "mrp": 1700, "price": 1700, "dealer_landing": 850, "cost": 850, "item_code": "5CB40", "wd_basic": 595, "wd_landing": 702},
+        {"sr_no": 14, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "5X45", "size_mm": "5 x 45", "wt_1000_pcs_kg": 3.770, "qty_per_box": 300,  "rate": 1850, "mrp": 1850, "price": 1850, "dealer_landing": 925, "cost": 925, "item_code": "5CB45", "wd_basic": 648, "wd_landing": 765},
+        {"sr_no": 15, "category": "CSK Chipboard Screws", "category_section": "02 CHIPBOARD SCREWS (ZINC)", "size": "5X50", "size_mm": "5 x 50", "wt_1000_pcs_kg": 4.050, "qty_per_box": 300,  "rate": 2000, "mrp": 2000, "price": 2000, "dealer_landing": 1000, "cost": 1000, "item_code": "5CB50", "wd_basic": 700, "wd_landing": 826},
     ]
 
     for md in matrix_data:
@@ -141,46 +142,29 @@ async def seed_all(force_purge: bool = False):
             upsert=True
         )
 
-    # Products (catalog items + matrix products)
-    prods = [
-        {"sku": "LED-BLB-9W", "name": "LED Bulb 9W", "category": "Electronics", "description": "Energy efficient LED",
-         "unit": "pcs", "weight_kg": 0.05, "wt_1000_pcs_kg": 50.0, "price": 120, "cost": 75, "gst": 18, "hsn": "8539",
-         "moq": 50, "safety_stock": 200, "lead_time_days": 5, "status": "active",
-         "primary_supplier_id": None},
-        {"sku": "CEIL-FAN-48", "name": "Ceiling Fan 48\"", "category": "Appliances",
-         "description": "High speed ceiling fan", "unit": "pcs", "weight_kg": 4.5, "wt_1000_pcs_kg": 4500.0, "price": 2200, "cost": 1600,
-         "gst": 18, "hsn": "8414", "moq": 5, "safety_stock": 20, "lead_time_days": 7,
-         "status": "active", "primary_supplier_id": None},
-        {"sku": "SCRW-6MM", "name": "Screws 6mm (pack of 100)", "category": "Hardware",
-         "description": "Steel screws", "unit": "pack", "weight_kg": 0.3, "wt_1000_pcs_kg": 3.0, "price": 180, "cost": 110,
-         "gst": 18, "hsn": "7318", "moq": 10, "safety_stock": 50, "lead_time_days": 4,
-         "status": "active", "primary_supplier_id": None},
-        {"sku": "OFC-CHR-BLK", "name": "Office Chair Black", "category": "Furniture",
-         "description": "Ergonomic office chair", "unit": "pcs", "weight_kg": 12, "wt_1000_pcs_kg": 12000.0, "price": 6500,
-         "cost": 4800, "gst": 18, "hsn": "9401", "moq": 2, "safety_stock": 10, "lead_time_days": 10,
-         "status": "active", "primary_supplier_id": None},
-        {"sku": "MICROW-25L", "name": "Microwave 25L", "category": "Appliances",
-         "description": "Convection microwave", "unit": "pcs", "weight_kg": 15, "wt_1000_pcs_kg": 15000.0, "price": 8900,
-         "cost": 6700, "gst": 18, "hsn": "8516", "moq": 2, "safety_stock": 8, "lead_time_days": 12,
-         "status": "active", "primary_supplier_id": None},
-        {"sku": "USB-CBL-C", "name": "USB-C Cable 1m", "category": "Electronics",
-         "description": "Fast charging USB-C", "unit": "pcs", "weight_kg": 0.1, "wt_1000_pcs_kg": 100.0, "price": 250,
-         "cost": 130, "gst": 18, "hsn": "8544", "moq": 25, "safety_stock": 100, "lead_time_days": 3,
-         "status": "active", "primary_supplier_id": None},
-    ]
-    # Include all 23 matrix screw items as products
+    # Products list (Strict Fastener catalog aligned with Price List YFS-PL-001)
+    prods = []
     for md in matrix_data:
         prods.append({
             "sku": md["item_code"],
+            "item_code": md["item_code"],
+            "sr_no": md["sr_no"],
             "name": f"{md['category']} {md['size']}",
             "category": md["category"],
-            "description": f"CSK Screw size {md['size']} ({md['wt_1000_pcs_kg']} kg per 1000 pcs, Box of {md['qty_per_box']} pcs)",
+            "category_section": md["category_section"],
+            "size": md["size"],
+            "size_mm": md["size_mm"],
+            "description": f"{md['category_section']} size {md['size_mm']} ({md['wt_1000_pcs_kg']} kg/1000 pcs, Box of {md['qty_per_box']} pcs, MRP ₹{md['mrp']}, Dealer Landing ₹{md['dealer_landing']})",
             "unit": "box",
             "weight_kg": round(md["wt_1000_pcs_kg"] / 1000.0, 5),
             "wt_1000_pcs_kg": md["wt_1000_pcs_kg"],
-            "size": md["size"],
-            "item_code": md["item_code"],
             "qty_per_box": md["qty_per_box"],
+            "packing_options": "200 PCS / 250 PCS / 500 PCS / 1000 PCS",
+            "document_code": "YFS-PL-001",
+            "revision_no": "01",
+            "effective_date": "06 June 2026",
+            "mrp": md["mrp"],
+            "rate": md["rate"],
             "price": md["rate"],
             "cost": md["dealer_landing"],
             "dealer_landing": md["dealer_landing"],

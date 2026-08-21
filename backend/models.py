@@ -65,26 +65,36 @@ class ProductIn(BaseModel):
     sku: str
     name: str
     category: str
+    category_section: Optional[str] = ""
     description: Optional[str] = ""
-    unit: str = "pcs"
+    unit: str = "box"
     weight_kg: float = 0
     wt_1000_pcs_kg: float = 0
     size: Optional[str] = ""
+    size_mm: Optional[str] = ""
     item_code: Optional[str] = ""
+    sr_no: Optional[int] = None
     qty_per_box: int = 1000
+    packing_options: Optional[str] = "200 PCS / 250 PCS / 500 PCS / 1000 PCS"
+    mrp: float = 0
+    rate: float = 0
     price: float = 0
     cost: float = 0
     dealer_landing: float = 0
     wd_basic: float = 0
     wd_landing: float = 0
+    document_code: Optional[str] = "YFS-PL-001"
+    effective_date: Optional[str] = "06 June 2026"
+    revision_no: Optional[str] = "01"
     gst: float = 18
-    hsn: Optional[str] = ""
+    hsn: Optional[str] = "7318"
     moq: int = 1
     safety_stock: int = 0
     primary_supplier_id: Optional[str] = None
     secondary_supplier_id: Optional[str] = None
-    lead_time_days: int = 7
+    lead_time_days: int = 5
     status: Literal["active", "inactive"] = "active"
+
 
 
 # ---- Warehouse ----

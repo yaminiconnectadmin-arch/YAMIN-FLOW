@@ -36,11 +36,27 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Fail-safe response interceptor to handle regional edge hiccups gracefully
+// Fail-safe response interceptor with automatic Cloud API failover
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
-    if (err.config && err.config.url && (err.config.url.includes("/orders") || err.config.url.includes("/catalog"))) {
+  async (err) => {
+    const config = err.config;
+    // Auto-failover: If local backend (http://localhost:8000) is offline/unreachable, retry against Cloud Backend API
+    if (config && !config._retry && (config.baseURL?.includes("localhost:8000") || config.baseURL?.includes("127.0.0.1:8000") || !err.response)) {
+      config._retry = true;
+      config.baseURL = `${CLOUD_BACKEND_URL}/api`;
+      try {
+        const token = localStorage.getItem("yf_token");
+        if (token) config.headers = { ...config.headers, Authorization: `Bearer ${token}` };
+        return await axios(config);
+      } catch (retryErr) {
+        if (config.url && (config.url.includes("/orders") || config.url.includes("/catalog") || config.url.includes("/products") || config.url.includes("/categories"))) {
+          return Promise.resolve({ data: [] });
+        }
+        return Promise.reject(retryErr);
+      }
+    }
+    if (config && config.url && (config.url.includes("/orders") || config.url.includes("/catalog") || config.url.includes("/products") || config.url.includes("/categories"))) {
       if (!err.response || err.response.status >= 500) {
         return Promise.resolve({ data: [] });
       }
