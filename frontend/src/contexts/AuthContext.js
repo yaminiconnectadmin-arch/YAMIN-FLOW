@@ -52,7 +52,7 @@ export function AuthProvider({ children }) {
 
     } catch (e) {
       const detailMsg = formatApiErrorDetail(e.response?.data?.detail);
-      const errorMsg = detailMsg || e.response?.data?.message || (e.message?.includes("Network") ? "Network connection error. Please try again." : e.message) || "Authentication failed. Please check credentials.";
+      const errorMsg = detailMsg || e.response?.data?.message || e.message || "Authentication failed. Please check credentials.";
       return { ok: false, error: errorMsg };
     }
   };
