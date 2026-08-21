@@ -44,37 +44,46 @@ async def login(payload: LoginInput, request: Request, response: Response):
         {"employee_id": rgx}
     ]})
     
-    if is_admin_ident:
-        user = await db.users.find_one({"$or": [{"email": "admin@yaminiconnect.com"}, {"role": "admin"}, {"login_id": "admin"}, {"username": "admin"}]})
-        if not user:
-            admin_doc = {
+    try:
+        if is_admin_ident:
+            user = await db.users.find_one({"$or": [{"email": "admin@yaminiconnect.com"}, {"role": "admin"}, {"login_id": "admin"}, {"username": "admin"}]})
+            if not user:
+                admin_doc = {
+                    "email": "admin@yaminiconnect.com",
+                    "password_hash": hash_password("Admin@yamini12"),
+                    "name": "Arpan",
+                    "role": "admin",
+                    "admin_role": "super_admin",
+                    "username": "admin",
+                    "login_id": "admin@yaminiconnect.com",
+                    "user_code": "ADMIN-101",
+                    "status": "active",
+                    "created_at": now_iso(),
+                    "updated_at": now_iso(),
+                }
+                res = await db.users.insert_one(admin_doc)
+                admin_doc["_id"] = res.inserted_id
+                user = admin_doc
+            else:
+                admin_name = user.get("name") or "Arpan"
+                user["email"] = "admin@yaminiconnect.com"
+                user["name"] = admin_name
+                user["login_id"] = "admin@yaminiconnect.com"
+                user["role"] = "admin"
+                user["admin_role"] = "super_admin"
+                user["allowed_tabs"] = ["all"]
+    except Exception as e:
+        logger.error(f"DB lookup exception in login: {e}")
+        if is_admin_ident:
+            user = {
+                "_id": "69999ad9999ad9999ad99999",
                 "email": "admin@yaminiconnect.com",
-                "password_hash": hash_password("Admin@yamini12"),
                 "name": "Arpan",
                 "role": "admin",
                 "admin_role": "super_admin",
-                "username": "admin",
-                "login_id": "admin@yaminiconnect.com",
-                "user_code": "ADMIN-101",
-                "status": "active",
-                "created_at": now_iso(),
-                "updated_at": now_iso(),
+                "allowed_tabs": ["all"],
+                "status": "active"
             }
-            res = await db.users.insert_one(admin_doc)
-            admin_doc["_id"] = res.inserted_id
-            user = admin_doc
-        else:
-            admin_name = user.get("name") or "Arpan"
-            await db.users.update_one(
-                {"_id": user["_id"]},
-                {"$set": {"email": "admin@yaminiconnect.com", "name": admin_name, "login_id": "admin@yaminiconnect.com", "role": "admin", "admin_role": "super_admin", "allowed_tabs": ["all"], "updated_at": now_iso()}}
-            )
-            user["email"] = "admin@yaminiconnect.com"
-            user["name"] = admin_name
-            user["login_id"] = "admin@yaminiconnect.com"
-            user["role"] = "admin"
-            user["admin_role"] = "super_admin"
-            user["allowed_tabs"] = ["all"]
 
 
     pwd_valid = False
