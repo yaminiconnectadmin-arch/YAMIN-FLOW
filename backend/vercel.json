@@ -1,11 +1,6 @@
 {
   "version": 2,
   "regions": ["iad1"],
-  "functions": {
-    "api/index.py": {
-      "regions": ["iad1"]
-    }
-  },
   "builds": [
     {
       "src": "api/index.py",
