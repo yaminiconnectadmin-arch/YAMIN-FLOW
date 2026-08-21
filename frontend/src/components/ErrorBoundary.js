@@ -32,14 +32,18 @@ export default class ErrorBoundary extends React.Component {
   }
 
   handleReload = () => {
-    // Clear caches and reload
-    if ("caches" in window) {
-      caches.keys().then((names) => {
-        names.forEach((name) => caches.delete(name));
-      });
+    // Clear caches and force hard reload bypassing browser cache
+    try {
+      if ("caches" in window) {
+        caches.keys().then((names) => {
+          names.forEach((name) => caches.delete(name));
+        });
+      }
+      sessionStorage.clear();
+    } catch (e) {
+      console.error(e);
     }
-    sessionStorage.removeItem("yf_chunk_reload");
-    window.location.reload();
+    window.location.href = window.location.origin + window.location.pathname + "?v=" + Date.now();
   };
 
   render() {
