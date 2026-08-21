@@ -5,7 +5,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 import os
 import logging
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, Request, Response
 from starlette.middleware.cors import CORSMiddleware
 
 from db import db, create_db_indexes
@@ -32,21 +32,32 @@ app = FastAPI(title="YAMINI FLOW", version="2.0.2")
 # GZip Compression for API response speed optimization
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
-# CORS — universal cross-origin support for all production & localhost domains
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Dynamic CORS Middleware supporting credentials & universal origins
+@app.middleware("http")
+async def add_cors_headers(request: Request, call_next):
+    origin = request.headers.get("origin")
+    if request.method == "OPTIONS":
+        response = Response(status_code=204)
+        if origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, X-Requested-With, yf_token"
+        else:
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "*"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
 
-
-
-
-@app.options("/{full_path:path}")
-async def options_handler(full_path: str):
-    return {"status": "ok"}
+    response = await call_next(request)
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, X-Requested-With, yf_token"
+    else:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
 
 
 # Root level health & status handlers
