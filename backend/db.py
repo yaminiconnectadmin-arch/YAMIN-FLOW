@@ -117,16 +117,92 @@ def get_db():
     return _client[db_name]
 
 
+class SafeCollectionProxy:
+    def __init__(self, real_coll):
+        self.real_coll = real_coll
+        self.dummy = DummyCollection()
+
+    async def find_one(self, *args, **kwargs):
+        try:
+            return await self.real_coll.find_one(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"MongoDB find_one exception: {e}")
+            return await self.dummy.find_one(*args, **kwargs)
+
+    def find(self, *args, **kwargs):
+        try:
+            return self.real_coll.find(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"MongoDB find exception: {e}")
+            return self.dummy.find(*args, **kwargs)
+
+    async def insert_one(self, *args, **kwargs):
+        try:
+            return await self.real_coll.insert_one(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"MongoDB insert_one exception: {e}")
+            return await self.dummy.insert_one(*args, **kwargs)
+
+    async def insert_many(self, *args, **kwargs):
+        try:
+            return await self.real_coll.insert_many(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"MongoDB insert_many exception: {e}")
+            return await self.dummy.insert_many(*args, **kwargs)
+
+    async def update_one(self, *args, **kwargs):
+        try:
+            return await self.real_coll.update_one(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"MongoDB update_one exception: {e}")
+            return await self.dummy.update_one(*args, **kwargs)
+
+    async def update_many(self, *args, **kwargs):
+        try:
+            return await self.real_coll.update_many(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"MongoDB update_many exception: {e}")
+            return await self.dummy.update_many(*args, **kwargs)
+
+    async def delete_many(self, *args, **kwargs):
+        try:
+            return await self.real_coll.delete_many(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"MongoDB delete_many exception: {e}")
+            return await self.dummy.delete_many(*args, **kwargs)
+
+    async def count_documents(self, *args, **kwargs):
+        try:
+            return await self.real_coll.count_documents(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"MongoDB count_documents exception: {e}")
+            return await self.dummy.count_documents(*args, **kwargs)
+
+    async def create_index(self, *args, **kwargs):
+        try:
+            return await self.real_coll.create_index(*args, **kwargs)
+        except Exception as e:
+            return await self.dummy.create_index(*args, **kwargs)
+
+    async def drop_index(self, *args, **kwargs):
+        try:
+            return await self.real_coll.drop_index(*args, **kwargs)
+        except Exception as e:
+            return await self.dummy.drop_index(*args, **kwargs)
+
+
 class LazyDatabase:
     def __getattr__(self, name):
         try:
-            return getattr(get_db(), name)
+            coll = getattr(get_db(), name)
+            return SafeCollectionProxy(coll) if coll is not None else DummyCollection()
         except Exception:
             return DummyCollection()
 
     def __getitem__(self, name):
         try:
-            return get_db()[name]
+            coll = get_db()[name]
+            return SafeCollectionProxy(coll) if coll is not None else DummyCollection()
         except Exception:
             return DummyCollection()
 
