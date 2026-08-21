@@ -2,8 +2,6 @@
 import os
 from db import db, now_iso
 from auth import hash_password
-
-
 async def _upsert_user(email: str, password: str, name: str, role: str, extra: dict = None) -> str:
     existing = await db.users.find_one({"email": email.lower()})
     user_name = existing.get("name") if (existing and existing.get("name")) else name
@@ -47,7 +45,7 @@ async def seed_all(force_purge: bool = False):
     admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@yamini12")
     existing_admin = await db.users.find_one({"email": admin_email.lower()})
     admin_name = existing_admin.get("name") if (existing_admin and existing_admin.get("name")) else "Arpan"
-    await _upsert_user(admin_email, admin_password, admin_name, "admin",
+    admin_id = await _upsert_user(admin_email, admin_password, admin_name, "admin",
                        {"phone": "+91-9999999999", "company": "Yamini Group", "admin_role": "super_admin",
                         "username": "admin", "login_id": "admin", "user_code": "ADMIN-101"})
     existing_admin = await db.users.find_one({"email": admin_email.lower()})
@@ -58,6 +56,45 @@ async def seed_all(force_purge: bool = False):
                 {"_id": existing_admin["_id"]},
                 {"$set": {"password_hash": hash_password(admin_password), "updated_at": now_iso()}},
             )
+
+    # CNF / MNP
+    cnf_id_1 = await _upsert_user("mnp@yaminiflow.com", "Mnp@123", "Western Region Depot", "mnp",
+                                  {"phone": "+91-9876543210", "company": "Western Region Depot", "area": "West India",
+                                   "state": "Maharashtra", "user_code": "C-ST-MH-201", "login_id": "c-st-mh-201",
+                                   "target_monthly": 500000, "target_quarterly": 1500000})
+
+    cnf_id_2 = await _upsert_user("cnf_north@yaminiflow.com", "Cnf@123", "Northern Region Depot", "cnf",
+                                  {"phone": "+91-9876543211", "company": "Northern Region Depot", "area": "North India",
+                                   "state": "Delhi", "user_code": "C-ST-DL-202", "login_id": "c-st-dl-202",
+                                   "target_monthly": 400000, "target_quarterly": 1200000})
+
+    # Dealers
+    dealer_id_1 = await _upsert_user("dealer@yaminiflow.com", "Dealer12", "Apex Distributors", "dealer",
+                                     {"phone": "+91-9123456789", "company": "Apex Distributors", "city": "Mumbai",
+                                      "state": "Maharashtra", "gstin": "27AAACA1234A1Z5", "credit_limit": 500000,
+                                      "target_monthly": 200000, "target_quarterly": 600000, "cnf_id": cnf_id_1, "mnp_id": cnf_id_1,
+                                      "user_code": "D-ST-MH-101", "login_id": "d-st-mh-101"})
+
+    dealer_id_2 = await _upsert_user("star@yaminiflow.com", "Dealer12", "Star Hardware & Tools", "dealer",
+                                     {"phone": "+91-9123456780", "company": "Star Hardware & Tools", "city": "Delhi",
+                                      "state": "Delhi", "gstin": "07AAACS1234B1Z2", "credit_limit": 300000,
+                                      "target_monthly": 150000, "target_quarterly": 450000, "cnf_id": cnf_id_2, "mnp_id": cnf_id_2,
+                                      "user_code": "D-ST-DL-102", "login_id": "d-st-dl-102"})
+
+    dealer_id_3 = await _upsert_user("metro@yaminiflow.com", "Dealer12", "Metro Hardware Depot", "dealer",
+                                     {"phone": "+91-9123456781", "company": "Metro Hardware Depot", "city": "Bangalore",
+                                      "state": "Karnataka", "gstin": "29AAACM1234C1Z9", "credit_limit": 400000,
+                                      "target_monthly": 180000, "target_quarterly": 540000, "cnf_id": cnf_id_1, "mnp_id": cnf_id_1,
+                                      "user_code": "D-ST-KA-103", "login_id": "d-st-ka-103"})
+
+    # Suppliers
+    supplier_id_1 = await _upsert_user("supplier@yaminiflow.com", "Supplier12", "Precision Screw Mfg Ltd", "supplier",
+                                       {"phone": "+91-9898989898", "company": "Precision Screw Mfg Ltd", "city": "Pune",
+                                        "state": "Maharashtra", "gstin": "27AAACP5678D1Z4", "lead_time_days": 5})
+
+    supplier_id_2 = await _upsert_user("fasteners@yaminiflow.com", "Supplier12", "National Fasteners Corp", "supplier",
+                                       {"phone": "+91-9898989899", "company": "National Fasteners Corp", "city": "Ludhiana",
+                                        "state": "Punjab", "gstin": "03AAACN5678E1Z1", "lead_time_days": 7})
 
     # Categories
     categories = ["Electronics", "Appliances", "Hardware", "Furniture", "CSK Chipboard Screws", "CSK Drywall Screws"]
@@ -190,7 +227,53 @@ async def seed_all(force_purge: bool = False):
                 })
         await db.inventory.insert_many(inv_docs)
 
-    # Skip filesystem writes in serverless environment
+    # Seed initial demo orders if order count is 0
+    if await db.orders.count_documents({}) == 0:
+        wh_mum = warehouses[0] if warehouses else {}
+        p_screw = products[0] if products else {}
+        dlr_1 = await db.users.find_one({"email": "dealer@yaminiflow.com"})
+        dlr_id = str(dlr_1["_id"]) if dlr_1 else "69999ad9999ad9999ad99991"
+        
+        sample_orders = [
+            {
+                "order_no": "ORD-20260001",
+                "dealer_id": dlr_id,
+                "dealer_code": "D-ST-MH-101",
+                "dealer_name": "Apex Distributors",
+                "dealer_state": "Maharashtra",
+                "warehouse_id": str(wh_mum.get("_id", "")),
+                "warehouse_code": wh_mum.get("code", "WH-MUM"),
+                "warehouse_name": wh_mum.get("name", "Mumbai Central"),
+                "status": "pending",
+                "total": 12500.0,
+                "total_weight_kg": 25.5,
+                "items": [
+                    {
+                        "product_id": str(p_screw.get("_id", "")),
+                        "product_name": p_screw.get("name", "CSK Chipboard Screws 4X16"),
+                        "sku": p_screw.get("sku", "4CB16"),
+                        "boxes": 10,
+                        "boxes_allocated": 10,
+                        "boxes_invoiced": 0,
+                        "boxes_pending": 0,
+                        "quantity": 10,
+                        "quantity_ordered": 10,
+                        "quantity_allocated": 10,
+                        "quantity_invoiced": 0,
+                        "quantity_pending": 0,
+                        "qty_per_box": 1000,
+                        "rate": 556.0,
+                        "value_before_tax": 5560.0,
+                        "gst_amount": 1000.8,
+                        "value_after_tax": 6560.8,
+                        "subtotal": 6560.8
+                    }
+                ],
+                "created_at": now_iso(),
+                "updated_at": now_iso()
+            }
+        ]
+        await db.orders.insert_many(sample_orders)
 
 
 async def create_indexes():
