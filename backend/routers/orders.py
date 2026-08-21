@@ -12,33 +12,43 @@ router = APIRouter(tags=["orders"])
 
 
 async def _inv_query(wh_id: str, product_id: str):
-    """Fetch inventory doc matching warehouse_id (string or ObjectId) and product_id."""
-    doc = await db.inventory.find_one({"warehouse_id": wh_id, "product_id": product_id})
-    if not doc and ObjectId.is_valid(wh_id):
-        doc = await db.inventory.find_one({"warehouse_id": ObjectId(wh_id), "product_id": product_id})
+    """Fetch inventory doc matching warehouse_id and product_id (string or ObjectId)."""
+    pids = [product_id]
+    if ObjectId.is_valid(str(product_id)):
+        pids.append(ObjectId(str(product_id)))
+    
+    wids = [wh_id] if wh_id else []
+    if wh_id and ObjectId.is_valid(str(wh_id)):
+        wids.append(ObjectId(str(wh_id)))
+    
+    q = {"product_id": {"$in": pids}}
+    if wids:
+        q["warehouse_id"] = {"$in": wids}
+        
+    doc = await db.inventory.find_one(q)
+    if not doc:
+        # Fallback: search by product_id across ANY warehouse
+        doc = await db.inventory.find_one({"product_id": {"$in": pids}})
     return doc
 
 
 async def _reserve_inv(wh_id: str, product_id: str, delta: int):
-    """Increment/decrement reserved field in inventory, matching both string and ObjectId warehouse_id."""
-    # Try string match first
-    res = await db.inventory.update_one(
-        {"warehouse_id": wh_id, "product_id": product_id},
-        {"$inc": {"reserved": delta}, "$set": {"updated_at": now_iso()}}
-    )
-    if res.matched_count == 0 and ObjectId.is_valid(wh_id):
-        # Try ObjectId match (some docs stored with ObjectId)
-        res = await db.inventory.update_one(
-            {"warehouse_id": ObjectId(wh_id), "product_id": product_id},
-            {"$inc": {"reserved": delta}, "$set": {"updated_at": now_iso()}}
-        )
+    """Increment/decrement reserved field in inventory, matching both string and ObjectId keys."""
+    pids = [product_id]
+    if ObjectId.is_valid(str(product_id)):
+        pids.append(ObjectId(str(product_id)))
+    
+    wids = [wh_id] if wh_id else []
+    if wh_id and ObjectId.is_valid(str(wh_id)):
+        wids.append(ObjectId(str(wh_id)))
+        
+    q = {"product_id": {"$in": pids}}
+    if wids:
+        q["warehouse_id"] = {"$in": wids}
+        
+    res = await db.inventory.update_one(q, {"$inc": {"reserved": delta}, "$set": {"updated_at": now_iso()}})
     if res.matched_count == 0:
-        # Upsert with string key as fallback
-        await db.inventory.update_one(
-            {"warehouse_id": wh_id, "product_id": product_id},
-            {"$inc": {"reserved": delta}, "$set": {"updated_at": now_iso()}},
-            upsert=True
-        )
+        await db.inventory.update_one({"product_id": {"$in": pids}}, {"$inc": {"reserved": delta}, "$set": {"updated_at": now_iso()}})
 
 
 async def _order_number() -> str:
@@ -1182,6 +1192,33 @@ async def reallocate_order_stock(order_id: str, user: dict = Depends(get_current
         "meta": {"reservation_status": reservation_status, "deficits_count": len(deficits)},
         "created_at": now_iso(),
     })
+
+    updated = await db.orders.find_one({"_id": doc["_id"]})
+    enriched = await _enrich_orders([updated])
+    return enriched[0]
+
+
+@router.patch("/orders/{order_id}/reallocation-setting")
+async def update_order_reallocation_setting(order_id: str, payload: dict, user: dict = Depends(get_current_user)):
+    """Update auto_reallocate policy toggle for an order (True = System auto-reallocates on stock refresh, False = Manual only)."""
+    if user["role"] not in ("admin", "cnf", "mnp"):
+        raise HTTPException(403, "Forbidden")
+    auto_realloc = bool(payload.get("auto_reallocate", True))
+
+    try:
+        oid = ObjectId(order_id)
+        doc = await db.orders.find_one({"_id": oid})
+    except Exception:
+        doc = await db.orders.find_one({"_id": order_id})
+
+    if not doc:
+        raise HTTPException(404, "Order not found")
+
+    await db.orders.update_one({"_id": doc["_id"]}, {"$set": {"auto_reallocate": auto_realloc, "updated_at": now_iso()}})
+
+    # If enabled auto-reallocate, trigger reallocation evaluation immediately
+    if auto_realloc:
+        await reallocate_order_stock(str(doc["_id"]), user)
 
     updated = await db.orders.find_one({"_id": doc["_id"]})
     enriched = await _enrich_orders([updated])

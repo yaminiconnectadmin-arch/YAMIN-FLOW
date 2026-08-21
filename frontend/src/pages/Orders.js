@@ -246,21 +246,30 @@ export default function OrdersPage() {
     }
   };
 
+  const handleToggleAutoReallocate = async (autoReallocBool) => {
+    if (!selected) return;
+    setUpdatingStatus(true);
+    try {
+      const orderId = selected.id || selected._id;
+      const res = await api.patch(`/orders/${orderId}/reallocation-setting`, {
+        auto_reallocate: autoReallocBool
+      });
+      setSelected(res.data);
+      toast.success(`Re-allocation policy set to ${autoReallocBool ? "⚡ Automatic" : "✋ Manual Only"}`);
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to update reallocation policy");
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
   const handleReallocateStock = async () => {
     if (!selected) return;
     setUpdatingStatus(true);
     try {
       const orderId = selected.id || selected._id;
-      let res;
-      try {
-        res = await api.post(`/orders/${orderId}/reallocate`);
-      } catch (err) {
-        if (err.response?.status === 404 || err.response?.status === 405) {
-          res = await api.put(`/orders/${orderId}/warehouse`, { warehouse_id: selected.warehouse_id || "default" });
-        } else {
-          throw err;
-        }
-      }
+      const res = await api.post(`/orders/${orderId}/reallocate`);
       const data = res.data;
       toast.success(`Stock re-allocated from live warehouse inventory! Status: ${(data.reservation_status || "updated").toUpperCase()}`);
       setSelected(data);
@@ -1197,7 +1206,76 @@ export default function OrdersPage() {
                     ))}
                   </div>
                 </div>
-              )}
+              {/* Inventory Stock Re-allocation Engine Policy & Controls Card */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Lightning size={20} className="text-amber-500 font-bold" weight="fill" />
+                    <div>
+                      <div className="font-extrabold text-xs uppercase tracking-wider text-slate-900">
+                        Stock Re-allocation Engine Policy
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-mono">
+                        Control how refreshed warehouse inventory is reserved & billed for this order
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Toggle Switch */}
+                  <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg p-1 shadow-xs">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleAutoReallocate(true)}
+                      disabled={updatingStatus}
+                      className={`px-3 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
+                        selected.auto_reallocate !== false
+                          ? "bg-amber-500 text-white shadow-xs"
+                          : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      ⚡ Auto Reallocate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleAutoReallocate(false)}
+                      disabled={updatingStatus}
+                      className={`px-3 py-1 text-xs font-bold rounded-md transition-all flex items-center gap-1.5 ${
+                        selected.auto_reallocate === false
+                          ? "bg-slate-900 text-white shadow-xs"
+                          : "text-slate-600 hover:bg-slate-100"
+                      }`}
+                    >
+                      ✋ Manual Only
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex-1">
+                    {selected.auto_reallocate !== false ? (
+                      <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
+                        <span>✅</span>
+                        <span><strong>Automatic Mode Active:</strong> Whenever stock is added to inventory, system automatically allocates pending boxes and generates next part bill.</span>
+                      </span>
+                    ) : (
+                      <span className="text-amber-800 font-semibold flex items-center gap-1.5">
+                        <span>🔒</span>
+                        <span><strong>Manual Mode Active:</strong> Stock updates will NOT automatically reserve inventory for this order until you explicitly click Reallocate.</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleReallocateStock}
+                    disabled={updatingStatus}
+                    className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm flex-shrink-0"
+                  >
+                    <ArrowsClockwise size={14} className={updatingStatus ? "animate-spin" : ""} />
+                    {updatingStatus ? "Reallocating..." : "Trigger Stock Reallocation Now"}
+                  </button>
+                </div>
+              </div>
 
               <div className="flex justify-between items-center bg-[#1D242B] text-white p-4 rounded-lg">
                 <div>
