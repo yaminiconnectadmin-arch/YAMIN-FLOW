@@ -32,8 +32,12 @@ export default class ErrorBoundary extends React.Component {
   }
 
   handleReload = () => {
-    // Clear caches and force hard reload bypassing browser cache
     try {
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          registrations.forEach((r) => r.unregister());
+        });
+      }
       if ("caches" in window) {
         caches.keys().then((names) => {
           names.forEach((name) => caches.delete(name));
@@ -43,7 +47,9 @@ export default class ErrorBoundary extends React.Component {
     } catch (e) {
       console.error(e);
     }
-    window.location.href = window.location.origin + window.location.pathname + "?v=" + Date.now();
+    setTimeout(() => {
+      window.location.href = window.location.origin + "/orders?reset=" + Date.now();
+    }, 200);
   };
 
   render() {
