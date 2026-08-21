@@ -1206,6 +1206,8 @@ export default function OrdersPage() {
                     ))}
                   </div>
                 </div>
+              )}
+
               {/* Inventory Stock Re-allocation Engine Policy & Controls Card */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
