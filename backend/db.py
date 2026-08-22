@@ -38,7 +38,6 @@ MONGO_KWARGS = {
     "minPoolSize": 0,
     "maxIdleTimeMS": 10000,
     "retryWrites": True,
-    "tlsAllowInvalidCertificates": True,
 }
 
 _client = None
