@@ -48,20 +48,32 @@ api.interceptors.response.use(
       try { bodyData = typeof config.data === "string" ? JSON.parse(config.data) : (config.data || {}); } catch (e) {}
       const loginId = (bodyData.login_id || bodyData.username || bodyData.email || "").toLowerCase();
       
-      const isDealer = loginId.includes("dealer") || loginId.includes("apex") || loginId.includes("d-st");
-      const isMnp = loginId.includes("mnp") || loginId.includes("cnf") || loginId.includes("c-st");
-      const isSupplier = loginId.includes("supplier") || loginId.includes("precision");
+      const isAdmin = loginId.includes("admin") || loginId === "arpan" || loginId.includes("admin@yaminiconnect.com");
+      const isMnp = loginId.includes("mnp") || loginId.includes("cnf") || loginId.startsWith("c-");
+      const isSupplier = loginId.includes("supplier") || loginId.includes("precision") || loginId.startsWith("s-");
 
-      let role = "admin";
-      let name = "Arpan";
-      let email = "admin@yaminiconnect.com";
+      let role = "dealer"; // STRICT RBAC: Default to dealer role for all distributor accounts, NEVER admin!
+      let name = "Distributor Partner";
+      let email = loginId || "dealer@yaminiflow.com";
 
-      if (isDealer) { role = "dealer"; name = "Apex Distributors"; email = "dealer@yaminiflow.com"; }
-      else if (isMnp) { role = "cnf"; name = "Western Region Depot"; email = "mnp@yaminiflow.com"; }
-      else if (isSupplier) { role = "supplier"; name = "Precision Screw Mfg Ltd"; email = "supplier@yaminiflow.com"; }
+      if (isAdmin) {
+        role = "admin";
+        name = "Arpan";
+        email = "admin@yaminiconnect.com";
+      } else if (isMnp) {
+        role = "cnf";
+        name = "Regional CNF Depot";
+        email = "mnp@yaminiflow.com";
+      } else if (isSupplier) {
+        role = "supplier";
+        name = "Supplier Partner";
+        email = "supplier@yaminiflow.com";
+      } else {
+        name = bodyData.login_id || "Distributor Partner";
+      }
 
       const userObj = {
-        id: role === "admin" ? "69999ad9999ad9999ad99999" : "69999ad9999ad9999ad99998",
+        id: role === "admin" ? "69999ad9999ad9999ad99999" : (role === "cnf" ? "69999ad9999ad9999ad99997" : "69999ad9999ad9999ad99998"),
         email: email,
         name: name,
         role: role,
@@ -87,7 +99,7 @@ api.interceptors.response.use(
       const stored = localStorage.getItem("yf_user");
       let uObj = stored ? JSON.parse(stored) : null;
       if (!uObj) {
-        uObj = { id: "69999ad9999ad9999ad99999", email: "admin@yaminiconnect.com", name: "Arpan", role: "admin", admin_role: "super_admin", allowed_tabs: ["all"] };
+        uObj = { id: "69999ad9999ad9999ad99998", email: "dealer@yaminiflow.com", name: "Distributor Partner", role: "dealer" };
       }
       return Promise.resolve({ data: uObj });
     }

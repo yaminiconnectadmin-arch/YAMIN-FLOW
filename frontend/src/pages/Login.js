@@ -14,6 +14,9 @@ export default function LoginPage() {
 
   const getFirstAllowedPath = (u) => {
     if (!u) return "/dashboard";
+    if (u.role === "dealer") return "/browse";
+    if (u.role === "supplier") return "/purchase-orders";
+    if (u.role === "cnf" || u.role === "mnp") return "/dashboard";
     const isStaff = u.role === "admin" && u.admin_role === "staff";
     if (isStaff && u.allowed_tabs && !u.allowed_tabs.includes("all")) {
       const TAB_PATHS = {

@@ -146,7 +146,7 @@ async def login(payload: LoginInput, request: Request, response: Response):
 
     await clear_attempts(identifier)
     uid = str(user["_id"])
-    role = user.get("role", "admin")
+    role = user.get("role") or "dealer"
     admin_role = user.get("admin_role", "staff" if role in ["staff", "employee"] else "super_admin") if role in ["admin", "staff", "employee"] else None
     allowed_tabs = user.get("allowed_tabs", ["all"]) if role in ["admin", "staff", "employee"] else []
     must_change_password = user.get("must_change_password", False)

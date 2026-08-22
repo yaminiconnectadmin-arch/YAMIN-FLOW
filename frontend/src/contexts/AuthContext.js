@@ -21,17 +21,14 @@ export function AuthProvider({ children }) {
       }
       setUser(data);
     } catch {
+      const storedUser = localStorage.getItem("yf_user");
       const existingToken = localStorage.getItem("yf_token");
-      if (existingToken && existingToken.length > 20) {
-        setUser({
-          id: "69999ad9999ad9999ad99999",
-          email: "admin@yaminiconnect.com",
-          role: "admin",
-          name: "Arpan",
-          admin_role: "super_admin",
-          allowed_tabs: ["all"],
-          must_change_password: false,
-        });
+      if (storedUser && existingToken) {
+        try {
+          setUser(JSON.parse(storedUser));
+        } catch {
+          setUser(false);
+        }
       } else {
         setUser(false);
       }
