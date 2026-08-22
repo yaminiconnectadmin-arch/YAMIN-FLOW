@@ -33,6 +33,9 @@ export const cachedApi = {
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("yf_token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (["post", "put", "patch", "delete"].includes((config.method || "").toLowerCase())) {
+    cachedApi.clearCache();
+  }
   return config;
 });
 

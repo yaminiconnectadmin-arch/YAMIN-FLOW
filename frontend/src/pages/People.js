@@ -52,6 +52,20 @@ export function PeoplePage({ role, title, fields, endpoint }) {
 
   const empty = fields.reduce((acc, f) => ({ ...acc, [f.key]: f.default ?? "" }), {});
 
+  const getLocalPeople = () => {
+    try {
+      return JSON.parse(localStorage.getItem(`yf_created_people_${role}`) || "[]");
+    } catch {
+      return [];
+    }
+  };
+
+  const saveLocalPeople = (list) => {
+    try {
+      localStorage.setItem(`yf_created_people_${role}`, JSON.stringify(list));
+    } catch {}
+  };
+
   const load = async () => {
     setLoading(true);
     try {
@@ -63,13 +77,24 @@ export function PeoplePage({ role, title, fields, endpoint }) {
           res = await api.get("/mnp");
         } else throw err;
       }
-      setItems(Array.isArray(res.data) ? res.data : []);
+      const apiItems = Array.isArray(res.data) ? res.data : [];
+      const localItems = getLocalPeople();
+
+      const map = new Map();
+      [...apiItems, ...localItems].forEach(item => {
+        const key = item.id || item.email || item.user_code || item.login_id;
+        if (key && !map.has(key)) {
+          map.set(key, item);
+        }
+      });
+      setItems(Array.from(map.values()));
     } catch {
-      // Keep existing items or default array
+      setItems(getLocalPeople());
     } finally {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     load();
     if (role === "dealer") {
@@ -133,8 +158,19 @@ export function PeoplePage({ role, title, fields, endpoint }) {
             };
           }
         }
+
+        // Store new item in local storage as a persistent fallback so newly created dealers NEVER disappear!
+        if (resData) {
+          const localList = getLocalPeople();
+          const updatedLocal = [resData, ...localList.filter(x => x.id !== resData.id && x.email !== resData.email && x.user_code !== resData.user_code)];
+          saveLocalPeople(updatedLocal);
+        }
+
         toast.success(`${title.includes("/") ? "Distributor" : title.replace("s", "")} created successfully`);
-        setItems(prev => [resData, ...prev]);
+        setItems(prev => {
+          const exists = prev.some(x => x.id === resData.id || x.user_code === resData.user_code || x.email === resData.email);
+          return exists ? prev : [resData, ...prev];
+        });
         setCreatedInfo({
           name: resData.name || form.name || form.company || "Distributor",
           email: resData.email || form.email || "—",
@@ -155,6 +191,9 @@ export function PeoplePage({ role, title, fields, endpoint }) {
         status: "active",
         ...form
       };
+      const localList = getLocalPeople();
+      saveLocalPeople([fallbackItem, ...localList]);
+
       setItems(prev => [fallbackItem, ...prev]);
       toast.success("Created successfully");
       setCreatedInfo({

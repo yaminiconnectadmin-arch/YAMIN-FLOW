@@ -22,8 +22,50 @@ export default function Dashboard() {
     let m = true;
     (async () => {
       try {
-        const { data } = await api.get("/analytics/overview");
-        if (m) setData(data);
+        const [overviewRes, dealersRes, ordersRes, invRes] = await Promise.all([
+          api.get("/analytics/overview").catch(() => ({ data: null })),
+          api.get("/dealers").catch(() => ({ data: [] })),
+          api.get("/orders").catch(() => ({ data: [] })),
+          api.get("/inventory").catch(() => ({ data: [] }))
+        ]);
+
+        let overview = overviewRes.data || {
+          kpis: { revenue: 0, total_orders: 0, delivered_orders: 0, inventory_value: 0, total_units: 0, dealer_count: 0, supplier_count: 0, product_count: 0, target_monthly: 0, target_quarterly: 0, current_month_revenue: 0, current_quarter_revenue: 0 },
+          revenue_trend: [], state_data: [], top_dealers: [], top_products: [], low_stock_alerts: []
+        };
+
+        // Real-time synchronization of dealers count
+        let localDealers = [];
+        try {
+          localDealers = JSON.parse(localStorage.getItem("yf_created_people_dealer") || "[]");
+        } catch (e) {}
+
+        const realDealers = Array.isArray(dealersRes.data) ? dealersRes.data : [];
+        const mergedDealerKeys = new Set([
+          ...realDealers.map(d => d.id || d.email || d.user_code),
+          ...localDealers.map(d => d.id || d.email || d.user_code)
+        ]);
+        const totalRealTimeDealers = Math.max(mergedDealerKeys.size, overview.kpis.dealer_count || 0);
+
+        // Real-time synchronization of orders & revenue
+        const realOrders = Array.isArray(ordersRes.data) ? ordersRes.data : [];
+        const realOrdersCount = Math.max(realOrders.length, overview.kpis.total_orders || 0);
+        const realRevenue = realOrders.reduce((sum, o) => sum + (o.total || o.subtotal || 0), 0);
+        const totalRealRevenue = Math.max(realRevenue, overview.kpis.revenue || 0);
+
+        // Real-time synchronization of inventory value
+        const realInv = Array.isArray(invRes.data) ? invRes.data : [];
+        const realInvValue = realInv.reduce((sum, item) => sum + ((item.quantity || 0) * (item.price || 0)), 0);
+        const totalRealInvValue = Math.max(realInvValue, overview.kpis.inventory_value || 0);
+        const totalRealUnits = realInv.reduce((sum, item) => sum + (item.quantity || 0), 0);
+
+        overview.kpis.dealer_count = totalRealTimeDealers;
+        if (overview.kpis.revenue === 0 && totalRealRevenue > 0) overview.kpis.revenue = totalRealRevenue;
+        if (overview.kpis.total_orders === 0 && realOrdersCount > 0) overview.kpis.total_orders = realOrdersCount;
+        if (overview.kpis.inventory_value === 0 && totalRealInvValue > 0) overview.kpis.inventory_value = totalRealInvValue;
+        if (overview.kpis.total_units === 0 && totalRealUnits > 0) overview.kpis.total_units = totalRealUnits;
+
+        if (m) setData(overview);
       } catch (e) { console.error(e); }
       finally { if (m) setLoading(false); }
     })();
