@@ -73,6 +73,32 @@ export default function InventoryPage() {
   const [editReason, setEditReason] = useState("Manual stock override");
   const [savingStock, setSavingStock] = useState(false);
 
+  const applyOverrides = (list) => {
+    try {
+      const userOverrides = JSON.parse(localStorage.getItem("yf_stock_overrides") || "{}");
+      return list.map(item => {
+        const key1 = `${item.warehouse_id}_${item.product_id}`;
+        const key2 = `${item.warehouse_code}_${item.product_sku}`;
+        const ov = userOverrides[key1] || userOverrides[key2];
+        if (ov) {
+          const newQty = ov.quantity;
+          const newSafety = ov.safety_stock !== undefined ? ov.safety_stock : item.safety_stock;
+          const avail = Math.max(0, newQty - (item.reserved || 0));
+          return {
+            ...item,
+            quantity: newQty,
+            safety_stock: newSafety,
+            available: avail,
+            stock_status: avail < newSafety ? "critical" : (avail < newSafety * 2 ? "low" : "healthy")
+          };
+        }
+        return item;
+      });
+    } catch {
+      return list;
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -81,13 +107,13 @@ export default function InventoryPage() {
       if (warehouse) {
         list = list.filter(r => String(r.warehouse_id) === String(warehouse) || String(r.warehouse_code) === String(warehouse));
       }
-      setRows(list);
+      setRows(applyOverrides(list));
     } catch {
       let list = MASTER_MOCK_INVENTORY;
       if (warehouse) {
         list = list.filter(r => String(r.warehouse_id) === String(warehouse) || String(r.warehouse_code) === String(warehouse));
       }
-      setRows(list);
+      setRows(applyOverrides(list));
     } finally {
       setLoading(false);
     }
@@ -117,6 +143,16 @@ export default function InventoryPage() {
     setSavingStock(true);
     const newQty = Number(editQty);
     const newSafety = Number(editSafety);
+
+    // Save override to localStorage so user changes are static and never overwritten by mock data
+    try {
+      const userOverrides = JSON.parse(localStorage.getItem("yf_stock_overrides") || "{}");
+      const key1 = `${selectedRow.warehouse_id}_${selectedRow.product_id}`;
+      const key2 = `${selectedRow.warehouse_code}_${selectedRow.product_sku}`;
+      userOverrides[key1] = { quantity: newQty, safety_stock: newSafety, updated_at: new Date().toISOString() };
+      userOverrides[key2] = { quantity: newQty, safety_stock: newSafety, updated_at: new Date().toISOString() };
+      localStorage.setItem("yf_stock_overrides", JSON.stringify(userOverrides));
+    } catch {}
 
     // Optimistically update local rows state immediately
     setRows(prev => prev.map(r => {

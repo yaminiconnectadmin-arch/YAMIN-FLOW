@@ -181,7 +181,7 @@ async def seed_all(force_purge: bool = False):
     for p in prods:
         await db.products.update_one(
             {"sku": p["sku"]},
-            {"$set": {**p, "updated_at": now_iso()}, "$setOnInsert": {"created_at": now_iso()}},
+            {"$setOnInsert": {**p, "created_at": now_iso()}, "$set": {"updated_at": now_iso()}},
             upsert=True
         )
 

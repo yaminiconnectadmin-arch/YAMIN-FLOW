@@ -92,10 +92,6 @@ api.interceptors.response.use(
       return Promise.resolve({ data: uObj });
     }
 
-    if (config && config.url && config.url.includes("/inventory/adjust")) {
-      return Promise.resolve({ data: { status: "ok", message: "Stock adjusted successfully" } });
-    }
-
     if (config && config.url && (config.url.includes("/dealers") || config.url.includes("/suppliers") || config.url.includes("/cnf") || config.url.includes("/mnp"))) {
       if (config.method === "post" || config.method === "put") {
         let bodyData = {};
