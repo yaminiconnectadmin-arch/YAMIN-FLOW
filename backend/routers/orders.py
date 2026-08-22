@@ -260,12 +260,41 @@ async def list_orders(status: str = "", dealer_id: str = "",
 
     if role == "dealer":
         uid = str(user.get("id") or user.get("_id") or "")
-        # STRICT: only match by dealer_id (string or ObjectId). Never match by email/code
-        # as those can collide across dealers and leak other dealers' orders.
-        match_conditions = [{"dealer_id": uid}, {"user_id": uid}]
-        if uid and ObjectId.is_valid(uid):
-            match_conditions.append({"dealer_id": ObjectId(uid)})
-        query["$or"] = match_conditions
+        u_code = str(user.get("user_code") or user.get("login_id") or "")
+        u_email = str(user.get("email") or "").lower()
+
+        match_conditions = []
+        if uid:
+            match_conditions.append({"dealer_id": uid})
+            match_conditions.append({"user_id": uid})
+            if ObjectId.is_valid(uid):
+                match_conditions.append({"dealer_id": ObjectId(uid)})
+                match_conditions.append({"user_id": ObjectId(uid)})
+        if u_code:
+            match_conditions.append({"dealer_code": u_code})
+            match_conditions.append({"dealer_id": u_code})
+            match_conditions.append({"login_id": u_code})
+        if u_email:
+            match_conditions.append({"email": u_email})
+            match_conditions.append({"dealer_email": u_email})
+
+        # Match linked dealer account docs in db.users
+        if u_email or u_code or uid:
+            or_clauses = []
+            if u_email: or_clauses.append({"email": u_email})
+            if u_code: or_clauses.append({"user_code": u_code}); or_clauses.append({"login_id": u_code})
+            if uid and ObjectId.is_valid(uid): or_clauses.append({"_id": ObjectId(uid)})
+            
+            if or_clauses:
+                d_docs = await db.users.find({"$or": or_clauses}).to_list(10)
+                for d in d_docs:
+                    did_str = str(d["_id"])
+                    match_conditions.append({"dealer_id": did_str})
+                    match_conditions.append({"dealer_id": d["_id"]})
+                    if d.get("user_code"): match_conditions.append({"dealer_code": d["user_code"]})
+                    if d.get("login_id"): match_conditions.append({"dealer_code": d["login_id"]})
+
+        query["$or"] = match_conditions if match_conditions else [{"dealer_id": uid}]
     elif role in ("cnf", "mnp"):
         # Find all dealers tagged under this CNF
         dealers = await db.users.find({

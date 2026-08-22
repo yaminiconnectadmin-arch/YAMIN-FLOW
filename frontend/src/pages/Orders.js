@@ -139,13 +139,32 @@ export default function OrdersPage() {
   const [dispatchNotes, setDispatchNotes] = useState("");
   const [isEditDeliveryMode, setIsEditDeliveryMode] = useState(false);
 
+  const getLocalOrders = () => {
+    try {
+      return JSON.parse(localStorage.getItem("yf_created_orders") || "[]");
+    } catch {
+      return [];
+    }
+  };
+
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
       const params = status && status !== "all" ? { status } : {};
       const { data } = await api.get("/orders", { params });
-      setOrders(Array.isArray(data) ? data : []);
+      const apiOrders = Array.isArray(data) ? data : [];
+      const localOrders = getLocalOrders();
+
+      const map = new Map();
+      [...apiOrders, ...localOrders].forEach(o => {
+        const key = o.id || o._id || o.order_no;
+        if (key && !map.has(key)) {
+          map.set(key, o);
+        }
+      });
+      setOrders(Array.from(map.values()));
     } catch (err) { 
+      setOrders(getLocalOrders());
       if (showLoading) toast.error("Failed to load orders"); 
     } finally { 
       if (showLoading) setLoading(false); 
@@ -445,6 +464,14 @@ export default function OrdersPage() {
         notes: `Fastener ${targetPartyType === "cnf" ? "CNF Depot Stock" : "Distributor"} Order (${cartTotalWeight} KG total)`
       };
       const { data } = await api.post("/orders", payload);
+
+      if (data) {
+        try {
+          const localOrders = getLocalOrders();
+          localStorage.setItem("yf_created_orders", JSON.stringify([data, ...localOrders]));
+        } catch (err) {}
+      }
+
       toast.success(`Order ${data.order_no} placed successfully (${cartTotalWeight} KG Total • Allocation: ${data.reservation_status.toUpperCase()})`);
       setCart({});
       setNewOrderModalOpen(false);

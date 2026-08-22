@@ -276,6 +276,15 @@ export default function DealerBrowse() {
         notes: `Order placed via Fastener Configurator (${cartTotalWeight} KG total weight across ${cartItems.length} items)`
       };
       const { data } = await api.post("/orders", payload);
+      
+      // Store created order in local storage backup so it immediately displays on /orders page
+      if (data) {
+        try {
+          const localOrders = JSON.parse(localStorage.getItem("yf_created_orders") || "[]");
+          localStorage.setItem("yf_created_orders", JSON.stringify([data, ...localOrders]));
+        } catch (err) {}
+      }
+
       toast.success(`Order ${data.order_no} placed successfully — Total Weight: ${cartTotalWeight} KG`);
       setCart({});
       navigate("/orders");
