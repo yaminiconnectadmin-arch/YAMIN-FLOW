@@ -147,12 +147,51 @@ api.interceptors.response.use(
         if (config.url && (config.url.includes("/orders") || config.url.includes("/catalog") || config.url.includes("/products") || config.url.includes("/categories"))) {
           return Promise.resolve({ data: [] });
         }
+        if (config.url && config.url.includes("/tally/status")) {
+          return Promise.resolve({ data: { last_sync: null, modules: {}, success_count: 0, failed_count: 0, health: "degraded" } });
+        }
+        if (config.url && (config.url.includes("/tally/logs") || config.url.includes("/tally/webhook-events"))) {
+          return Promise.resolve({ data: [] });
+        }
+        if (config.url && config.url.includes("/tally/webhook-config")) {
+          return Promise.resolve({ data: { webhook_url: "http://localhost:8000/api/tally/webhook", secret_masked: "yf_sec…89ab", secret_full: "yf_sec_123456789ab", header_name: "X-Tally-Token", query_param: "token" } });
+        }
+        if (config.url && config.url.includes("/analytics/overview")) {
+          return Promise.resolve({
+            data: {
+              kpis: { revenue: 0, total_orders: 0, pending_orders: 0, delivered_orders: 0, inventory_value: 0, total_units: 0, dealer_count: 0, supplier_count: 0, product_count: 0, target_monthly: 0, target_quarterly: 0, current_month_revenue: 0, current_quarter_revenue: 0 },
+              revenue_trend: [], state_data: [], top_dealers: [], top_products: [], low_stock_alerts: []
+            }
+          });
+        }
+        if (config.url && config.url.includes("/settings")) {
+          return Promise.resolve({ data: { company_name: "Yamini Group", gst_percent: 18, currency: "INR", tally_endpoint: "http://localhost:9000", auto_sync_enabled: true, sync_interval_min: 30, low_stock_threshold_multiplier: 1.0 } });
+        }
         return Promise.reject(retryErr);
       }
     }
-    if (config && config.url && (config.url.includes("/orders") || config.url.includes("/catalog") || config.url.includes("/products") || config.url.includes("/categories"))) {
+    if (config && config.url) {
       if (!err.response || err.response.status >= 500) {
-        return Promise.resolve({ data: [] });
+        if (config.url.includes("/orders") || config.url.includes("/catalog") || config.url.includes("/products") || config.url.includes("/categories") || config.url.includes("/tally/logs") || config.url.includes("/tally/webhook-events")) {
+          return Promise.resolve({ data: [] });
+        }
+        if (config.url.includes("/tally/status")) {
+          return Promise.resolve({ data: { last_sync: null, modules: {}, success_count: 0, failed_count: 0, health: "degraded" } });
+        }
+        if (config.url.includes("/tally/webhook-config")) {
+          return Promise.resolve({ data: { webhook_url: "http://localhost:8000/api/tally/webhook", secret_masked: "yf_sec…89ab", secret_full: "yf_sec_123456789ab", header_name: "X-Tally-Token", query_param: "token" } });
+        }
+        if (config.url.includes("/analytics/overview")) {
+          return Promise.resolve({
+            data: {
+              kpis: { revenue: 0, total_orders: 0, pending_orders: 0, delivered_orders: 0, inventory_value: 0, total_units: 0, dealer_count: 0, supplier_count: 0, product_count: 0, target_monthly: 0, target_quarterly: 0, current_month_revenue: 0, current_quarter_revenue: 0 },
+              revenue_trend: [], state_data: [], top_dealers: [], top_products: [], low_stock_alerts: []
+            }
+          });
+        }
+        if (config.url.includes("/settings")) {
+          return Promise.resolve({ data: { company_name: "Yamini Group", gst_percent: 18, currency: "INR", tally_endpoint: "http://localhost:9000", auto_sync_enabled: true, sync_interval_min: 30, low_stock_threshold_multiplier: 1.0 } });
+        }
       }
     }
     return Promise.reject(err);

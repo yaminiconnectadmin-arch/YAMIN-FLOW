@@ -125,6 +125,32 @@ function computeRealAnalytics(ordersList = [], dealersList = [], productsList = 
   };
 }
 
+function AnalyticsSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse" data-testid="analytics-skeleton">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="bg-white p-5 rounded-lg border border-[#E5E7EB] space-y-3">
+            <div className="h-3 w-24 bg-[#E5E7EB] rounded" />
+            <div className="h-8 w-20 bg-[#E5E7EB] rounded-md" />
+            <div className="h-3 w-28 bg-[#F4F5F7] rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-7 bg-white border border-[#E5E7EB] rounded-lg p-5 h-[400px] space-y-4">
+          <div className="h-5 w-36 bg-[#E5E7EB] rounded" />
+          <div className="h-full bg-[#F4F5F7] rounded-md" />
+        </div>
+        <div className="lg:col-span-5 bg-white border border-[#E5E7EB] rounded-lg p-5 h-[400px] space-y-4">
+          <div className="h-5 w-36 bg-[#E5E7EB] rounded" />
+          <div className="h-full bg-[#F4F5F7] rounded-md" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AnalyticsPage() {
   const { user } = useAuth();
   const [data, setData] = useState({
@@ -178,7 +204,7 @@ export default function AnalyticsPage() {
     } catch { toast.error(`Failed to load ${state}`); }
   };
 
-  if (loading || !data) return <AppShell title="Analytics"><div className="p-8 text-sm text-[#5C6670]">Loading…</div></AppShell>;
+  if (loading || !data) return <AppShell title="Analytics" subtitle="Deep-dive into performance across your network"><AnalyticsSkeleton /></AppShell>;
 
   return (
     <AppShell title="Analytics" subtitle="Deep-dive into performance across your network">

@@ -16,6 +16,72 @@ const MODULES = [
   { key: "ledgers", label: "Ledgers" },
 ];
 
+function TallySyncSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse" data-testid="tally-sync-skeleton">
+      {/* KPI Cards Skeleton */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="bg-white p-5 rounded-lg border border-[#E5E7EB] shadow-sm space-y-3">
+            <div className="h-3 w-24 bg-[#E5E7EB] rounded" />
+            <div className="h-8 w-20 bg-[#E5E7EB] rounded-md" />
+            <div className="h-3 w-28 bg-[#F4F5F7] rounded" />
+          </div>
+        ))}
+      </div>
+
+      {/* Info Banner Skeleton */}
+      <div className="bg-[#0A2342]/[0.03] border border-[#0A2342]/10 rounded-md p-4 flex items-start gap-3">
+        <div className="w-5 h-5 bg-[#0A2342]/20 rounded-full flex-shrink-0" />
+        <div className="space-y-2 flex-1">
+          <div className="h-4 w-48 bg-[#0A2342]/15 rounded" />
+          <div className="h-3 w-3/4 bg-[#0A2342]/10 rounded" />
+        </div>
+      </div>
+
+      {/* Modules Section Skeleton */}
+      <div className="bg-white border border-[#E5E7EB] rounded-lg p-5 space-y-4">
+        <div className="flex items-center justify-between border-b border-[#E5E7EB] pb-3">
+          <div className="space-y-1">
+            <div className="h-5 w-32 bg-[#E5E7EB] rounded" />
+            <div className="h-3 w-48 bg-[#F4F5F7] rounded" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <div key={i} className="border border-[#E5E7EB] rounded-md p-4 space-y-3">
+              <div className="flex justify-between items-center">
+                <div className="h-4 w-28 bg-[#E5E7EB] rounded" />
+                <div className="h-5 w-16 bg-[#F4F5F7] rounded-full" />
+              </div>
+              <div className="space-y-2">
+                <div className="h-3 w-full bg-[#F4F5F7] rounded" />
+                <div className="h-3 w-3/4 bg-[#F4F5F7] rounded" />
+              </div>
+              <div className="h-9 w-full bg-[#E5E7EB] rounded-md mt-2" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Sync History Table Skeleton */}
+      <div className="bg-white border border-[#E5E7EB] rounded-lg p-5 space-y-4">
+        <div className="h-5 w-40 bg-[#E5E7EB] rounded" />
+        <div className="space-y-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="flex items-center justify-between py-2 border-b border-[#E5E7EB]/50">
+              <div className="h-4 w-24 bg-[#E5E7EB] rounded" />
+              <div className="h-4 w-32 bg-[#F4F5F7] rounded" />
+              <div className="h-4 w-16 bg-[#E5E7EB] rounded" />
+              <div className="h-4 w-40 bg-[#F4F5F7] rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TallySyncPage() {
   const [status, setStatus] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -30,16 +96,44 @@ export default function TallySyncPage() {
   const [matchLoading, setMatchLoading] = useState(false);
 
   const load = async () => {
+    setLoading(true);
     try {
-      const [s, l, h, e] = await Promise.all([
+      const results = await Promise.allSettled([
         api.get("/tally/status"),
         api.get("/tally/logs", { params: { limit: 30 } }),
         api.get("/tally/webhook-config"),
         api.get("/tally/webhook-events", { params: { limit: 30 } }),
       ]);
-      setStatus(s.data); setLogs(l.data); setHook(h.data); setHookEvents(e.data);
-    } catch { toast.error("Failed to load Tally status"); }
-    finally { setLoading(false); }
+
+      const sData = results[0].status === "fulfilled" ? results[0].value.data : null;
+      const lData = results[1].status === "fulfilled" ? results[1].value.data : [];
+      const hData = results[2].status === "fulfilled" ? results[2].value.data : null;
+      const eData = results[3].status === "fulfilled" ? results[3].value.data : [];
+
+      const safeStatus = sData || {
+        last_sync: null,
+        modules: {},
+        success_count: 0,
+        failed_count: 0,
+        health: "degraded",
+      };
+
+      setStatus(safeStatus);
+      setLogs(Array.isArray(lData) ? lData : []);
+      setHook(hData);
+      setHookEvents(Array.isArray(eData) ? eData : []);
+    } catch {
+      toast.error("Failed to load Tally status");
+      setStatus({
+        last_sync: null,
+        modules: {},
+        success_count: 0,
+        failed_count: 0,
+        health: "degraded",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { load(); }, []);
 
@@ -121,7 +215,7 @@ export default function TallySyncPage() {
         </button>
       }
     >
-      {loading || !status ? <div className="p-8 text-center text-sm text-[#5C6670]">Loading…</div> : (
+      {loading ? <TallySyncSkeleton /> : (
         <div className="space-y-6">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 stagger">
             <KPICard label="Successful Syncs" value={status.success_count} icon={CheckCircle} hint="all time" testId="kpi-sync-success" />

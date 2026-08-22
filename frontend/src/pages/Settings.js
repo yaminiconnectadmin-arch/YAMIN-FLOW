@@ -335,6 +335,43 @@ function StaffRow({ staff, onToggleLock, onDelete, onEditTabs }) {
 
 // ─── Main Settings Page ───────────────────────────────────────────────────────
 
+function SettingsSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse" data-testid="settings-skeleton">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white border border-[#E5E7EB] rounded-lg p-5 space-y-4">
+          <div className="h-5 w-32 bg-[#E5E7EB] rounded" />
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="space-y-1.5">
+                <div className="h-3 w-24 bg-[#E5E7EB] rounded" />
+                <div className="h-10 w-full bg-[#F4F5F7] rounded-md" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white border border-[#E5E7EB] rounded-lg p-5 space-y-4">
+          <div className="h-5 w-36 bg-[#E5E7EB] rounded" />
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <div className="h-3 w-28 bg-[#E5E7EB] rounded" />
+              <div className="h-10 w-full bg-[#F4F5F7] rounded-md" />
+            </div>
+            <div className="space-y-1.5">
+              <div className="h-3 w-32 bg-[#E5E7EB] rounded" />
+              <div className="h-10 w-full bg-[#F4F5F7] rounded-md" />
+            </div>
+            <div className="h-5 w-40 bg-[#E5E7EB] rounded" />
+          </div>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <div className="h-10 w-32 bg-[#E5E7EB] rounded-md" />
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "admin" && user?.admin_role !== "staff";
@@ -348,8 +385,28 @@ export default function SettingsPage() {
   // Load platform settings
   useEffect(() => {
     (async () => {
-      const { data } = await api.get("/settings");
-      setSettings(data);
+      try {
+        const { data } = await api.get("/settings");
+        setSettings(data || {
+          company_name: "Yamini Group",
+          gst_percent: 18,
+          currency: "INR",
+          tally_endpoint: "http://localhost:9000",
+          auto_sync_enabled: true,
+          sync_interval_min: 30,
+          low_stock_threshold_multiplier: 1.0,
+        });
+      } catch {
+        setSettings({
+          company_name: "Yamini Group",
+          gst_percent: 18,
+          currency: "INR",
+          tally_endpoint: "http://localhost:9000",
+          auto_sync_enabled: true,
+          sync_interval_min: 30,
+          low_stock_threshold_multiplier: 1.0,
+        });
+      }
     })();
   }, []);
 
@@ -359,9 +416,9 @@ export default function SettingsPage() {
     setStaffLoading(true);
     try {
       const { data } = await api.get("/staff");
-      setStaffList(data);
+      setStaffList(Array.isArray(data) ? data : []);
     } catch {
-      // non-critical
+      setStaffList([]);
     } finally {
       setStaffLoading(false);
     }
@@ -369,7 +426,7 @@ export default function SettingsPage() {
 
   useEffect(() => { loadStaff(); }, [loadStaff]);
 
-  if (!settings) return <AppShell title="Settings"><div className="p-8 text-sm text-[#5C6670]">Loading…</div></AppShell>;
+  if (!settings) return <AppShell title="Settings" subtitle="Global platform configuration"><SettingsSkeleton /></AppShell>;
 
   const save = async () => {
     try {
