@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 import math
 from typing import Optional, List
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from db import db, serialize_doc, serialize_docs, now_iso
 from auth import get_current_user, require_admin, require_roles
 from models import OrderIn, OrderStatusUpdate, OrderPartialBillingIn, WarehouseAssignmentIn
@@ -262,37 +262,50 @@ async def list_orders(status: str = "", dealer_id: str = "",
         uid = str(user.get("id") or user.get("_id") or "")
         u_code = str(user.get("user_code") or user.get("login_id") or "")
         u_email = str(user.get("email") or "").lower()
+        u_name = str(user.get("name") or "")
 
         match_conditions = []
         if uid:
             match_conditions.append({"dealer_id": uid})
             match_conditions.append({"user_id": uid})
+            match_conditions.append({"created_by": uid})
             if ObjectId.is_valid(uid):
                 match_conditions.append({"dealer_id": ObjectId(uid)})
                 match_conditions.append({"user_id": ObjectId(uid)})
+                match_conditions.append({"created_by": ObjectId(uid)})
         if u_code:
             match_conditions.append({"dealer_code": u_code})
             match_conditions.append({"dealer_id": u_code})
-            match_conditions.append({"login_id": u_code})
         if u_email:
             match_conditions.append({"email": u_email})
             match_conditions.append({"dealer_email": u_email})
 
-        # Match linked dealer account docs in db.users
+        # Look up all related user docs and collect all their identifiers
         if u_email or u_code or uid:
             or_clauses = []
             if u_email: or_clauses.append({"email": u_email})
-            if u_code: or_clauses.append({"user_code": u_code}); or_clauses.append({"login_id": u_code})
+            if u_code:
+                or_clauses.append({"user_code": u_code})
+                or_clauses.append({"login_id": u_code})
             if uid and ObjectId.is_valid(uid): or_clauses.append({"_id": ObjectId(uid)})
-            
+
             if or_clauses:
                 d_docs = await db.users.find({"$or": or_clauses}).to_list(10)
                 for d in d_docs:
                     did_str = str(d["_id"])
                     match_conditions.append({"dealer_id": did_str})
                     match_conditions.append({"dealer_id": d["_id"]})
-                    if d.get("user_code"): match_conditions.append({"dealer_code": d["user_code"]})
-                    if d.get("login_id"): match_conditions.append({"dealer_code": d["login_id"]})
+                    match_conditions.append({"created_by": did_str})
+                    d_email = d.get("email", "").lower()
+                    if d_email:
+                        match_conditions.append({"email": d_email})
+                        match_conditions.append({"dealer_email": d_email})
+                    if d.get("user_code"):
+                        match_conditions.append({"dealer_code": d["user_code"]})
+                    if d.get("login_id"):
+                        match_conditions.append({"dealer_code": d["login_id"]})
+                    if d.get("name"):
+                        match_conditions.append({"dealer_name": d["name"]})
 
         query["$or"] = match_conditions if match_conditions else [{"dealer_id": uid}]
     elif role in ("cnf", "mnp"):
@@ -360,7 +373,11 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         if payload.dealer_id:
             dealer_id = payload.dealer_id
         else:
-            dealer_id = user["id"]
+            first_dealer = await db.users.find_one({"role": "dealer"})
+            if first_dealer:
+                dealer_id = str(first_dealer["_id"])
+            else:
+                dealer_id = user["id"]
     elif user["role"] in ("cnf", "mnp"):
         if payload.dealer_id:
             dealer_id = payload.dealer_id
@@ -612,6 +629,9 @@ async def create_order(payload: OrderIn, user: dict = Depends(get_current_user))
         "dealer_name": dealer_name,
         "dealer_state": dealer_state,
         "dealer_gstin": dealer_gstin,
+        "created_by": user["id"],
+        "user_id": user["id"],
+        "email": user.get("email", ""),
         "cnf_id": str(cnf_id_val) if cnf_id_val else None,
         "cnf_code": cnf_code,
         "cnf_name": cnf_name,
@@ -1120,6 +1140,9 @@ async def reallocate_order_stock(order_id: str, user: dict = Depends(get_current
     total_new_subtotal = 0.0
     total_new_gst = 0.0
     total_new_amount = 0.0
+    updated_items = []
+    total_demanded_pcs = 0
+    total_allocated_pcs = 0
 
     for item in items:
         p_id = item.get("product_id")
@@ -1128,7 +1151,7 @@ async def reallocate_order_stock(order_id: str, user: dict = Depends(get_current
         demanded_pcs = demanded_boxes * qty_per_box
 
         old_allocated_boxes = _get_item_alloc_boxes(item)
-        total_demanded_pcs += demanded_boxes
+        total_demanded_pcs += demanded_pcs
 
         inv = await _inv_query(wh_id, p_id)
         on_hand_boxes = inv.get("quantity", 0) if inv else 0
@@ -1207,7 +1230,7 @@ async def reallocate_order_stock(order_id: str, user: dict = Depends(get_current
         if box_diff != 0:
             await _reserve_inv(wh_id, p_id, box_diff)
 
-        total_allocated_pcs += new_alloc_boxes
+        total_allocated_pcs += new_alloc_pcs
 
         item["quantity"] = demanded_boxes
         item["quantity_ordered"] = demanded_boxes
