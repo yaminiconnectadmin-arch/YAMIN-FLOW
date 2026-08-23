@@ -299,10 +299,15 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
         current_quarter = (now.month - 1) // 3 + 1
         start_of_quarter = datetime(now.year, 3 * current_quarter - 2, 1, tzinfo=timezone.utc).isoformat()
         
+        # Use approved_at as the date anchor so dashboard and dealer table always agree.
+        # Fallback to created_at for orders that haven't been explicitly approved yet.
         q_month = {
             **order_q,
-            "created_at": {"$gte": start_of_month},
-            "status": {"$in": ["delivered", "shipped", "approved", "partially_fulfilled", "processing"]}
+            "$or": [
+                {"approved_at": {"$gte": start_of_month}},
+                {"created_at": {"$gte": start_of_month}, "approved_at": {"$exists": False}}
+            ],
+            "status": {"$in": ["approved", "partially_fulfilled", "processing", "shipped", "delivered"]}
         }
         agg_month = await db.orders.aggregate([
             {"$match": q_month},
@@ -313,8 +318,11 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
             
         q_quarter = {
             **order_q,
-            "created_at": {"$gte": start_of_quarter},
-            "status": {"$in": ["delivered", "shipped", "approved", "partially_fulfilled", "processing"]}
+            "$or": [
+                {"approved_at": {"$gte": start_of_quarter}},
+                {"created_at": {"$gte": start_of_quarter}, "approved_at": {"$exists": False}}
+            ],
+            "status": {"$in": ["approved", "partially_fulfilled", "processing", "shipped", "delivered"]}
         }
         agg_quarter = await db.orders.aggregate([
             {"$match": q_quarter},
@@ -422,6 +430,8 @@ async def analytics_overview(user: dict = Depends(get_current_user)):
             "target_quarterly": target_quarterly,
             "current_month_revenue": round(current_month_revenue, 2),
             "current_quarter_revenue": round(current_quarter_revenue, 2),
+            "stockout_risk_count": stockout_risk_count,
+            "inventory_ageing": inventory_ageing,
         },
         "revenue_trend": weeks,
         "state_data": [{"state": s["_id"] or "Unknown", "revenue": round(s["revenue"], 2), "orders": s["orders"]} for s in state_data],

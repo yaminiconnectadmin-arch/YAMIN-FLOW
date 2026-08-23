@@ -107,18 +107,24 @@ async def _list_role(role: str, cnf_id: str = None):
                 "name": m.get("name") or "Regional CNF"
             }
         
-        # Calculate current month's revenue for all dealers (Tally verified only)
+        # Calculate current month's revenue for all dealers based on admin-approved orders.
+        # Tally sync is NOT required here — the trigger is admin approval, not Tally voucher.
         now = datetime.now(timezone.utc)
         start_of_month = datetime(now.year, now.month, 1, tzinfo=timezone.utc).isoformat()
         rev_agg = await db.orders.aggregate([
             {"$match": {
-                "created_at": {"$gte": start_of_month},
-                "status": {"$in": ["delivered", "shipped", "approved"]},
-                "tally_voucher_no": {"$exists": True, "$ne": None}
+                "$or": [
+                    {"approved_at": {"$gte": start_of_month}},
+                    {"created_at": {"$gte": start_of_month}, "approved_at": {"$exists": False}}
+                ],
+                "status": {"$in": ["approved", "partially_fulfilled", "processing", "shipped", "delivered"]}
             }},
             {"$group": {"_id": "$dealer_id", "revenue": {"$sum": "$total"}}}
         ]).to_list(1000)
-        dealer_rev_map = {r["_id"]: r["revenue"] for r in rev_agg}
+        # Build lookup supporting both string and ObjectId dealer_id values in orders
+        dealer_rev_map = {}
+        for r in rev_agg:
+            dealer_rev_map[str(r["_id"])] = r["revenue"]
 
     for d in docs:
         if role in ["dealer", "cnf", "mnp"] and not d.get("login_id") and not d.get("user_code"):
@@ -145,8 +151,9 @@ async def _list_role(role: str, cnf_id: str = None):
                 s["mnp_name"] = "Direct (Yamini Flow HQ)"
                 s["assignment_type"] = "Direct (HQ)"
             
-            # Attach fulfillment metrics
-            rev = dealer_rev_map.get(str(d["_id"]), 0)
+            # Attach fulfillment metrics — check both string _id and any alternate dealer_id keys
+            did_str = str(d["_id"])
+            rev = dealer_rev_map.get(did_str, 0)
             target = s.get("target_monthly", 0)
             s["current_month_revenue"] = round(rev, 2)
             s["fulfillment_pct"] = round((rev / target * 100), 1) if target > 0 else 0
@@ -206,7 +213,10 @@ async def create_dealer(payload: DealerIn, user: dict = Depends(require_admin_or
 @router.put("/dealers/{dealer_id}")
 @router.put("/distributors/{dealer_id}")
 async def update_dealer(dealer_id: str, payload: DealerIn, user: dict = Depends(require_admin_or_cnf)):
-    q = {"_id": ObjectId(dealer_id), "role": "dealer"}
+    try:
+        q = {"_id": ObjectId(dealer_id), "role": "dealer"}
+    except Exception:
+        q = {"$or": [{"user_code": dealer_id}, {"login_id": dealer_id}], "role": "dealer"}
     if user.get("role") in ["cnf", "mnp"]:
         q["$or"] = [{"cnf_id": user["id"]}, {"mnp_id": user["id"]}]
     
@@ -215,6 +225,8 @@ async def update_dealer(dealer_id: str, payload: DealerIn, user: dict = Depends(
               "credit_limit": payload.credit_limit,
               "target_monthly": payload.target_monthly, "target_quarterly": payload.target_quarterly,
               "updated_at": now_iso()}
+    if payload.email:
+        update["email"] = payload.email.strip().lower()
     if user.get("role") == "admin":
         cid, ccode, cname = await _resolve_dealer_cnf(payload.cnf_id or payload.mnp_id)
         update["cnf_id"] = cid
@@ -227,7 +239,10 @@ async def update_dealer(dealer_id: str, payload: DealerIn, user: dict = Depends(
     res = await db.users.update_one(q, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Distributor not found or unauthorized")
-    doc = await db.users.find_one({"_id": ObjectId(dealer_id)})
+    try:
+        doc = await db.users.find_one({"_id": ObjectId(dealer_id)})
+    except Exception:
+        doc = await db.users.find_one({"$or": [{"user_code": dealer_id}, {"login_id": dealer_id}]})
     s = serialize_doc(doc); s.pop("password_hash", None)
     return s
 
