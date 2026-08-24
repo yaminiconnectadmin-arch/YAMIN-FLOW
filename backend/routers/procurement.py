@@ -117,6 +117,41 @@ async def list_weight_matrix(category: str = "", q: str = "", user: dict = Depen
     return serialize_docs(docs)
 
 
+@router.get("/procurement/supplier-kpis")
+async def get_supplier_kpis(user: dict = Depends(get_current_user)):
+    """Calculate Supplier KPIs: Lead time, fulfilment %, outstanding KG demand, reliability score."""
+    suppliers = await db.users.find({"role": "supplier"}).to_list(500)
+    pos = await db.purchase_orders.find({}).to_list(5000)
+
+    kpis = []
+    for s in suppliers:
+        sid = str(s["_id"])
+        s_pos = [p for p in pos if str(p.get("supplier_id")) == sid or p.get("supplier_id") == s["_id"]]
+        
+        total_pos = len(s_pos)
+        delivered_pos = [p for p in s_pos if p.get("status") in ["received", "fulfilled", "confirmed"]]
+        
+        fulfilment_pct = round((len(delivered_pos) / total_pos * 100.0), 1) if total_pos > 0 else 100.0
+        
+        total_kg_ordered = sum(p.get("total_kg", 0) for p in s_pos)
+        outstanding_kg = sum(p.get("total_kg", 0) for p in s_pos if p.get("status") not in ["received", "fulfilled", "cancelled"])
+        
+        kpis.append({
+            "supplier_id": sid,
+            "supplier_name": s.get("company") or s.get("name"),
+            "company": s.get("company", ""),
+            "lead_time_days": s.get("lead_time_days", 7),
+            "total_pos": total_pos,
+            "fulfilled_pos": len(delivered_pos),
+            "fulfilment_pct": fulfilment_pct,
+            "total_kg_ordered": round(total_kg_ordered, 2),
+            "outstanding_kg": round(outstanding_kg, 2),
+            "reliability_score": min(100.0, max(50.0, fulfilment_pct)),
+        })
+
+    return kpis
+
+
 @router.post("/procurement/weight-matrix")
 async def upsert_weight_matrix_item(payload: WeightMatrixItem, admin: dict = Depends(require_admin)):
     """Insert or update a Weight Matrix item and sync corresponding product."""

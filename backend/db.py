@@ -24,16 +24,16 @@ def _validate_object_id(v: Any) -> str:
 PyObjectId = Annotated[str, BeforeValidator(_validate_object_id)]
 
 
-DEFAULT_SRV_URL = "mongodb+srv://yaminiconnectadmin_db_user:yaminiconnect111@cluster0.1ri5dnj.mongodb.net/yamini_flow?appName=Cluster0"
+DEFAULT_SRV_URL = "mongodb+srv://yaminiconnectadmin_db_user:yaminiconnect111@cluster0.1ri5dnj.mongodb.net/yamini_flow?retryWrites=true&w=majority"
 DEFAULT_DIRECT_URL = "mongodb://yaminiconnectadmin_db_user:yaminiconnect111@ac-1ri5dnj-shard-00-00.1ri5dnj.mongodb.net:27017,ac-1ri5dnj-shard-00-01.1ri5dnj.mongodb.net:27017,ac-1ri5dnj-shard-00-02.1ri5dnj.mongodb.net:27017/yamini_flow?ssl=true&replicaSet=atlas-1ri5dnj-shard-0&authSource=admin"
-DEFAULT_MONGO_URL = DEFAULT_DIRECT_URL
-mongo_url = os.environ.get("MONGO_URL", DEFAULT_DIRECT_URL)
+DEFAULT_MONGO_URL = DEFAULT_SRV_URL
+mongo_url = os.environ.get("MONGO_URL", DEFAULT_SRV_URL)
 db_name = os.environ.get("DB_NAME", "yamini_flow")
 
 MONGO_KWARGS = {
-    "serverSelectionTimeoutMS": 2500,
-    "connectTimeoutMS": 2500,
-    "socketTimeoutMS": 2500,
+    "serverSelectionTimeoutMS": 5000,
+    "connectTimeoutMS": 5000,
+    "socketTimeoutMS": 5000,
     "maxPoolSize": 20,
     "minPoolSize": 0,
     "maxIdleTimeMS": 10000,
@@ -128,84 +128,59 @@ class SafeCollectionProxy:
         self.real_coll = real_coll
         self.dummy = DummyCollection()
 
-    async def find_one(self, *args, **kwargs):
-        try:
-            return await self.real_coll.find_one(*args, **kwargs)
-        except Exception as e:
-            logger.warning(f"MongoDB find_one exception: {e}")
-            return await self.dummy.find_one(*args, **kwargs)
-
     def find(self, *args, **kwargs):
         try:
-            return self.real_coll.find(*args, **kwargs)
+            if self.real_coll is not None:
+                return self.real_coll.find(*args, **kwargs)
         except Exception as e:
             logger.warning(f"MongoDB find exception: {e}")
-            return self.dummy.find(*args, **kwargs)
-
-    async def insert_one(self, *args, **kwargs):
-        try:
-            return await self.real_coll.insert_one(*args, **kwargs)
-        except Exception as e:
-            logger.warning(f"MongoDB insert_one exception: {e}")
-            return await self.dummy.insert_one(*args, **kwargs)
-
-    async def insert_many(self, *args, **kwargs):
-        try:
-            return await self.real_coll.insert_many(*args, **kwargs)
-        except Exception as e:
-            logger.warning(f"MongoDB insert_many exception: {e}")
-            return await self.dummy.insert_many(*args, **kwargs)
-
-    async def update_one(self, *args, **kwargs):
-        try:
-            return await self.real_coll.update_one(*args, **kwargs)
-        except Exception as e:
-            logger.warning(f"MongoDB update_one exception: {e}")
-            return await self.dummy.update_one(*args, **kwargs)
-
-    async def update_many(self, *args, **kwargs):
-        try:
-            return await self.real_coll.update_many(*args, **kwargs)
-        except Exception as e:
-            logger.warning(f"MongoDB update_many exception: {e}")
-            return await self.dummy.update_many(*args, **kwargs)
-
-    async def delete_many(self, *args, **kwargs):
-        try:
-            return await self.real_coll.delete_many(*args, **kwargs)
-        except Exception as e:
-            logger.warning(f"MongoDB delete_many exception: {e}")
-            return await self.dummy.delete_many(*args, **kwargs)
-
-    async def count_documents(self, *args, **kwargs):
-        try:
-            return await self.real_coll.count_documents(*args, **kwargs)
-        except Exception as e:
-            logger.warning(f"MongoDB count_documents exception: {e}")
-            return await self.dummy.count_documents(*args, **kwargs)
+        return self.dummy.find(*args, **kwargs)
 
     def aggregate(self, *args, **kwargs):
         try:
-            return self.real_coll.aggregate(*args, **kwargs)
+            if self.real_coll is not None:
+                return self.real_coll.aggregate(*args, **kwargs)
         except Exception as e:
             logger.warning(f"MongoDB aggregate exception: {e}")
-            return self.dummy.aggregate(*args, **kwargs)
+        return self.dummy.aggregate(*args, **kwargs)
 
-    async def create_index(self, *args, **kwargs):
-        try:
-            return await self.real_coll.create_index(*args, **kwargs)
-        except Exception as e:
-            return await self.dummy.create_index(*args, **kwargs)
-
-    async def drop_index(self, *args, **kwargs):
-        try:
-            return await self.real_coll.drop_index(*args, **kwargs)
-        except Exception as e:
-            return await self.dummy.drop_index(*args, **kwargs)
+    def __getattr__(self, name):
+        if self.real_coll is not None and hasattr(self.real_coll, name):
+            attr = getattr(self.real_coll, name)
+            if callable(attr):
+                async def _safe_call(*args, **kwargs):
+                    try:
+                        res = attr(*args, **kwargs)
+                        if hasattr(res, "__await__"):
+                            return await res
+                        return res
+                    except Exception as e:
+                        logger.warning(f"MongoDB proxy exception in {name}: {e}")
+                        dummy_attr = getattr(self.dummy, name, None)
+                        if callable(dummy_attr):
+                            dummy_res = dummy_attr(*args, **kwargs)
+                            if hasattr(dummy_res, "__await__"):
+                                return await dummy_res
+                            return dummy_res
+                        return None
+                return _safe_call
+            return attr
+        return getattr(self.dummy, name, None)
 
 
 class LazyDatabase:
+    @property
+    def name(self):
+        return db_name
+
     def __getattr__(self, name):
+        if name in ("command", "list_collection_names", "create_collection", "drop_collection"):
+            real_db = get_db()
+            if hasattr(real_db, name):
+                return getattr(real_db, name)
+            async def _dummy_cmd(*args, **kwargs):
+                return {"ok": 1}
+            return _dummy_cmd
         try:
             coll = getattr(get_db(), name)
             return SafeCollectionProxy(coll) if coll is not None else DummyCollection()

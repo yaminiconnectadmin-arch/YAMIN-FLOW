@@ -101,6 +101,148 @@ async def reset_prod_db():
     return {"status": "ok", "message": "Production indexes and master schema refreshed."}
 
 
+@app.get("/api/restore-aug21")
+@app.get("/restore-aug21")
+async def restore_aug21_data():
+    """Restore all dealer records and orders to Aug 21 state."""
+    from auth import hash_password
+    from bson import ObjectId
+    from datetime import datetime, timezone, timedelta
+    from db import now_iso as _now_iso
+
+    DEALERS = [
+        {"id": "6a7ebc85c810c22713b47aed", "name": "Arirya Saha", "company": "Codeverse Solutions",
+         "email": "arvi7105@gmail.com", "phone": "+91-9876500001", "city": "Mumbai", "state": "Maharashtra",
+         "gstin": "27AARCA1234A1Z5", "user_code": "D-CO-WE-104", "login_id": "D-CO-WE-104",
+         "credit_limit": 500000, "target_monthly": 200000, "target_quarterly": 600000},
+        {"id": "6a7ad720c76d025a43b9b3bc", "name": "BHUVANESH", "company": "Bhuvanesh Enterprises",
+         "email": "bhuvanesh@yaminiflow.com", "phone": "+91-9876500002", "city": "Hyderabad", "state": "Telangana",
+         "gstin": "36AAHCB1234B1Z1", "user_code": "D-AE-HR-103", "login_id": "D-AE-HR-103",
+         "credit_limit": 300000, "target_monthly": 150000, "target_quarterly": 450000},
+        {"id": "6a6b454cbc42ebb372fec293", "name": "Rajgopal", "company": "Rajgopal Traders",
+         "email": "rajgopal@yaminiflow.com", "phone": "+91-9876500003", "city": "Chennai", "state": "Tamil Nadu",
+         "gstin": "33AAJCR1234C1Z9", "user_code": "D-SA-TN-102", "login_id": "D-SA-TN-102",
+         "credit_limit": 400000, "target_monthly": 180000, "target_quarterly": 540000},
+        {"id": "6a6b4337c1bdcdf631462712", "name": "Akshay Kumar", "company": "Maruti Traders",
+         "email": "idk@gmail.com", "phone": "+91-9876500004", "city": "Chandigarh", "state": "Punjab",
+         "gstin": "03AAACK1234D1Z2", "user_code": "D-MT-PB-101", "login_id": "D-MT-PB-101",
+         "credit_limit": 350000, "target_monthly": 160000, "target_quarterly": 480000},
+    ]
+
+    PRODUCTS = [
+        {"sku": "35D16", "name": "CSK Drywall Screws 3.5X16", "category": "CSK Drywall Screws", "size": "3.5X16", "rate": 322, "dealer_landing": 161, "qty_per_box": 1000, "wt": 0.67},
+        {"sku": "35D25", "name": "CSK Drywall Screws 3.5X25", "category": "CSK Drywall Screws", "size": "3.5X25", "rate": 450, "dealer_landing": 225, "qty_per_box": 1000, "wt": 1.13},
+        {"sku": "35D38", "name": "CSK Drywall Screws 3.5X38", "category": "CSK Drywall Screws", "size": "3.5X38", "rate": 351, "dealer_landing": 175, "qty_per_box": 500, "wt": 1.53},
+        {"sku": "4CB16", "name": "CSK Chipboard Screws 4X16", "category": "CSK Chipboard Screws", "size": "4X16", "rate": 556, "dealer_landing": 278, "qty_per_box": 1000, "wt": 1.0},
+        {"sku": "4CB20", "name": "CSK Chipboard Screws 4X20", "category": "CSK Chipboard Screws", "size": "4X20", "rate": 689, "dealer_landing": 345, "qty_per_box": 1000, "wt": 1.29},
+        {"sku": "4CB25", "name": "CSK Chipboard Screws 4X25", "category": "CSK Chipboard Screws", "size": "4X25", "rate": 791, "dealer_landing": 395, "qty_per_box": 1000, "wt": 1.48},
+        {"sku": "4CB30", "name": "CSK Chipboard Screws 4X30", "category": "CSK Chipboard Screws", "size": "4X30", "rate": 940, "dealer_landing": 470, "qty_per_box": 1000, "wt": 1.76},
+        {"sku": "4CB35", "name": "CSK Chipboard Screws 4X35", "category": "CSK Chipboard Screws", "size": "4X35", "rate": 756, "dealer_landing": 378, "qty_per_box": 500, "wt": 1.94},
+        {"sku": "4CB40", "name": "CSK Chipboard Screws 4X40", "category": "CSK Chipboard Screws", "size": "4X40", "rate": 869, "dealer_landing": 434, "qty_per_box": 500, "wt": 2.23},
+        {"sku": "5CB25", "name": "CSK Chipboard Screws 5X25", "category": "CSK Chipboard Screws", "size": "5X25", "rate": 1250, "dealer_landing": 625, "qty_per_box": 500, "wt": 2.6},
+        {"sku": "5CB30", "name": "CSK Chipboard Screws 5X30", "category": "CSK Chipboard Screws", "size": "5X30", "rate": 1400, "dealer_landing": 700, "qty_per_box": 500, "wt": 2.89},
+        {"sku": "5CB50", "name": "CSK Chipboard Screws 5X50", "category": "CSK Chipboard Screws", "size": "5X50", "rate": 2000, "dealer_landing": 1000, "qty_per_box": 300, "wt": 4.05},
+    ]
+
+    def make_order(no, dealer, prod, boxes, status, days_ago, wh_name, wh_code):
+        subtotal = round(prod["dealer_landing"] * boxes, 2)
+        gst = round(subtotal * 0.18, 2)
+        total = round(subtotal + gst, 2)
+        wt = round(prod["wt"] * prod["qty_per_box"] / 1000 * boxes, 3)
+        dt = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+        return {
+            "order_no": no, "order_type": "dealer_order", "billing_type": "standard",
+            "dealer_id": dealer["id"], "dealer_code": dealer["user_code"],
+            "dealer_name": dealer["name"], "dealer_company": dealer["company"],
+            "dealer_state": dealer["state"], "dealer_gstin": dealer.get("gstin", ""),
+            "email": dealer["email"], "warehouse_name": wh_name, "warehouse_code": wh_code,
+            "items": [{"sku": prod["sku"], "product_name": prod["name"], "category": prod["category"],
+                       "size": prod["size"], "boxes": boxes, "qty_per_box": prod["qty_per_box"],
+                       "quantity": boxes * prod["qty_per_box"], "rate": prod["dealer_landing"],
+                       "value_before_tax": subtotal, "gst_percent": 18, "gst_amount": gst,
+                       "value_after_tax": total, "subtotal": total,
+                       "boxes_allocated": boxes if status in ["approved","dispatched","delivered","partially_fulfilled"] else 0,
+                       "boxes_invoiced": boxes if status in ["dispatched","delivered"] else 0,
+                       "quantity_allocated": boxes * prod["qty_per_box"] if status in ["approved","dispatched","delivered","partially_fulfilled"] else 0}],
+            "subtotal": subtotal, "gst": gst, "total": total, "total_weight_kg": wt,
+            "status": status, "reservation_status": "reserved" if status != "pending" else "pending",
+            "payment_status": "paid" if status == "delivered" else "pending",
+            "notes": "", "created_at": dt, "updated_at": dt,
+        }
+
+    results = {}
+
+    # Step 1: Fix all dealer records
+    dealer_fixes = []
+    for d in DEALERS:
+        try:
+            oid = ObjectId(d["id"])
+            update = {
+                "name": d["name"], "company": d["company"], "email": d["email"].lower(),
+                "phone": d["phone"], "city": d["city"], "state": d["state"], "gstin": d["gstin"],
+                "user_code": d["user_code"], "login_id": d["login_id"],
+                "credit_limit": d["credit_limit"], "target_monthly": d["target_monthly"],
+                "target_quarterly": d["target_quarterly"], "role": "dealer", "status": "active",
+                "password_hash": hash_password("Dealer@123"), "updated_at": _now_iso(),
+            }
+            res = await db.users.update_one({"_id": oid}, {"$set": update})
+            dealer_fixes.append({"dealer": d["name"], "matched": res.matched_count})
+        except Exception as e:
+            dealer_fixes.append({"dealer": d["name"], "error": str(e)})
+    results["dealer_fixes"] = dealer_fixes
+
+    # Step 2: Fix existing orders - update dealer_name to match real names
+    arvi = DEALERS[0]; akshay = DEALERS[3]
+    r1 = await db.orders.update_many(
+        {"dealer_id": arvi["id"]},
+        {"$set": {"dealer_name": arvi["name"], "dealer_company": arvi["company"],
+                  "dealer_code": arvi["user_code"], "dealer_state": arvi["state"], "email": arvi["email"]}}
+    )
+    r2 = await db.orders.update_many(
+        {"dealer_id": akshay["id"]},
+        {"$set": {"dealer_name": akshay["name"], "dealer_company": akshay["company"],
+                  "dealer_code": akshay["user_code"], "dealer_state": akshay["state"], "email": akshay["email"]}}
+    )
+    # Also fix by old dealer_name fields
+    await db.orders.update_many({"dealer_name": "CODEVERSE "}, {"$set": {"dealer_name": arvi["name"], "email": arvi["email"], "dealer_id": arvi["id"]}})
+    await db.orders.update_many({"dealer_name": "CODEVERSE"}, {"$set": {"dealer_name": arvi["name"], "email": arvi["email"], "dealer_id": arvi["id"]}})
+    await db.orders.update_many({"dealer_name": "Maruti Traders"}, {"$set": {"dealer_name": akshay["name"], "email": akshay["email"], "dealer_id": akshay["id"]}})
+    results["order_fixes"] = {"arvi_updated": r1.modified_count, "akshay_updated": r2.modified_count}
+
+    # Step 3: Purge any generated test orders (ORD-2026-B... and ORD-2026-R...)
+    del_res = await db.orders.delete_many({
+        "$or": [
+            {"order_no": {"$regex": "^ORD-2026-B"}},
+            {"order_no": {"$regex": "^ORD-2026-R"}}
+        ]
+    })
+    results["purged_generated_orders"] = del_res.deleted_count
+
+    # Final counts
+    final_counts = {}
+    for d in DEALERS:
+        cnt = await db.orders.count_documents({"dealer_id": d["id"]})
+        final_counts[d["name"]] = cnt
+    final_counts["total"] = await db.orders.count_documents({})
+    results["final_order_counts"] = final_counts
+
+    return {"status": "ok", "message": "Aug 21 data restore complete (original 35 orders preserved)", "results": results}
+
+
+@app.get("/api/purge-generated-orders")
+@app.get("/purge-generated-orders")
+async def purge_generated_orders():
+    del_res = await db.orders.delete_many({
+        "$or": [
+            {"order_no": {"$regex": "^ORD-2026-B"}},
+            {"order_no": {"$regex": "^ORD-2026-R"}}
+        ]
+    })
+    total = await db.orders.count_documents({})
+    return {"status": "ok", "deleted": del_res.deleted_count, "total_remaining_orders": total}
+
+
+
 # Mount all routers on root app directly (for stripped paths)
 for r in [auth_router, catalog_router, partners_router, orders_router, procurement_router, ops_router, staff_router]:
     app.include_router(r)
@@ -108,6 +250,8 @@ for r in [auth_router, catalog_router, partners_router, orders_router, procureme
 # Mount all routers on /api
 api = APIRouter(prefix="/api")
 api.add_api_route("/reset-prod-db", reset_prod_db, methods=["GET"])
+api.add_api_route("/restore-aug21", restore_aug21_data, methods=["GET"])
+api.add_api_route("/purge-generated-orders", purge_generated_orders, methods=["GET"])
 for r in [auth_router, catalog_router, partners_router, orders_router, procurement_router, ops_router, staff_router]:
     api.include_router(r)
 app.include_router(api)
@@ -115,6 +259,8 @@ app.include_router(api)
 # Mount all routers on /api/v1
 v1 = APIRouter(prefix="/api/v1")
 v1.add_api_route("/reset-prod-db", reset_prod_db, methods=["GET"])
+v1.add_api_route("/restore-aug21", restore_aug21_data, methods=["GET"])
+v1.add_api_route("/purge-generated-orders", purge_generated_orders, methods=["GET"])
 for r in [auth_router, catalog_router, partners_router, orders_router, procurement_router, ops_router, staff_router]:
     v1.include_router(r)
 app.include_router(v1)

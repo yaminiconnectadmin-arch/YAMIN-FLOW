@@ -11,23 +11,31 @@ export default function AppShell({ title, subtitle, actions, children }) {
 
   return (
     <>
-      {/* Skip-to-content — visible on keyboard focus for screen readers */}
+      {/* Skip-to-content link for keyboard/screen-reader users */}
       <a href="#main-content" className="skip-to-content">Skip to content</a>
 
       <div className="flex h-screen w-full overflow-hidden bg-[#F4F5F7] text-[#06182F]">
-        {/* ── Mobile overlay backdrop ─────────────────────────────────── */}
+
+        {/* Mobile overlay backdrop — shown behind the drawer when open */}
         {sidebarOpen && (
           <div
-            className="yf-sidebar-overlay md:hidden"
             onClick={closeSidebar}
             aria-hidden="true"
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 40,
+              background: "rgba(6, 24, 47, 0.55)",
+              backdropFilter: "blur(2px)",
+              WebkitBackdropFilter: "blur(2px)",
+            }}
           />
         )}
 
-        {/* ── Sidebar ─────────────────────────────────────────────────── */}
+        {/* Sidebar — handles desktop vs mobile internally */}
         <Sidebar open={sidebarOpen} onClose={closeSidebar} />
 
-        {/* ── Main content area ───────────────────────────────────────── */}
+        {/* Main content */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <Header
             title={title}
@@ -47,9 +55,8 @@ export default function AppShell({ title, subtitle, actions, children }) {
         <Toaster position="top-right" richColors />
       </div>
 
-      {/* ── Bottom navigation — mobile only ─────────────────────────── */}
+      {/* Bottom navigation — visible on mobile only (hidden via JS in BottomNav) */}
       <BottomNav />
     </>
   );
 }
-

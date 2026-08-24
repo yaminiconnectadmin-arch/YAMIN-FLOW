@@ -1,4 +1,5 @@
 """Auth router — login, logout, me, register (admin creates), refresh."""
+import logging
 from datetime import datetime, timezone
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -10,6 +11,7 @@ from auth import (
 )
 from models import LoginInput, RegisterInput, ChangePasswordIn
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
@@ -62,6 +64,9 @@ async def login(payload: LoginInput, request: Request, response: Response):
     except Exception:
         ip = "unknown"
     identifier = f"{ip}:{ident_lower}"
+
+    import re
+    rgx = re.compile(f"^{re.escape(ident_lower)}$", re.IGNORECASE)
 
     user = None
     try:

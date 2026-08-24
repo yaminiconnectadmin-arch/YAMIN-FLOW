@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import InstallModal from "@/components/InstallPrompt";
@@ -63,7 +63,6 @@ const NAV = {
   ],
 };
 
-/** Filter admin nav items based on the staff user's allowed_tabs */
 function filterNavForStaff(items, allowedTabs) {
   if (!allowedTabs || allowedTabs.includes("all")) return items;
   return items.filter((item) => {
@@ -78,31 +77,93 @@ function filterNavForStaff(items, allowedTabs) {
   });
 }
 
+/** Detect if we're on a mobile-width viewport */
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  useEffect(() => {
+    const mql = window.matchMedia("(max-width: 767px)");
+    const handler = (e) => setIsMobile(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+  return isMobile;
+}
+
 export default function Sidebar({ open, onClose }) {
   const { user } = useAuth();
   const location = useLocation();
   const [showInstallModal, setShowInstallModal] = useState(false);
+  const isMobile = useIsMobile();
 
   const isStaff = user?.role === "admin" && user?.admin_role === "staff";
   const rawItems = NAV[user?.role] || [];
   const items = isStaff ? filterNavForStaff(rawItems, user?.allowed_tabs) : rawItems;
 
-  // On mobile: sidebar is a fixed drawer controlled by `open` prop.
-  // On desktop (md+): always visible, `open` prop is ignored.
-  const drawerClass = [
-    "yf-sidebar flex-shrink-0 flex flex-col h-screen",
-    // Desktop: static position inside flex row, always visible
-    "md:relative md:translate-x-0 md:w-[260px] md:z-auto",
-    // Mobile: fixed full-height slide-in drawer
-    "max-md:fixed max-md:top-0 max-md:left-0 max-md:z-50 max-md:w-[280px] max-md:shadow-2xl",
-    // Mobile visibility gating
-    open ? "max-md:yf-sidebar-drawer-open" : "max-md:hidden",
-  ].join(" ");
+  // On desktop: always show, no positioning tricks needed
+  // On mobile: fixed drawer, shown only when open=true
+  if (isMobile) {
+    return (
+      <>
+        {/* Mobile drawer */}
+        <aside
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            height: "100dvh",
+            width: "280px",
+            zIndex: 50,
+            transform: open ? "translateX(0)" : "translateX(-100%)",
+            transition: "transform 250ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+            display: "flex",
+            flexDirection: "column",
+          }}
+          className="yf-sidebar shadow-2xl"
+          data-testid="app-sidebar"
+          aria-label="Main navigation"
+        >
+          <SidebarContent
+            items={items}
+            location={location}
+            user={user}
+            isStaff={isStaff}
+            onClose={onClose}
+            showInstallModal={showInstallModal}
+            setShowInstallModal={setShowInstallModal}
+            showCloseButton
+          />
+        </aside>
+      </>
+    );
+  }
 
+  // Desktop: static sidebar in the flex row
   return (
-    <aside className={drawerClass} data-testid="app-sidebar" aria-label="Main navigation">
+    <aside
+      className="yf-sidebar flex-shrink-0 flex flex-col h-screen"
+      style={{ width: "260px" }}
+      data-testid="app-sidebar"
+      aria-label="Main navigation"
+    >
+      <SidebarContent
+        items={items}
+        location={location}
+        user={user}
+        isStaff={isStaff}
+        onClose={onClose}
+        showInstallModal={showInstallModal}
+        setShowInstallModal={setShowInstallModal}
+        showCloseButton={false}
+      />
+    </aside>
+  );
+}
+
+function SidebarContent({ items, location, user, isStaff, onClose, showInstallModal, setShowInstallModal, showCloseButton }) {
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
       {/* ── Logo + close button ─────────────────────────────────────── */}
-      <div className="px-6 py-5 border-b border-white/5 flex items-center gap-3.5">
+      <div className="px-6 py-5 border-b border-white/5 flex items-center gap-3.5 flex-shrink-0">
         <img
           src="/logo.png"
           alt="Yamini Flow Logo"
@@ -112,14 +173,20 @@ export default function Sidebar({ open, onClose }) {
           <div className="text-white font-display font-semibold text-[15px] tracking-wide">YAMINI FLOW</div>
           <div className="text-[10px] text-[#F28C18] font-medium tracking-widest uppercase mt-0.5">Distribution OS</div>
         </div>
-        {/* Close button — mobile only */}
-        <button
-          className="md:hidden w-8 h-8 flex items-center justify-center rounded-md hover:bg-white/10 text-white/60 hover:text-white transition-colors flex-shrink-0"
-          onClick={onClose}
-          aria-label="Close navigation"
-        >
-          <X size={18} />
-        </button>
+        {showCloseButton && (
+          <button
+            style={{
+              width: 32, height: 32,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              borderRadius: 6, background: "transparent", border: "none",
+              color: "rgba(255,255,255,0.6)", cursor: "pointer", flexShrink: 0,
+            }}
+            onClick={onClose}
+            aria-label="Close navigation"
+          >
+            <X size={18} />
+          </button>
+        )}
       </div>
 
       {/* ── Navigation links ────────────────────────────────────────── */}
@@ -129,7 +196,8 @@ export default function Sidebar({ open, onClose }) {
             return (
               <div
                 key={idx}
-                className="px-3 pt-4 pb-1 text-[10px] font-semibold tracking-[0.15em] uppercase text-white/55"
+                className="px-3 pt-4 pb-1 text-[10px] font-semibold tracking-[0.15em] uppercase"
+                style={{ color: "rgba(255,255,255,0.55)" }}
               >
                 {item.section}
               </div>
@@ -156,10 +224,11 @@ export default function Sidebar({ open, onClose }) {
       </nav>
 
       {/* ── Install app button ──────────────────────────────────────── */}
-      <div className="px-3 py-2 border-t border-white/5">
+      <div className="px-3 py-2 border-t border-white/5 flex-shrink-0">
         <button
           onClick={() => setShowInstallModal(true)}
-          className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg bg-gradient-to-r from-[#F28C18]/20 to-[#F28C18]/10 hover:from-[#F28C18]/30 hover:to-[#F28C18]/20 border border-[#F28C18]/30 text-white font-medium text-[13px] transition-all shadow-sm"
+          className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg border border-[#F28C18]/30 text-white font-medium text-[13px] transition-all shadow-sm"
+          style={{ background: "linear-gradient(to right, rgba(242,140,24,0.2), rgba(242,140,24,0.1))" }}
           data-testid="sidebar-install-app-btn"
           aria-label="Install Yamini Flow app"
         >
@@ -174,7 +243,7 @@ export default function Sidebar({ open, onClose }) {
       </div>
 
       {/* ── User strip with role badge ──────────────────────────────── */}
-      <div className="px-4 py-4 border-t border-white/5">
+      <div className="px-4 py-4 border-t border-white/5 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div
             className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
@@ -204,6 +273,6 @@ export default function Sidebar({ open, onClose }) {
       </div>
 
       <InstallModal isOpen={showInstallModal} onClose={() => setShowInstallModal(false)} />
-    </aside>
+    </div>
   );
 }

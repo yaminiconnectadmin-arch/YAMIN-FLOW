@@ -18,6 +18,7 @@ const WarehousesPage = lazy(() => import("@/pages/Warehouses"));
 const ProcurementPage = lazy(() => import("@/pages/Procurement"));
 const PurchaseOrdersPage = lazy(() => import("@/pages/PurchaseOrders"));
 const TallySyncPage = lazy(() => import("@/pages/TallySync"));
+const TallyReconciliationPage = lazy(() => import("@/pages/TallyReconciliation"));
 const AnalyticsPage = lazy(() => import("@/pages/Analytics"));
 const NotificationsPage = lazy(() => import("@/pages/Notifications"));
 const AuditLogsPage = lazy(() => import("@/pages/AuditLogs"));
@@ -81,6 +82,7 @@ export default function App() {
               <Route path="/procurement"     element={<ProtectedRoute roles={["admin", "cnf", "mnp"]} tabKey="procurement"    ><ProcurementPage /></ProtectedRoute>} />
               <Route path="/purchase-orders" element={<ProtectedRoute roles={["admin", "supplier"]}   tabKey="purchase-orders"><PurchaseOrdersPage /></ProtectedRoute>} />
               <Route path="/tally"           element={<ProtectedRoute roles={["admin", "cnf", "mnp"]} tabKey="tally"          ><TallySyncPage /></ProtectedRoute>} />
+              <Route path="/tally/reconciliation" element={<ProtectedRoute roles={["admin", "cnf", "mnp"]} tabKey="tally"          ><TallyReconciliationPage /></ProtectedRoute>} />
               <Route path="/audit"           element={<ProtectedRoute roles={["admin"]}               tabKey="audit"          ><AuditLogsPage /></ProtectedRoute>} />
               <Route path="/settings"        element={<ProtectedRoute roles={["admin"]}               tabKey="settings"       ><SettingsPage /></ProtectedRoute>} />
 
