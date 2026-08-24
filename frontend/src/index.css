@@ -40,6 +40,9 @@
   --chart-3: 215 8% 40%;
   --chart-4: 214 9% 71%;
   --chart-5: 195 74% 45%;
+
+  /* Bottom nav height — used to offset page content on mobile */
+  --bottom-nav-h: 64px;
 }
 
 * { border-color: hsl(var(--border)); }
@@ -53,6 +56,8 @@ body {
   color: var(--yf-deep-navy);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Remove mobile tap highlight flash */
+  -webkit-tap-highlight-color: transparent;
 }
 
 h1, h2, h3, h4, h5, h6, .font-display {
@@ -65,13 +70,47 @@ h1, h2, h3, h4, h5, h6, .font-display {
   font-variant-numeric: tabular-nums;
 }
 
+/* ─── Accessibility: Skip-to-content ────────────────────────────────────── */
+.skip-to-content {
+  position: fixed;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  background: #F28C18;
+  color: #fff;
+  font-family: "Outfit", sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 10px 20px;
+  border-radius: 0 0 8px 8px;
+  text-decoration: none;
+  transition: top 160ms ease;
+}
+.skip-to-content:focus { top: 0; outline: none; }
+
+/* ─── Accessibility: Focus rings ────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #F28C18;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #F28C18;
+  outline-offset: 2px;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #BFC5CB; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #5C6670; }
 
-/* Utility helpers */
+/* ─── Utility helpers ────────────────────────────────────────────────────── */
 .card-shadow { box-shadow: 0 2px 8px rgba(6, 24, 47, 0.04); }
 .card-shadow-hover:hover { box-shadow: 0 8px 24px rgba(6, 24, 47, 0.08); }
 
@@ -79,13 +118,29 @@ h1, h2, h3, h4, h5, h6, .font-display {
   background-image: linear-gradient(135deg, #F28C18 0%, #D96B0B 100%);
 }
 
-/* Sidebar */
+/* ─── Horizontal table scroll (mobile) ──────────────────────────────────── */
+.table-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  /* subtle gradient hint on right edge to signal scrollability */
+  background:
+    linear-gradient(to right, #fff 30%, transparent) left / 30px 100%,
+    linear-gradient(to left, #fff 30%, transparent) right / 30px 100%,
+    radial-gradient(farthest-side at 0 50%, rgba(6,24,47,.08), transparent) left / 10px 100%,
+    radial-gradient(farthest-side at 100% 50%, rgba(6,24,47,.08), transparent) right / 10px 100%;
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
+
+/* ─── Sidebar — Desktop (unchanged) ─────────────────────────────────────── */
 .yf-sidebar {
   background: linear-gradient(180deg, #06182F 0%, #0A2342 100%);
 }
 
 .yf-sidebar-item {
   transition: background 160ms ease, color 160ms ease;
+  /* Ensure WCAG-compliant 44px touch target */
+  min-height: 44px;
 }
 .yf-sidebar-item:hover { background: rgba(255, 255, 255, 0.05); }
 .yf-sidebar-item.active {
@@ -94,7 +149,78 @@ h1, h2, h3, h4, h5, h6, .font-display {
   border-left: 3px solid #F28C18;
 }
 
-/* KPI card diagonal accent */
+/* ─── Mobile Sidebar Drawer ──────────────────────────────────────────────── */
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0.6; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+@keyframes slideOutLeft {
+  from { transform: translateX(0);     opacity: 1; }
+  to   { transform: translateX(-100%); opacity: 0; }
+}
+
+.yf-sidebar-drawer-open  { animation: slideInLeft  240ms cubic-bezier(.25,.46,.45,.94) both; }
+.yf-sidebar-drawer-close { animation: slideOutLeft 200ms cubic-bezier(.55,.06,.68,.19) both; }
+
+/* ─── Sidebar overlay backdrop ───────────────────────────────────────────── */
+@keyframes fadeInOverlay {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.yf-sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(6, 24, 47, 0.55);
+  backdrop-filter: blur(2px);
+  animation: fadeInOverlay 200ms ease both;
+}
+
+/* ─── Bottom Navigation Bar (mobile only) ───────────────────────────────── */
+.yf-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  height: var(--bottom-nav-h);
+  background: linear-gradient(180deg, #06182F 0%, #0A2342 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  display: flex;
+  align-items: stretch;
+  /* Respect notched phones (iPhone) */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.yf-bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 4px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+  font-family: "IBM Plex Sans", sans-serif;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 160ms ease, background 160ms ease;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 44px;
+}
+.yf-bottom-nav-item:hover   { color: rgba(255, 255, 255, 0.8); }
+.yf-bottom-nav-item.active  { color: #F28C18; }
+.yf-bottom-nav-item.active .yf-bottom-nav-dot {
+  background: rgba(242, 140, 24, 0.15);
+  border-radius: 10px;
+  padding: 2px 10px;
+}
+
+/* ─── KPI card diagonal accent ───────────────────────────────────────────── */
 .kpi-card { position: relative; overflow: hidden; }
 .kpi-card::after {
   content: "";
@@ -104,25 +230,26 @@ h1, h2, h3, h4, h5, h6, .font-display {
   pointer-events: none;
 }
 
-/* Tables */
+/* ─── Tables ─────────────────────────────────────────────────────────────── */
 .yf-table th {
   font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600;
   color: #5C6670; background: #F8F9FA; text-align: left; padding: 12px 16px;
   border-bottom: 1px solid #E5E7EB;
+  white-space: nowrap;
 }
 .yf-table td {
   padding: 12px 16px; font-size: 14px; color: #06182F; border-bottom: 1px solid #F1F2F4;
 }
 .yf-table tr:hover td { background: #FAFBFC; }
 
-/* Login backdrop */
+/* ─── Login backdrop ─────────────────────────────────────────────────────── */
 .login-hero {
   background-image: linear-gradient(180deg, rgba(6, 24, 47, 0.88) 0%, rgba(10, 35, 66, 0.94) 100%),
     url("https://images.unsplash.com/photo-1669003153363-6d7ba8e20c7e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjB3YXJlaG91c2UlMjBhZXJpYWx8ZW58MHx8fHwxNzg0MTQ2Mzk1fDA&ixlib=rb-4.1.0&q=85");
   background-size: cover; background-position: center;
 }
 
-/* Fade in */
+/* ─── Fade-in animation ──────────────────────────────────────────────────── */
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
@@ -136,7 +263,7 @@ h1, h2, h3, h4, h5, h6, .font-display {
 .stagger > *:nth-child(5) { animation-delay: 200ms; }
 .stagger > *:nth-child(6) { animation-delay: 240ms; }
 
-/* Status badges */
+/* ─── Status badges ──────────────────────────────────────────────────────── */
 .badge-success { background: #ECFDF5; color: #065F46; }
 .badge-warning { background: #FFFBEB; color: #92400E; }
 .badge-error { background: #FEF2F2; color: #991B1B; }
@@ -144,5 +271,16 @@ h1, h2, h3, h4, h5, h6, .font-display {
 .badge-neutral { background: #F4F5F7; color: #5C6670; }
 .badge-brand { background: rgba(242, 140, 24, 0.12); color: #D96B0B; }
 
-/* Selection */
+/* ─── Selection ──────────────────────────────────────────────────────────── */
 ::selection { background: rgba(242, 140, 24, 0.22); color: #06182F; }
+
+/* ─── Mobile page padding to clear bottom nav ───────────────────────────── */
+@media (max-width: 767px) {
+  main[data-testid="page-content"] {
+    padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px) + 8px) !important;
+  }
+  /* Tighter scrollbar on mobile */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  /* More readable table cells on small screens */
+  .yf-table th, .yf-table td { padding: 10px 12px; font-size: 13px; }
+}

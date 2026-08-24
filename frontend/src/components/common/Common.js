@@ -8,19 +8,24 @@ export function KPICard({ label, value, trend, hint, icon: Icon, format = "num",
 
   const trendUp = typeof trend === "number" && trend >= 0;
   return (
-    <div className="kpi-card bg-white p-5 rounded-lg border border-[#E5E7EB] card-shadow hover:border-[#BFC5CB] transition-all" data-testid={testId}>
+    <div
+      className="kpi-card bg-white p-4 sm:p-5 rounded-lg border border-[#E5E7EB] card-shadow hover:border-[#BFC5CB] transition-all"
+      data-testid={testId}
+    >
       <div className="flex items-start justify-between mb-2">
-        <div className="text-[11px] font-medium uppercase tracking-widest text-[#5C6670]">{label}</div>
+        <div className="text-[11px] font-medium uppercase tracking-widest text-[#5C6670] leading-snug pr-2">
+          {label}
+        </div>
         {Icon ? (
-          <div className="w-8 h-8 rounded-md bg-[#F4F5F7] flex items-center justify-center text-[#0A2342]">
+          <div className="w-8 h-8 rounded-md bg-[#F4F5F7] flex items-center justify-center text-[#0A2342] flex-shrink-0">
             <Icon size={16} weight="regular" />
           </div>
         ) : null}
       </div>
-      <div className="font-display text-[28px] font-bold text-[#06182F] tabular tracking-tight leading-none mb-2">
+      <div className="font-display text-[22px] sm:text-[28px] font-bold text-[#06182F] tabular tracking-tight leading-none mb-2 break-all">
         {formatted}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         {typeof trend === "number" && (
           <span className={`inline-flex items-center gap-1 text-xs font-medium ${trendUp ? "text-emerald-600" : "text-red-600"}`}>
             {trendUp ? <TrendUp size={12} weight="bold" /> : <TrendDown size={12} weight="bold" />}
@@ -52,7 +57,10 @@ export function StatusBadge({ status }) {
     s === "pending" ? "APPROVAL PENDING" :
     s === "partially_fulfilled" ? "PARTIALLY FULFILLED" : status;
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${cls}`} data-testid={`status-badge-${status}`}>
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${cls}`}
+      data-testid={`status-badge-${status}`}
+    >
       {label}
     </span>
   );
@@ -62,12 +70,20 @@ export function PageSection({ title, description, actions, children, className =
   return (
     <section className={`bg-white rounded-lg border border-[#E5E7EB] card-shadow ${className}`}>
       {(title || actions) && (
-        <div className="px-5 py-4 border-b border-[#E5E7EB] flex items-center justify-between">
-          <div>
-            {title ? <h2 className="font-display text-[15px] font-semibold text-[#06182F]">{title}</h2> : null}
-            {description ? <p className="text-xs text-[#5C6670] mt-0.5">{description}</p> : null}
+        <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-[#E5E7EB] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="min-w-0">
+            {title ? (
+              <h2 className="font-display text-[15px] font-semibold text-[#06182F] leading-snug">{title}</h2>
+            ) : null}
+            {description ? (
+              <p className="text-xs text-[#5C6670] mt-0.5">{description}</p>
+            ) : null}
           </div>
-          {actions}
+          {actions ? (
+            <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap flex-shrink-0">
+              {actions}
+            </div>
+          ) : null}
         </div>
       )}
       {children}
@@ -77,7 +93,7 @@ export function PageSection({ title, description, actions, children, className =
 
 export function EmptyState({ title = "No data", description, action }) {
   return (
-    <div className="p-12 text-center">
+    <div className="p-8 sm:p-12 text-center">
       <div className="mx-auto w-14 h-14 rounded-full bg-[#F4F5F7] flex items-center justify-center text-[#BFC5CB] mb-3">
         <span className="font-display text-2xl">∅</span>
       </div>

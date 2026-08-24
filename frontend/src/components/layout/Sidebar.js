@@ -6,7 +6,7 @@ import {
   ChartBar, Package, Warehouse, ShoppingCart, TrendUp,
   Bell, ClipboardText, GearSix, Storefront, Receipt, FileText,
   Handshake, MapTrifold, ArrowsClockwise, ShieldCheck, DeviceMobile,
-  Crown, UserGear,
+  Crown, UserGear, X,
 } from "@phosphor-icons/react";
 
 const NAV = {
@@ -66,13 +66,11 @@ const NAV = {
 /** Filter admin nav items based on the staff user's allowed_tabs */
 function filterNavForStaff(items, allowedTabs) {
   if (!allowedTabs || allowedTabs.includes("all")) return items;
-  // Always show section headings and items that are either in allowedTabs or have no tabKey (global)
   return items.filter((item) => {
-    if (item.section) return true; // Keep section headers; prune empty ones below
-    if (!item.tabKey) return true; // Items without tabKey are always visible
+    if (item.section) return true;
+    if (!item.tabKey) return true;
     return allowedTabs.includes(item.tabKey);
   }).filter((item, idx, arr) => {
-    // Remove section headers that have no visible children
     if (!item.section) return true;
     const nextSectionIdx = arr.findIndex((x, i) => i > idx && x.section);
     const siblings = arr.slice(idx + 1, nextSectionIdx === -1 ? undefined : nextSectionIdx);
@@ -80,7 +78,7 @@ function filterNavForStaff(items, allowedTabs) {
   });
 }
 
-export default function Sidebar() {
+export default function Sidebar({ open, onClose }) {
   const { user } = useAuth();
   const location = useLocation();
   const [showInstallModal, setShowInstallModal] = useState(false);
@@ -89,21 +87,50 @@ export default function Sidebar() {
   const rawItems = NAV[user?.role] || [];
   const items = isStaff ? filterNavForStaff(rawItems, user?.allowed_tabs) : rawItems;
 
+  // On mobile: sidebar is a fixed drawer controlled by `open` prop.
+  // On desktop (md+): always visible, `open` prop is ignored.
+  const drawerClass = [
+    "yf-sidebar flex-shrink-0 flex flex-col h-screen",
+    // Desktop: static position inside flex row, always visible
+    "md:relative md:translate-x-0 md:w-[260px] md:z-auto",
+    // Mobile: fixed full-height slide-in drawer
+    "max-md:fixed max-md:top-0 max-md:left-0 max-md:z-50 max-md:w-[280px] max-md:shadow-2xl",
+    // Mobile visibility gating
+    open ? "max-md:yf-sidebar-drawer-open" : "max-md:hidden",
+  ].join(" ");
+
   return (
-    <aside className="yf-sidebar w-[260px] flex-shrink-0 flex flex-col h-screen" data-testid="app-sidebar">
+    <aside className={drawerClass} data-testid="app-sidebar" aria-label="Main navigation">
+      {/* ── Logo + close button ─────────────────────────────────────── */}
       <div className="px-6 py-5 border-b border-white/5 flex items-center gap-3.5">
-        <img src="/logo.png" alt="Yamini Flow Logo" className="w-10 h-10 rounded-lg object-cover shadow-lg border border-white/10 flex-shrink-0" />
-        <div className="leading-tight">
+        <img
+          src="/logo.png"
+          alt="Yamini Flow Logo"
+          className="w-10 h-10 rounded-lg object-cover shadow-lg border border-white/10 flex-shrink-0"
+        />
+        <div className="leading-tight flex-1 min-w-0">
           <div className="text-white font-display font-semibold text-[15px] tracking-wide">YAMINI FLOW</div>
           <div className="text-[10px] text-[#F28C18] font-medium tracking-widest uppercase mt-0.5">Distribution OS</div>
         </div>
+        {/* Close button — mobile only */}
+        <button
+          className="md:hidden w-8 h-8 flex items-center justify-center rounded-md hover:bg-white/10 text-white/60 hover:text-white transition-colors flex-shrink-0"
+          onClick={onClose}
+          aria-label="Close navigation"
+        >
+          <X size={18} />
+        </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+      {/* ── Navigation links ────────────────────────────────────────── */}
+      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5" aria-label="App sections">
         {items.map((item, idx) => {
           if (item.section) {
             return (
-              <div key={idx} className="px-3 pt-4 pb-1 text-[10px] font-semibold tracking-[0.15em] uppercase text-white/40">
+              <div
+                key={idx}
+                className="px-3 pt-4 pb-1 text-[10px] font-semibold tracking-[0.15em] uppercase text-white/55"
+              >
                 {item.section}
               </div>
             );
@@ -114,6 +141,7 @@ export default function Sidebar() {
               key={item.to}
               to={item.to}
               data-testid={`sidebar-${item.to.replace("/", "")}-link`}
+              onClick={onClose}
               className={({ isActive }) =>
                 `yf-sidebar-item flex items-center gap-3 px-4 py-2.5 mx-1 rounded-md text-[13.5px] font-medium ${
                   isActive ? "active text-white" : "text-white/70 hover:text-white"
@@ -127,11 +155,13 @@ export default function Sidebar() {
         })}
       </nav>
 
+      {/* ── Install app button ──────────────────────────────────────── */}
       <div className="px-3 py-2 border-t border-white/5">
         <button
           onClick={() => setShowInstallModal(true)}
           className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg bg-gradient-to-r from-[#F28C18]/20 to-[#F28C18]/10 hover:from-[#F28C18]/30 hover:to-[#F28C18]/20 border border-[#F28C18]/30 text-white font-medium text-[13px] transition-all shadow-sm"
           data-testid="sidebar-install-app-btn"
+          aria-label="Install Yamini Flow app"
         >
           <div className="w-6 h-6 rounded-md bg-[#F28C18] flex items-center justify-center text-white flex-shrink-0 shadow">
             <DeviceMobile size={15} weight="bold" />
@@ -143,10 +173,13 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* User strip with role badge */}
+      {/* ── User strip with role badge ──────────────────────────────── */}
       <div className="px-4 py-4 border-t border-white/5">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
+          <div
+            className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
+            aria-hidden="true"
+          >
             {user?.name?.[0]?.toUpperCase() || "?"}
           </div>
           <div className="min-w-0 flex-1">
